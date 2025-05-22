@@ -1,12 +1,10 @@
-import 'package:flutter/material.dart';
+//import 'package:flutter/material.dart';
 import 'package:roslibdart/roslibdart.dart';
 import 'package:get/get.dart';
 
 class MwCollector extends GetxController {
   late Ros ros;
   RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
-  List<String> topicList = [];
-  List<String> typeList = [];
   List<SubscribeHandler> handlerList = [];
   
   bool connect(String url) {
@@ -14,7 +12,7 @@ class MwCollector extends GetxController {
     ros = Ros(url: url);
     ros.connect();
 
-    handlerList = [handleOta];
+    handlerList = [handleLifecycle, handleOta, handleSecurity];
 
     return true;
   }
@@ -31,10 +29,24 @@ class MwCollector extends GetxController {
 
   }
 
-  Future<void> handleLifecycle(Map<String, dynamic> msg) async {}
+  Future<void> handleLifecycle(Map<String, dynamic> msg) async {
 
-  Future<void> handleOta(Map<String, dynamic> msg) async {}
+    topicData['Lifecycle status'] = msg;
 
-  Future<void> handleSecurity(Map<String, dynamic> msg) async {}
+  }
+
+  Future<void> handleOta(Map<String, dynamic> msg) async {
+
+    topicData['Ota status'] = msg;
+  
+  }
+
+  Future<void> handleSecurity(Map<String, dynamic> msg) async {
+
+    topicData['Security status'] = msg;
+
+    // 보안 문제 검사 코드
+
+  }
 
 }
