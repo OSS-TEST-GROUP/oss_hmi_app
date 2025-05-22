@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:oss_hmi_app/views/adsw_view_page.dart';
+import 'package:oss_hmi_app/views/mw_view_page.dart';
 
 void main() {
   runApp(const OssHmiApp());
@@ -28,12 +30,46 @@ class OssHomePage extends StatefulWidget {
   State<OssHomePage> createState() => _OssHomePageState();
 }
 
-class _OssHomePageState extends State<OssHomePage> {
+class _OssHomePageState extends State<OssHomePage> with SingleTickerProviderStateMixin {
   
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      // Tab
+    
+    return Scaffold(
+      body: Column(
+        children: [
+          TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'AD SW Info'),
+              Tab(text: 'Diagnostic Info'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: const [
+                AdswViewPage(),
+                MwViewPage(),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
