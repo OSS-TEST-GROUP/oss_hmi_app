@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 // import 'package:get/get.dart';
-import 'package:oss_hmi_app/models/key_value_item.dart';
+import 'package:adsw_monitor/model/key_value_item.dart';
 
 class DataViewWidget extends StatelessWidget {
   final String title;
