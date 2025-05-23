@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:oss_hmi_app/controllers/mw_collector.dart';
-import 'package:oss_hmi_app/widgets/data_view_widget.dart';
-import 'package:oss_hmi_app/models/key_value_item.dart';
-import 'package:oss_hmi_app/data/mw_data.dart';
+import 'package:adsw_monitor/controller/mw_collector.dart';
+import 'package:adsw_monitor/widget/data_view_widget.dart';
+import 'package:adsw_monitor/model/key_value_item.dart';
+import 'package:adsw_monitor/data/mw_data.dart';
 
 class MwViewPage extends StatefulWidget {
   const MwViewPage({super.key});

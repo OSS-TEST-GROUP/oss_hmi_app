@@ -1,4 +1,4 @@
-package com.example.oss_hmi_app
+package com.example.adsw_monitor
 
 import io.flutter.embedding.android.FlutterActivity
 
