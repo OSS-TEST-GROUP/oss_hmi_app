@@ -52,6 +52,38 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
     return SingleChildScrollView(
       child: Column(
         children: <Widget>[
+          Obx((){
+            if(_adswCollector.isLaneDeparture.value == 'true'){
+              Future.microtask(() => showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: const Text('Lane departure'),
+                  content: Text(_adswCollector.topicData['Lane departure']),
+                  actions: <Widget>[
+                    TextButton(
+                      style: TextButton.styleFrom(textStyle: Theme.of(context).textTheme.labelLarge),
+                      child: const Text('close'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(textStyle:Theme.of(context).textTheme.labelLarge),
+                      child: const Text('ok'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ],
+                );
+              },
+            ));
+            return const SizedBox();
+          } else {
+            return const SizedBox();
+          }
+        }),
           Obx(() {
             return DataViewWidget(
               title: 'Vehicle',
@@ -105,6 +137,14 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
               title: 'Map',
               items: [
                 KeyValueItem(keyLabel: 'Speed limit', value: _adswCollector.topicData['Gear'].toString()),
+              ]
+            );}
+          ),
+          Obx(() {
+            return DataViewWidget(
+              title: 'Control',
+              items: [
+                KeyValueItem(keyLabel: 'Lane departure', value: _adswCollector.topicData['Lane departure'].toString()),
               ]
             );}
           ),
