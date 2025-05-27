@@ -6,6 +6,7 @@ class AdswCollector extends GetxController {
   late Ros ros;
   final RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   List<SubscribeHandler> handlerList = [];
+  RxString isLaneDeparture = 'false'.obs;
   
   bool connect(String url) {
 
@@ -15,7 +16,7 @@ class AdswCollector extends GetxController {
     handlerList = [handleSteeringTireAngle, handleCurrentVelocity, handleGear, handleHazardLight,
                     handleTurnIndicator, handleBattery, handleSensorCount, handleSensorStatus,
                     handleObjectRecognition, handleTrafficLight, handlePlanningPath, handleLocaliPose,
-                    handleLocaliTwist, handleSpeedLimit];
+                    handleLocaliTwist, handleSpeedLimit, handleLaneDeparture];
 
     return true;
   }
@@ -114,6 +115,26 @@ class AdswCollector extends GetxController {
 
     topicData['Speed limit'] = msg;
 
+  }
+
+  Future<void> handleLaneDeparture(Map<String, dynamic> msg) async {
+
+    List statuses = msg['status'];
+
+    for (var status in statuses) {
+      if (status['name'] == 'lane_departure_checker: lane_departure') {
+        String statusMsg = status['message'];
+        List values = status['values'];
+
+        String outOfLaneStr = values.firstWhere(
+          (e) => e['key'] == 'is_out_of_lane',
+          orElse: () => {'value': 'false'},
+        )['value'];
+
+        topicData['Lane departure'] = statusMsg;
+        isLaneDeparture.value = outOfLaneStr;
+      }
+    }
   }
 
 }
