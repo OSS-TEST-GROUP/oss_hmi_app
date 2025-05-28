@@ -13,10 +13,9 @@ class AdswCollector extends GetxController {
     ros = Ros(url: url);
     ros.connect();
 
-    handlerList = [handleSteeringTireAngle, handleCurrentVelocity, handleGear, handleHazardLight,
-                    handleTurnIndicator, handleBattery, handleSensorCount, handleSensorStatus,
-                    handleObjectRecognition, handleTrafficLight, handlePlanningPath, handleLocaliPose,
-                    handleLocaliTwist, handleSpeedLimit, handleLaneDeparture];
+    handlerList = [handleVehicleStatus, handleCurrentVelocity, handleBattery, handleSensorCount, 
+                    handleSensorStatus, handleObjectRecognition, handleTrafficLight, handlePlanningPath, 
+                    handleLocalizationData, handleSpeedLimit, handleLaneDeparture];
 
     return true;
   }
@@ -33,33 +32,18 @@ class AdswCollector extends GetxController {
 
   }
 
-  Future<void> handleSteeringTireAngle(Map<String, dynamic> msg) async {
+  Future<void> handleVehicleStatus(Map<String, dynamic> msg) async {
 
-    topicData['Steering tire angle'] = msg;
+    topicData['Gear'] = msg['gear']['status'];
+    topicData['Steering tire angle'] = msg['steering_tire_angle'];
+    topicData['Turn indicator'] = msg['turn_indicators'];
+    topicData['Hazard light'] = msg['hazard_lights'];
 
   }
 
   Future<void> handleCurrentVelocity(Map<String, dynamic> msg) async {
 
     topicData['Current velocity'] = msg;
-
-  }
-
-  Future<void> handleGear(Map<String, dynamic> msg) async {
-
-    topicData['Gear'] = msg['status'];
-
-  }
-
-  Future<void> handleHazardLight(Map<String, dynamic> msg) async {
-
-    topicData['Hazard light'] = msg;
-
-  }
-
-  Future<void> handleTurnIndicator(Map<String, dynamic> msg) async {
-
-    topicData['Turn indicator'] = msg;
 
   }
 
@@ -99,15 +83,10 @@ class AdswCollector extends GetxController {
 
   }
 
-  Future<void> handleLocaliPose(Map<String, dynamic> msg) async {
+  Future<void> handleLocalizationData(Map<String, dynamic> msg) async {
 
-    topicData['Localization pose'] = msg;
-
-  }
-
-  Future<void> handleLocaliTwist(Map<String, dynamic> msg) async {
-
-    topicData['Localization twist'] = msg;
+    topicData['Localization pose'] = msg['pose'];
+    topicData['Localization twist'] = msg['twist'];
 
   }
 

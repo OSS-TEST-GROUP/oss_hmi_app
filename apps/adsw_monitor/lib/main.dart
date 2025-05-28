@@ -50,14 +50,21 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
   Widget build(BuildContext context) {
     
     return Scaffold(
+      backgroundColor: Colors.white,
       body: Column(
         children: [
-          TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: 'AD SW Info'),
-              Tab(text: 'Diagnostic Info'),
-            ],
+          SizedBox(
+            height: 70,
+            child: TabBar(
+              controller: _tabController,
+              overlayColor: const WidgetStatePropertyAll(
+                Colors.transparent,
+              ),
+              tabs: const [
+                Tab(text: 'AD SW Info'),
+                Tab(text: 'Diagnostic Info'),
+              ],
+            ),
           ),
           Expanded(
             child: TabBarView(
