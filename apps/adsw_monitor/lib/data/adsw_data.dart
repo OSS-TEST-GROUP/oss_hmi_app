@@ -1,10 +1,7 @@
   List<String> topicList = [
     // vehicle
-    'steering_tire_angle', 
+    '/api/vehicle/status', 
     '/vehicle/status/velocity_status', 
-    'gear', 
-    'hazard_light', 
-    'turn_indicator', 
     '/vehicle/status/battery_charge', 
     // sensor
     'number_of_sensor', 
@@ -15,8 +12,7 @@
     // planning
     '/planning/path_candidate/*', 
     // localization
-    'localization_pose', 
-    'localization_twist', 
+    '/localization/kinematic_state', 
     // map
     'speed_limit',
     // lane departure
@@ -25,11 +21,8 @@
 
   List<String> typeList = [
     // vehicle
-    'test_msg/SteeringTireAngle',
+    'autoware_adapi_v1_msgs/VehicleStatus',
     'autoware_vehicle_msgs/VelocityReport',
-    'test_msg/Gear',
-    'test_msg/HazardLight',
-    'test_msg/TurnIndicator',
     'tier4_vehicle_msgs/BatteryStatus',
     // sensor
     'test_msg/NumberOfSensor',
@@ -40,8 +33,7 @@
     // planning
     'autoware_planning_msgs/Path',
     // localization
-    'test_msg/LocalizationPose',
-    'test_msg/LocalizationTwist',
+    'nav_msgs/Odometry',
     // map
     'test_msg/SpeedLimit',
     // lane departure
