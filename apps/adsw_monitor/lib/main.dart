@@ -133,6 +133,8 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
 
   @override
   Widget build(BuildContext context) {
+    final Size size = MediaQuery.of(context).size;
+    final Orientation orientation = MediaQuery.of(context).orientation;
 
     return Scaffold(
       body: Container(
@@ -149,6 +151,7 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
         ),
         child: Column(
           children: [
+            Text('${size.width} x ${size.height} (${orientation})'),
             _buildHeader(),
             Expanded(
               child: TabBarView(

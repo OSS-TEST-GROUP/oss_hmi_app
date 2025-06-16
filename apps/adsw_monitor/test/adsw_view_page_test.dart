@@ -3,12 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:adsw_monitor/controller/adsw_collector.dart';
 import 'package:adsw_monitor/view/adsw_view_page.dart';
+import 'package:roslibdart/roslibdart.dart';
 
 void main() {
   late AdswCollector mockCollector;
 
   setUp(() {
-    mockCollector = AdswCollector();
+    mockCollector = AdswCollector(
+      topicFactory: (ros, name, type) => Topic(ros: ros, name: name, type: type),
+    );
     Get.put<AdswCollector>(mockCollector);
   });
 

@@ -1,13 +1,3 @@
-// import 'package:get/get.dart';
-
-// class KeyValueItem {
-//   final String keyLabel;
-//   final String value;
-
-//   KeyValueItem({required this.keyLabel, required this.value});
-
-// }
-
 import 'package:flutter/material.dart';
 
 class KeyValueItem extends StatelessWidget{
@@ -29,12 +19,15 @@ class KeyValueItem extends StatelessWidget{
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF9CA3AF),
-            )
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF9CA3AF),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           Row(
             children: [

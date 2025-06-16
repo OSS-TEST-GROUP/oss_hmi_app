@@ -2,6 +2,11 @@
 
 A new Flutter project for AD SW monitoring.
 
+<img src="/uploads/b70cdbffb5bc005e8d832f360e3ee491/Screenshot_from_2025-06-10_16-43-59.png" width="100"/>
+<img src="/uploads/7e6c00fbd36b39e4104c5b3ad53df9c9/Screenshot_from_2025-06-10_16-43-19.png" width="100"/>
+<img src="/uploads/3b67765ea33d52495df2206a1b7d56e8/Screenshot_from_2025-06-10_16-44-03.png" width="100"/>
+<img src="/uploads/dc2110eba996808f32b79239ee307363/Screenshot_from_2025-06-10_16-43-37.png" width="100"/>
+
 ## Getting Started
 
 ### Development Environment Setup
@@ -50,6 +55,10 @@ The executable files for each platform are located in the following paths.
 In the root directory of the 'adsw_monitor' project, run the following command.
 ```
 flutter test test/{test_file_name}.dart
+```
+Before running the **adsw_collector_test** and **mw_collector_test**, you need to generate the mock files using the following command.
+```
+flutter pub run build_runner build
 ```
 
 ### How to Use custom ROS message

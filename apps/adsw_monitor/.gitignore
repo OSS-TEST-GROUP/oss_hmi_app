@@ -47,3 +47,6 @@ ios/
 macos/
 web/
 windows/
+
+# mock files
+test/*.mocks.dart

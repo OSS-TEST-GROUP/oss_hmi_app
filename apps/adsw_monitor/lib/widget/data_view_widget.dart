@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 // import 'package:get/get.dart';
-import 'package:adsw_monitor/model/key_value_item.dart';
+import 'package:adsw_monitor/widget/key_value_item.dart';
 
 class DataViewWidget extends StatelessWidget {
   final String title;
@@ -38,30 +38,38 @@ class DataViewWidget extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(12),
               child: Row(
+                mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B82F6).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(icon, color: iconColor, size: 16),
                         ),
-                        child: Icon(icon, color: iconColor, size: 16),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
+                        const SizedBox(width: 8),
+                        Flexible(
+                          fit: FlexFit.loose,
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _buildStatusIndicator(status),
-                    ],
+                        const SizedBox(width: 8),
+                        _buildStatusIndicator(status),
+                      ],
+                    ),
                   ),
                   Icon(
                     isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,

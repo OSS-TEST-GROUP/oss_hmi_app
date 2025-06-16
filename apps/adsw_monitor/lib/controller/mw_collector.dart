@@ -1,4 +1,3 @@
-//import 'package:flutter/material.dart';
 import 'package:roslibdart/roslibdart.dart';
 import 'package:get/get.dart';
 
@@ -6,6 +5,10 @@ class MwCollector extends GetxController {
   late Ros ros;
   RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   List<SubscribeHandler> handlerList = [];
+
+  final Topic Function(Ros ros, String name, String type) topicFactory;
+
+  MwCollector({required this.topicFactory});
   
   bool connect(String url) {
 
@@ -20,11 +23,13 @@ class MwCollector extends GetxController {
   void subscribeTopic(List<String> topics, List<String> types, List<SubscribeHandler> handlers){
 
     for(int i=0;i<topics.length;i++) {
-      Topic testTopic = Topic(
-        ros: ros, 
-        name: topics[i], 
-        type: types[i]);
-      testTopic.subscribe(handlers[i]);
+      final topic = topicFactory(ros, topics[i], types[i]);
+      topic.subscribe(handlers[i]);
+      // Topic testTopic = Topic(
+      //   ros: ros, 
+      //   name: topics[i], 
+      //   type: types[i]);
+      // testTopic.subscribe(handlers[i]);
     }
 
   }
