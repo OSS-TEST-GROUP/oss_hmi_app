@@ -1,46 +1,128 @@
 import 'package:flutter/material.dart';
 // import 'package:get/get.dart';
-import 'package:adsw_monitor/model/key_value_item.dart';
+import 'package:adsw_monitor/widget/key_value_item.dart';
 
 class DataViewWidget extends StatelessWidget {
   final String title;
-  final List<KeyValueItem> items;
+  final IconData icon;
+  final Color iconColor;
+  final StatusType status;
+  final List<Widget> children;
+  final bool isExpanded;
+  final VoidCallback onTap;
 
   const DataViewWidget({
-    super.key, 
-    required this.title, 
-    required this.items
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.iconColor,
+    required this.status,
+    required this.isExpanded,
+    required this.onTap,
+    required this.children,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.white,
-      margin: const EdgeInsets.only(left: 50, top: 20, right: 50),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(13),
-        side: const BorderSide(color: const Color.fromARGB(255, 218, 218, 218), width: 1),
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF374151).withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF374151), width: 0.5),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.only(left: 30, top: 10, right: 20, bottom: 10),
-        title: Text(title),
-        children: items.map((item) {
-          return ListTile(
-            title: Padding(
-              padding: const EdgeInsets.all(8.0),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onTap,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            child: Container(
+              padding: const EdgeInsets.all(12),
               child: Row(
+                mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(item.keyLabel),
-                  Text(item.value),
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B82F6).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(icon, color: iconColor, size: 16),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          fit: FlexFit.loose,
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildStatusIndicator(status),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                    color: const Color(0xFF9CA3AF),
+                    size: 16,
+                  ),
                 ],
               ),
             ),
-          );
-        }).toList(),
+          ),
+          if (isExpanded)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFF374151), width: 0.3)),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111827).withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: children,
+                ),
+              ),
+            ),
+        ],
       ),
     );
+  }
+
+  Widget _buildStatusIndicator(StatusType status) {
+    Color color;
+    IconData icon;
+
+    switch (status) {
+      case StatusType.good:
+        color = const Color(0xFF10B981);
+        icon = Icons.check_circle;
+        break;
+      case StatusType.warning:
+        color = const Color(0xFFF59E0B);
+        icon = Icons.warning;
+        break;
+      case StatusType.error:
+        color = const Color(0xFFEF4444);
+        icon = Icons.error;
+        break;
+    }
+
+    return Icon(icon, color: color, size: 12);
   }
 }

@@ -1,39 +1,105 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:adsw_monitor/widget/data_view_widget.dart';
-import 'package:adsw_monitor/model/key_value_item.dart';
+import 'package:adsw_monitor/widget/key_value_item.dart';
 
 void main() {
-
-  testWidgets('DataViewWidget expands to show key-value items', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Material(
-          child: DataViewWidget(
-            title: 'Info',
-            items: [
-              KeyValueItem(keyLabel: 'Gear', value: 'D'),
-              KeyValueItem(keyLabel: 'Velocity', value: '45 km/h'),
-            ],
+  group('DataViewWidget Tests', () {
+    testWidgets('renders title, icon, and status', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DataViewWidget(
+              title: 'Vehicle',
+              icon: Icons.directions_car,
+              iconColor: Colors.blue,
+              status: StatusType.good,
+              isExpanded: false,
+              onTap: () {},
+              children: const [],
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    // expansion tile 펼치기 전에는 tile의 title만 보여야 함
-    expect(find.text('Info'), findsOneWidget);
-    expect(find.text('Gear'), findsNothing);
-    expect(find.text('Velocity'), findsNothing);
+      expect(find.text('Vehicle'), findsOneWidget);
+      expect(find.byIcon(Icons.directions_car), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsOneWidget); // StatusType.good
+    });
 
-    // expansion tile 펼치기
-    await tester.tap(find.text('Info'));
-    await tester.pumpAndSettle();
-    
-    // 펼친 후에는 상세 데이터가 보여야 함
-    expect(find.text('Gear'), findsOneWidget);
-    expect(find.text('D'), findsOneWidget);
-    expect(find.text('Velocity'), findsOneWidget);
-    expect(find.text('45 km/h'), findsOneWidget);
+    testWidgets('expands and shows children when isExpanded is true', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DataViewWidget(
+              title: 'Sensor',
+              icon: Icons.sensors,
+              iconColor: Colors.green,
+              status: StatusType.warning,
+              isExpanded: true,
+              onTap: () {},
+              children: const [
+                Text('Sensor A'),
+                Text('Sensor B'),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Sensor A'), findsOneWidget);
+      expect(find.text('Sensor B'), findsOneWidget);
+      expect(find.byIcon(Icons.warning), findsOneWidget);
+    });
+
+    testWidgets('calls onTap when tapped', (WidgetTester tester) async {
+      bool tapped = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DataViewWidget(
+              title: 'Planning',
+              icon: Icons.route,
+              iconColor: Colors.purple,
+              status: StatusType.error,
+              isExpanded: false,
+              onTap: () {
+                tapped = true;
+              },
+              children: const [],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Planning'));
+      await tester.pump();
+
+      expect(tapped, isTrue);
+    });
+
+    testWidgets('does not render children when not expanded', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DataViewWidget(
+              title: 'Localization',
+              icon: Icons.gps_fixed,
+              iconColor: Colors.orange,
+              status: StatusType.error,
+              isExpanded: false,
+              onTap: () {},
+              children: const [
+                Text('Pose'),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Pose'), findsNothing);
+      expect(find.byIcon(Icons.error), findsOneWidget);
+    });
   });
-
 }

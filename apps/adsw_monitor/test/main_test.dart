@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:adsw_monitor/main.dart';
 import 'package:adsw_monitor/view/adsw_view_page.dart';
@@ -6,9 +7,14 @@ import 'package:adsw_monitor/view/mw_view_page.dart';
 void main() {
   testWidgets('AdswMonitorApp renders and switches tabs correctly', (WidgetTester tester) async {
     // 앱 구동
-    await tester.pumpWidget(const AdswMonitorApp());
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: AdswMonitorApp(),
+      )
+    );
 
-    // 초기 화면에 TabBar와 첫 탭 텍스트가 보여야 함
+    // 초기 화면에 app name, tab title이 보여야 함
+    expect(find.text('AD SW Monitor'), findsOneWidget);
     expect(find.text('AD SW Info'), findsOneWidget);
     expect(find.text('Diagnostic Info'), findsOneWidget);
 
