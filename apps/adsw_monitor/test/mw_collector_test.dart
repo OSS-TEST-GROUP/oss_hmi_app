@@ -1,55 +1,73 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
 import 'package:roslibdart/roslibdart.dart';
-import 'package:mockito/annotations.dart';
-
 import 'package:adsw_monitor/controller/mw_collector.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:get/get.dart';
 
-@GenerateNiceMocks([
-  MockSpec<Topic>(),
-])
-import 'mw_collector_test.mocks.dart';
+class MockRos extends Mock implements Ros {}
+class MockTopic extends Mock implements Topic {}
 
 void main() {
-  late MwCollector collector;
+  late MockRos mockRos;
   late MockTopic mockTopic;
+  late MwCollector collector;
+  late Topic Function(Ros, String, String) mockTopicFactory;
 
   setUp(() {
+    mockRos = MockRos();
     mockTopic = MockTopic();
 
-    collector = MwCollector(
-      topicFactory: (ros, name, type) => mockTopic,
-    );
+    // GetX에 mockRos 주입
+    Get.put<Ros>(mockRos);
+
+    // Topic Factory 정의
+    mockTopicFactory = (ros, name, type) => mockTopic;
+
+    // topic.subscribe() mock 처리
+    when(() => mockTopic.subscribe(any())).thenAnswer((_) async {});
+
+    // collector 초기화
+    collector = MwCollector(topicFactory: mockTopicFactory);
   });
 
-  test('connect should initialize ros and handlerList', () {
-    final result = collector.connect('ws://test');
+  group('MwCollector subscribeTopic', () {
+    test('calls topic.subscribe for each topic', () {
+      final topics = ['/mw1', '/mw2'];
+      final types = ['type1', 'type2'];
+      final handlers = [
+        (Map<String, dynamic> msg) async {},
+        (Map<String, dynamic> msg) async {},
+      ];
 
-    expect(result, isTrue);
-    expect(collector.ros.url, equals('ws://test'));
-    expect(collector.handlerList.length, greaterThan(0));
+      collector.subscribeTopic(topics, types, handlers);
+
+      verify(() => mockTopic.subscribe(any())).called(2);
+    });
   });
 
-  test('subscribeTopic should subscribe to all topics with correct handlers', () async {
-    collector.connect('ws://test');
+  group('MwCollector data handlers', () {
+    test('handleLifecycle updates topicData', () async {
+      final msg = {'state': 'active'};
 
-    final topics = ['/topic1', '/topic2'];
-    final types = ['std_msgs/String', 'std_msgs/String'];
-    final handler = (Map<String, dynamic> msg) async {};
-    final handlers = [handler, handler];
+      await collector.handleLifecycle(msg);
 
-    when(mockTopic.subscribe(any)).thenAnswer((_) async {});
+      expect(collector.topicData['Lifecycle status'], msg);
+    });
 
-    collector.subscribeTopic(topics, types, handlers);
+    test('handleOta updates topicData', () async {
+      final msg = {'version': '1.0.0'};
 
-    final capturedHandlers = verify(mockTopic.subscribe(captureAny)).captured;
-    
-    expect(capturedHandlers.length, 2);
-    expect(capturedHandlers.first, isA<Function>());
-  });
+      await collector.handleOta(msg);
 
-  test('handleLifecycle should update topicData correctly', () async {
-    await collector.handleLifecycle({'status': 'success'});
-    expect(collector.topicData['Lifecycle status'], {'status': 'success'});
+      expect(collector.topicData['Ota status'], msg);
+    });
+
+    test('handleSecurity updates topicData', () async {
+      final msg = {'status': 'secure'};
+
+      await collector.handleSecurity(msg);
+
+      expect(collector.topicData['Security status'], msg);
+    });
   });
 }

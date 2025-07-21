@@ -1,13 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:adsw_monitor/view/adsw_view_page.dart';
 import 'package:adsw_monitor/view/mw_view_page.dart';
+import 'package:get/get.dart';
+import 'package:roslibdart/roslibdart.dart';
+import 'dart:async';
 
 void main() {
-  runApp(const AdswMonitorApp());
+  final ros = Ros(url: 'ws://172.16.10.170:9090');
+  ros.connect();
+  Get.put<Ros>(ros);
+  
+  runApp(AdswMonitorApp());
+  publishState();
+}
+
+void publishState() {
+  Topic statePublisher = Topic(
+    ros: Get.find<Ros>(),
+    name: '/app_status/adsw_monitor',
+    type: 'std_msgs/String',
+  );
+
+  Timer.periodic(Duration(seconds: 1), (timer) {
+    statePublisher.publish({'data': 'running'});
+  });
 }
 
 class AdswMonitorApp extends StatelessWidget {
-  const AdswMonitorApp({super.key});
+  const AdswMonitorApp({super.key,});
 
   @override
   Widget build(BuildContext context) {
@@ -20,14 +40,14 @@ class AdswMonitorApp extends StatelessWidget {
           secondary: Color(0xFF64748B),
         ),
       ),
-      home: const AdswMonitorHomePage(title: 'Adsw Monitor App Home'),
+      home: AdswMonitorHomePage(title: 'Adsw Monitor App Home',),
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
 class AdswMonitorHomePage extends StatefulWidget {
-  const AdswMonitorHomePage({super.key, required this.title});
+  const AdswMonitorHomePage({super.key, required this.title,});
   final String title;
 
   @override
@@ -133,9 +153,6 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
 
   @override
   Widget build(BuildContext context) {
-    final Size size = MediaQuery.of(context).size;
-    final Orientation orientation = MediaQuery.of(context).orientation;
-
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -151,7 +168,6 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
         ),
         child: Column(
           children: [
-            Text('${size.width} x ${size.height} (${orientation})'),
             _buildHeader(),
             Expanded(
               child: TabBarView(
@@ -165,37 +181,5 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
           ],),
       ),
     );
-
-    
-    
-    // return Scaffold(
-    //   backgroundColor: Colors.white,
-    //   body: Column(
-    //     children: [
-    //       SizedBox(
-    //         height: 70,
-    //         child: TabBar(
-    //           controller: _tabController,
-    //           overlayColor: const WidgetStatePropertyAll(
-    //             Colors.transparent,
-    //           ),
-    //           tabs: const [
-    //             Tab(text: 'AD SW Info'),
-    //             Tab(text: 'Diagnostic Info'),
-    //           ],
-    //         ),
-    //       ),
-    //       Expanded(
-    //         child: TabBarView(
-    //           controller: _tabController,
-    //           children: const [
-    //             AdswViewPage(),
-    //             MwViewPage(),
-    //           ],
-    //         ),
-    //       ),
-    //     ],
-    //   ),
-    // );
   }
 }

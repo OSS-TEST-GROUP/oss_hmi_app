@@ -2,22 +2,14 @@ import 'package:roslibdart/roslibdart.dart';
 import 'package:get/get.dart';
 
 class MwCollector extends GetxController {
-  late Ros ros;
+  late Ros ros = Get.find<Ros>();
   RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   List<SubscribeHandler> handlerList = [];
 
   final Topic Function(Ros ros, String name, String type) topicFactory;
 
-  MwCollector({required this.topicFactory});
-  
-  bool connect(String url) {
-
-    ros = Ros(url: url);
-    ros.connect();
-
+  MwCollector({required this.topicFactory}) {
     handlerList = [handleLifecycle, handleOta, handleSecurity];
-
-    return true;
   }
 
   void subscribeTopic(List<String> topics, List<String> types, List<SubscribeHandler> handlers){
@@ -25,11 +17,6 @@ class MwCollector extends GetxController {
     for(int i=0;i<topics.length;i++) {
       final topic = topicFactory(ros, topics[i], types[i]);
       topic.subscribe(handlers[i]);
-      // Topic testTopic = Topic(
-      //   ros: ros, 
-      //   name: topics[i], 
-      //   type: types[i]);
-      // testTopic.subscribe(handlers[i]);
     }
 
   }
