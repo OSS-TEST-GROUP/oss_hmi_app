@@ -7,7 +7,7 @@ import 'package:adsw_monitor/data/mw_data.dart';
 import 'package:roslibdart/roslibdart.dart';
 
 class MwViewPage extends StatefulWidget {
-  const MwViewPage({super.key});
+  const MwViewPage({super.key,});
   
   @override
   MwViewPageState createState() => MwViewPageState();
@@ -36,14 +36,10 @@ class MwViewPageState extends State<MwViewPage> with AutomaticKeepAliveClientMix
 
   void _startConnect() {
 
-    _mwCollector = Get.put(MwCollector(
+    _mwCollector = MwCollector(
       topicFactory: (ros, name, type) => Topic(ros: ros, name: name, type: type),
-    ));
-    final success = _mwCollector.connect("ws://172.16.10.170:9090"); // rosbridge server address
-
-    if(success) {
-      _startSubscribe();
-    }
+    );
+    _startSubscribe();
 
   }
 

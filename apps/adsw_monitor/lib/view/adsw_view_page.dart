@@ -7,7 +7,7 @@ import 'package:adsw_monitor/data/adsw_data.dart';
 import 'package:roslibdart/roslibdart.dart';
 
 class AdswViewPage extends StatefulWidget {
-  const AdswViewPage({super.key});
+  const AdswViewPage({super.key,});
   
   @override
   State<AdswViewPage> createState() => _AdswViewPageState();
@@ -40,14 +40,10 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
 
   void _startConnect() {
 
-    _adswCollector = Get.put(AdswCollector(
+    _adswCollector = AdswCollector(
       topicFactory: (ros, name, type) => Topic(ros: ros, name: name, type: type),
-    ));
-    final success = _adswCollector.connect("ws://172.16.10.170:9090"); // rosbridge server address
-
-    if(success) {
-      _startSubscribe();
-    }
+    );
+    _startSubscribe();
 
   }
 

@@ -2,25 +2,19 @@ import 'package:roslibdart/roslibdart.dart';
 import 'package:get/get.dart';
 
 class AdswCollector extends GetxController {
-  late Ros ros;
+  late Ros ros = Get.find<Ros>();
   final RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   List<SubscribeHandler> handlerList = [];
   RxString isLaneDeparture = 'false'.obs;
 
   final Topic Function(Ros ros, String name, String type) topicFactory;
 
-  AdswCollector({required this.topicFactory});
-  
-  bool connect(String url) {
-
-    ros = Ros(url: url);
-    ros.connect();
-
-    handlerList = [handleVehicleStatus, handleCurrentVelocity, handleBattery, handleSensorCount, 
-                    handleSensorStatus, handleObjectRecognition, handleTrafficLight, handlePlanningPath, 
-                    handleLocalizationData, handleSpeedLimit, handleLaneDeparture];
-
-    return true;
+  AdswCollector({required this.topicFactory,}) {
+    handlerList = [
+      handleVehicleStatus, handleCurrentVelocity, handleBattery, handleSensorCount, 
+      handleSensorStatus, handleObjectRecognition, handleTrafficLight, handlePlanningPath, 
+      handleLocalizationData, handleSpeedLimit, handleLaneDeparture
+    ];
   }
 
   void subscribeTopic(List<String> topics, List<String> types, List<SubscribeHandler> handlers){
