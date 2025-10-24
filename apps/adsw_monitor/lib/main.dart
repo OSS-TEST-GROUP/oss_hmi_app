@@ -6,7 +6,7 @@ import 'package:roslibdart/roslibdart.dart';
 import 'dart:async';
 
 void main() {
-  final ros = Ros(url: 'ws://172.16.10.170:9090');
+  final ros = Ros(url: 'ws://172.16.10.97:9090');
   ros.connect();
   Get.put<Ros>(ros);
   

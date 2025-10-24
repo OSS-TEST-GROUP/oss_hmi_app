@@ -27,7 +27,7 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
     'planning': false,
     'localization': false,
     'map': false,
-    'control': false
+    'control': false,
   };
 
   @override
@@ -113,12 +113,12 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['vehicle'] ?? false,
                     onTap: () => _toggleSection('vehicle'),
                     children: [
-                      KeyValueItem(label: 'Steering Tire Angle', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Currnet Velocity', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Steering Tire Angle', value: _adswCollector.topicData['Steering tire angle'].toString()),
+                      KeyValueItem(label: 'Currnet Velocity', value: _adswCollector.topicData['Current velocity'].toString()),
                       KeyValueItem(label: 'Gear', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Hazard Light', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Turn Indicator', value: _adswCollector.topicData['Gear'].toString(), status: StatusType.warning),
-                      KeyValueItem(label: 'Battery Status', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Hazard Light', value: _adswCollector.topicData['Hazard light'].toString()),
+                      KeyValueItem(label: 'Turn Indicator', value: _adswCollector.topicData['Turn indicator'].toString(), status: StatusType.warning),
+                      KeyValueItem(label: 'Battery Status', value: _adswCollector.topicData['Battery status'].toString()),
                     ],
                   );
                 }),
@@ -132,8 +132,8 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['sensor'] ?? false,
                     onTap: () => _toggleSection('sensor'),
                     children: [
-                      KeyValueItem(label: 'Total Sensors', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Active', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Number of sensor', value: _adswCollector.topicData['Number of sensor'].toString()),
+                      KeyValueItem(label: 'Sensor status', value: _adswCollector.topicData['Sensor status'].toString()),
                       KeyValueItem(label: 'Camera', value: _adswCollector.topicData['Gear'].toString()),
                       KeyValueItem(label: 'LiDAR', value: _adswCollector.topicData['Gear'].toString()),
                       KeyValueItem(label: 'Radar', value: _adswCollector.topicData['Gear'].toString(), status: StatusType.warning),
@@ -158,11 +158,11 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['perception'] ?? false,
                     onTap: () => _toggleSection('perception'),
                     children: [
-                      KeyValueItem(label: 'Objects', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Objects', value: _adswCollector.topicData['Object recognition'].toString()),
                       KeyValueItem(label: 'Vehicles', value: _adswCollector.topicData['Gear'].toString()),
                       KeyValueItem(label: 'Pedestrians', value: _adswCollector.topicData['Gear'].toString()),
                       KeyValueItem(label: 'Cyclists', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Traffic Light', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Traffic Light', value: _adswCollector.topicData['Traffic light'].toString()),
                     ],
                   );
                 }),
@@ -176,10 +176,7 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['planning'] ?? false,
                     onTap: () => _toggleSection('planning'),
                     children: [
-                      KeyValueItem(label: 'Path Status', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Next Action', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Distance', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Horizon', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Planning path', value: _adswCollector.topicData['Planning path'].toString()),
                     ],
                   );
                 }),
@@ -200,11 +197,11 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['localization'] ?? false,
                     onTap: () => _toggleSection('localization'),
                     children: [
-                      KeyValueItem(label: 'X Position', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Y Position', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Heading', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Linear Vel', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Angular Vel', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Pose X', value: _adswCollector.topicData['Localization pose x'].toString()),
+                      KeyValueItem(label: 'Pose Y', value: _adswCollector.topicData['Localization pose y'].toString()),
+                      KeyValueItem(label: 'Pose Z', value: _adswCollector.topicData['Localization pose z'].toString()),
+                      KeyValueItem(label: 'Twist - linear', value: _adswCollector.topicData['Localization twist linear'].toString()),
+                      KeyValueItem(label: 'Twist - angular', value: _adswCollector.topicData['Localization twist angular'].toString()),
                     ],
                   );
                 }),
@@ -218,40 +215,34 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['map'] ?? false,
                     onTap: () => _toggleSection('map'),
                     children: [
-                      KeyValueItem(label: 'Speed Limit', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Road Type', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Lane Count', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Map Version', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Speed Limit', value: _adswCollector.topicData['Speed limit'].toString()),
                     ],
                   );
                 }),
               ],
             ),
           ),
-          const SizedBox(width: 16),
-          // Right Column
-          Expanded(
-            child: Column(
-              children: [
-                Obx(() {
-                  return DataViewWidget(
-                    title: 'Control',
-                    icon: Icons.security,
-                    iconColor: const Color(0xFFF87171),
-                    status: StatusType.good,
-                    isExpanded: _expandedSections['control'] ?? false,
-                    onTap: () => _toggleSection('control'),
-                    children: [
-                      KeyValueItem(label: 'Lane Departure', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Steering Cmd', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Throttle Cmd', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Brake Cmd', value: _adswCollector.topicData['Gear'].toString()),
-                    ],
-                  );
-                }),
-              ],
-            ),
-          ),
+          // const SizedBox(width: 16),
+          // // Right Column
+          // Expanded(
+          //   child: Column(
+          //     children: [
+          //       Obx(() {
+          //         return DataViewWidget(
+          //           title: 'Control',
+          //           icon: Icons.security,
+          //           iconColor: const Color(0xFFF87171),
+          //           status: StatusType.good,
+          //           isExpanded: _expandedSections['control'] ?? false,
+          //           onTap: () => _toggleSection('control'),
+          //           children: [
+          //             KeyValueItem(label: 'Lane Departure', value: _adswCollector.topicData['Lane departure'].toString()),
+          //           ],
+          //         );
+          //       }),
+          //     ],
+          //   ),
+          // ),
         ],
       )
     );
