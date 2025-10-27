@@ -3,7 +3,8 @@
 A new Flutter project for AD SW monitoring.
 
 <img width="500" height="819" alt="Screenshot from 2025-10-27 10-20-22" src="https://github.com/user-attachments/assets/524a9f69-132c-4b01-8c2d-2539ef586cb8" />
-<img width="500" height="819" alt="Screenshot from 2025-10-27 10-21-00" src="https://github.com/user-attachments/assets/cad34df9-e189-4785-a325-25f7c5ce5f52" />
+<img width="500" height="819" alt="Screenshot from 2025-10-27 10-22-14" src="https://github.com/user-attachments/assets/811d299c-98fd-438c-8b47-f05131d440fb" />
+
 
 ## Getting Started
 
