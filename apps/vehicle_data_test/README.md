@@ -1,16 +1,5 @@
 # vehicle_data_test
 
-A new Flutter project.
+Simulator application for vehicle data api test.
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+<img width="800" height="819" alt="Screenshot from 2025-10-27 10-24-04" src="https://github.com/user-attachments/assets/af600130-a2d8-4ed6-99cc-63ff54dc8426" />
