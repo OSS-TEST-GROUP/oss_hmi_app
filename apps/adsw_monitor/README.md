@@ -2,10 +2,8 @@
 
 A new Flutter project for AD SW monitoring.
 
-<img src="/uploads/b70cdbffb5bc005e8d832f360e3ee491/Screenshot_from_2025-06-10_16-43-59.png" width="500"/>
-<img src="/uploads/7e6c00fbd36b39e4104c5b3ad53df9c9/Screenshot_from_2025-06-10_16-43-19.png" width="500"/>
-<img src="/uploads/3b67765ea33d52495df2206a1b7d56e8/Screenshot_from_2025-06-10_16-44-03.png" width="500"/>
-<img src="/uploads/dc2110eba996808f32b79239ee307363/Screenshot_from_2025-06-10_16-43-37.png" width="500"/>
+<img width="500" height="819" alt="Screenshot from 2025-10-27 10-20-22" src="https://github.com/user-attachments/assets/524a9f69-132c-4b01-8c2d-2539ef586cb8" />
+<img width="500" height="819" alt="Screenshot from 2025-10-27 10-21-00" src="https://github.com/user-attachments/assets/cad34df9-e189-4785-a325-25f7c5ce5f52" />
 
 ## Getting Started
 
