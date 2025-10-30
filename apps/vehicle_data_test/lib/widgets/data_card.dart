@@ -12,7 +12,7 @@ class DataCard extends StatelessWidget {
       children: [
         Text(label),
         Card.outlined(
-          color: const Color.fromARGB(255, 235, 235, 235),
+          color: const Color.fromARGB(255, 245, 245, 245),
           child:Padding(
             padding: const EdgeInsets.all(10),
             child: Text(value),

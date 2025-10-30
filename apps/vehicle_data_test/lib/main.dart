@@ -1,18 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:vehicle_data_test/can_data_page.dart';
-import 'package:vehicle_data_test/obd_data_page.dart';
+import 'package:vehicle_data_test/pages/can_data_page.dart';
+import 'package:vehicle_data_test/pages/obd_data_page.dart';
 import 'package:vehicle_data_test/grpc/grpc_server.dart';
-import 'package:vehicle_data_test/services/sim_bus.dart';
-import 'package:vehicle_data_test/services/data_cache.dart';
+import 'package:vehicle_data_test/grpc/grpc_client.dart';
+import 'package:vehicle_data_test/pages/receiver_page.dart';
+import 'package:vehicle_data_test/services/csv_loader.dart';
+import 'package:vehicle_data_test/services/csv_playback.dart';
+
+final grpcClient = GrpcClient(
+  host: '127.0.0.1',
+  port: 50052,
+  path: '*',
+);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  debugPrint('[main] before start()');
 
   // 서버를 백그라운드로 시작 (UI 블로킹 방지)
   try {
     await GrpcServer.instance.start(port: 50052, address: '0.0.0.0');
     debugPrint('[main] start() returned');
+    await grpcClient.connect();
   } catch (e) {
     // ignore: avoid_print
     print('Failed to start gRPC server: $e');
@@ -48,9 +56,12 @@ class VehicleHomePage extends StatefulWidget {
 class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProviderStateMixin {
 
   bool _isSending = false;
-  bool _showBottomState = false;
+  String? _loadedFileName;
+  CsvTable? _table;
 
-  late final TabController _tabController = TabController(length: 2, vsync: this);
+  late final TabController _tabController = TabController(length: 3, vsync: this);
+
+  CsvPlayback? _playback;
 
   @override
   void initState() {
@@ -70,7 +81,7 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       margin: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color:const Color.fromARGB(255, 212, 212, 212), width:1.0),
+        border: Border.all(color:const Color.fromARGB(255, 228, 228, 228), width:1.0),
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
@@ -103,30 +114,94 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
               ),
             ],
           ),
-          ElevatedButton.icon(
-            onPressed: () async {
-              setState(() {
-                _isSending = !_isSending;
-                _showBottomState = !_showBottomState;
-              });
-
-              if (_isSending) {
-                final data = DataCache.instance.last;
-                if (data != null && data.isNotEmpty) {
-                  SimulatorBus.instance.pushData(data);
-                }
-              }
-              setState(() => _isSending = false);
-            },
-            icon: Icon(Icons.send_rounded, color: Colors.white, size: 13),
-            label: Text('전송', style:const TextStyle(color:Colors.white)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+          Row(
+            children: [
+              if (_loadedFileName != null)
+               Padding(
+                padding: const EdgeInsets.only(right: 20),
+                child: Text(
+                  '$_loadedFileName',
+                  style: const TextStyle(color: Colors.grey),
+                ),),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    
+                    final picked = await CsvLoader.pickAndParse();
+                    if (picked == null) return;
+                
+                    setState(() {
+                      _table = picked;
+                      _loadedFileName = picked.fileName;
+                      _playback?.stop();
+                      _playback = CsvPlayback(_table!, useSiUnits: false);
+                      _isSending = false;
+                    });
+                
+                  },
+                  icon: Icon(Icons.open_in_new, color: Colors.white),
+                  label: Text('LOAD CSV', style:const TextStyle(color:Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                  ),
+                ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            ),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    if (_table == null) return;
+                    if (_playback == null) {
+                      _playback = CsvPlayback(_table!, useSiUnits: false);
+                    }
+
+                    if (_isSending) {
+                      _playback!.stop();
+                      setState(() {
+                        _isSending = false;
+                      });
+                    } else {
+                      _playback!.start(interval: const Duration(seconds: 1));
+                      setState(() {
+                        _isSending = true;
+                      });
+                    }
+                  },
+                  icon: Icon(_isSending ? Icons.pause : Icons.play_arrow_rounded, color: Colors.white),
+                  label: Text(_isSending ? 'PAUSE' : 'START', style:const TextStyle(color:Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isSending ? Colors.red : Colors.green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                  ),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _playback?.stop();
+                  _playback?.reset();
+                  setState(() {
+                    _isSending = false;
+                  });
+                }, 
+                icon: Icon(Icons.replay, color: Colors.white),
+                label: Text('RESET', style:const TextStyle(color:Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 107, 107, 107),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -134,55 +209,40 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
   }
 
   Widget _dataTabBar() {
-    return Container(
-      width: 400,
-      padding: const EdgeInsets.all(5),
-      margin: const EdgeInsets.only(bottom:12, left: 12, right: 12),
-      decoration: const BoxDecoration(
-        color: Colors.transparent,
-      ),
-      child: TabBar(
-        dividerColor: Colors.transparent,
-        controller: _tabController,
-        indicator: BoxDecoration(
-          color: Colors.blue,
+    return Center(
+      child: Container(
+        width: 400,
+        padding: const EdgeInsets.all(5),
+        margin: const EdgeInsets.only(bottom:12, left: 12, right: 12),
+        decoration: BoxDecoration(
+          border: Border.all(color:Color.fromARGB(255, 228, 228, 228), width:1.0),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0,3),
+            ),
+          ],
         ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        labelColor: Colors.white,
-        unselectedLabelColor: Colors.grey,
-        tabs: const [
-          Tab(text: 'CAN 데이터'),
-          Tab(text: 'OBD 데이터'),
-        ],
-      ),
-
-    );
-  }
-
-  Widget _showState() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      margin: const EdgeInsets.only(bottom:12, left: 12, right: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color:const Color.fromARGB(255, 212, 212, 212), width:1.0),
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0,3),
+        child: TabBar(
+          dividerColor: Colors.white,
+          controller: _tabController,
+          indicator: BoxDecoration(
+            color: Colors.blue,
+            borderRadius: BorderRadius.circular(12),
           ),
-        ],
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.circle, color: Colors.green, size: 10,),
-          SizedBox(width: 8,),
-          Text('데이터 전송 중... (1초 간격)'),
-        ],
+          indicatorSize: TabBarIndicatorSize.tab,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.grey,
+          tabs: const [
+            Tab(text: 'TAB1'),
+            Tab(text: 'TAB2'),
+            Tab(text: '수신 데이터'),
+          ],
+        ),
+      
       ),
     );
   }
@@ -190,21 +250,31 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          _header(),
-          _dataTabBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                CanDataPage(),
-                ObdDataPage(),
-              ],
-            ),
+          Column(
+            children: [
+              _header(),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    CanDataPage(),
+                    ObdDataPage(),
+                    ReceiverPage(cloud: grpcClient),
+                  ],
+                ),
+              ),
+            //if (_showBottomState) _showState(),
+            ],
           ),
-          if (_showBottomState) _showState(),
-        ],
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 10,
+            child: _dataTabBar(),
+          ),
+        ]
       ),
     );
   }
