@@ -14,6 +14,8 @@ class CsvPlayback {
   int _i = 0;
 
   bool get isRunning => _timer != null;
+  int get currentIndex => _i;
+  int get totalRows => table.rows.length;
 
   void start({Duration interval = const Duration(seconds: 1)}) {
     if (_timer != null || table.rows.isEmpty) return;

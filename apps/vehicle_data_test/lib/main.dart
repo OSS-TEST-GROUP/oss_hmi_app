@@ -20,7 +20,7 @@ void main() async {
   try {
     await GrpcServer.instance.start(port: 50052, address: '0.0.0.0');
     debugPrint('[main] start() returned');
-    await grpcClient.connect();
+    //await grpcClient.connect();
   } catch (e) {
     // ignore: avoid_print
     print('Failed to start gRPC server: $e');
@@ -57,6 +57,8 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
 
   bool _isSending = false;
   String? _loadedFileName;
+  int? _cIndex;
+  int? _tRows;
   CsvTable? _table;
 
   late final TabController _tabController = TabController(length: 3, vsync: this);
@@ -120,7 +122,7 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
                Padding(
                 padding: const EdgeInsets.only(right: 20),
                 child: Text(
-                  '$_loadedFileName',
+                  '$_loadedFileName ($_cIndex/$_tRows)',
                   style: const TextStyle(color: Colors.grey),
                 ),),
               Padding(
@@ -134,8 +136,10 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
                     setState(() {
                       _table = picked;
                       _loadedFileName = picked.fileName;
+                      _tRows = picked.rows.length;
                       _playback?.stop();
                       _playback = CsvPlayback(_table!, useSiUnits: false);
+                      _cIndex = _playback?.currentIndex;
                       _isSending = false;
                     });
                 
@@ -164,11 +168,13 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
                       _playback!.stop();
                       setState(() {
                         _isSending = false;
+                        _cIndex = _playback?.currentIndex;
                       });
                     } else {
                       _playback!.start(interval: const Duration(seconds: 1));
                       setState(() {
                         _isSending = true;
+                        _cIndex = _playback?.currentIndex;
                       });
                     }
                   },
@@ -189,6 +195,7 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
                   _playback?.reset();
                   setState(() {
                     _isSending = false;
+                    _cIndex = _playback?.currentIndex;
                   });
                 }, 
                 icon: Icon(Icons.replay, color: Colors.white),

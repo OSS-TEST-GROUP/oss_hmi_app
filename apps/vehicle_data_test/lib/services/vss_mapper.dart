@@ -49,11 +49,11 @@ class VssMapper {
     return num.tryParse(v.toString().trim());
   }
 
-  dynamic _mphToMs(dynamic v) {
-    final n = _toNum(v);
-    if (n == null) return v;
-    return n * 0.44704;
-  }
+  // dynamic _mphToMs(dynamic v) {
+  //   final n = _toNum(v);
+  //   if (n == null) return v;
+  //   return n * 0.44704;
+  // }
 
   dynamic _milesToKm(dynamic v) {
     final n = _toNum(v);
@@ -76,7 +76,7 @@ class VssMapper {
   // 헤더 → (vss path, 변환기)
   late final Map<String, (String path, Transform? tx)> _map = {
     _canon('Vehicle speed (MPH)'):
-        ('Vehicle.Speed', useSiUnits ? _mphToMs : null),
+        ('Vehicle.Speed', useSiUnits ? _milesToKm : null),
     _canon('Engine RPM (RPM)'):
         ('Vehicle.Powertrain.CombustionEngine.Speed', null),
     _canon('Accelerator pedal position D (%)'):
@@ -112,12 +112,12 @@ class VssMapper {
             useSiUnits ? _fToC : null),
   };
 
-  /// CSV 한 줄 → 우리가 보내는 완성 VSS 맵
+  /// CSV 한 줄 -> 우리가 보내는 완성 VSS 맵
   Map<String, dynamic> rowToVssFull(
     List<String> headers,
     List<dynamic> row,
   ) {
-    // 1) 일단 CSV에 있는 애들로 맵 구성
+    // CSV에 있는 것들로 맵 구성
     final out = <String, dynamic>{};
 
     for (int i = 0; i < headers.length && i < row.length; i++) {
@@ -151,9 +151,8 @@ class VssMapper {
     // 3) 없는 애들은 null / '-' 로 채우기
     for (final key in kRequiredKeys) {
       if (!out.containsKey(key)) {
-        // 여기서 정책 선택
-        //out[key] = null;
-        out[key] = '-';
+        out[key] = null;
+        //out[key] = '-';
       }
     }
 
