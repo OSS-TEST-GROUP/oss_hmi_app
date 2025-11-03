@@ -31,8 +31,8 @@ class CsvPlayback {
         return;
       }
 
-      final row = table.rows[_i++];
-      final vss = mapper.rowToVssFull(table.headers, row);
+      //final row = table.rows[_i++];
+      final vss = mapper.rowToVssFull(table, _i++);
 
       if (vss.isNotEmpty) {
         DataCache.instance.update(vss);

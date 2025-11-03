@@ -20,7 +20,7 @@ void main() async {
   try {
     await GrpcServer.instance.start(port: 50052, address: '0.0.0.0');
     debugPrint('[main] start() returned');
-    //await grpcClient.connect();
+    await grpcClient.connect();
   } catch (e) {
     // ignore: avoid_print
     print('Failed to start gRPC server: $e');

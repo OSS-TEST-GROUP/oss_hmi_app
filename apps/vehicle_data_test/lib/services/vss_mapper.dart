@@ -1,3 +1,5 @@
+import 'csv_loader.dart';
+
 typedef Transform = dynamic Function(dynamic raw);
 
 class VssMapper {
@@ -73,6 +75,67 @@ class VssMapper {
     return (n - 32) * 5 / 9;
   }
 
+  String? tryParseKoreanStartTimeToIso(String line) {
+    const prefix = '# StartTime = ';
+    if (!line.startsWith(prefix)) return null;
+    var raw = line.substring(prefix.length).trim();
+
+    bool isPm = false;
+    if (raw.endsWith('오전')) {
+      raw = raw.replaceAll(' 오전', '').trim();
+    } else if (raw.endsWith('오후')) {
+      raw = raw.replaceAll(' 오후', '').trim();
+      isPm = true;
+    }
+
+    final parts = raw.split(' ');
+    if (parts.length < 4) return null;
+
+    final month = parts[0].replaceAll('.', '').trim();
+    final day = parts[1].replaceAll('.', '').trim();
+    final year = parts[2];
+    final time = parts[3];
+
+    final timeParts = time.split(':');
+    if (timeParts.length < 3) return null;
+
+    final hourStr = timeParts[0];
+    final minuteStr = timeParts[1];
+    final secAndMs = timeParts[2].split('.');
+    final secondStr = secAndMs[0];
+    final msStr = secAndMs.length > 1 ? secAndMs[1] : '0';
+
+    int hour = int.parse(hourStr);
+    final minute = int.parse(minuteStr);
+    final second = int.parse(secondStr);
+
+    final ms = int.parse(msStr.padRight(3, '0').substring(0, 3));
+
+    if (isPm && hour < 12) {
+      hour += 12;
+    }
+    if (!isPm && hour == 12) {
+      hour = 0;
+    }
+
+    final dtLocal = DateTime(
+      int.parse(year),
+      int.parse(month),
+      int.parse(day),
+      hour,
+      minute,
+      second,
+      ms,
+    );
+
+    return dtLocal.toUtc().toIso8601String();
+  }
+
+  String? _parseKoreanStartTime(String? line) {
+    if (line == null) return null;
+    return tryParseKoreanStartTimeToIso(line);
+  }
+
   // 헤더 → (vss path, 변환기)
   late final Map<String, (String path, Transform? tx)> _map = {
     _canon('Vehicle speed (MPH)'):
@@ -86,8 +149,8 @@ class VssMapper {
     _canon('Trip Distance (miles)'):
         ('Vehicle.Powertrain.Transmission.TravelledDistance',
             useSiUnits ? _milesToKm : null),
-    _canon('Time since engine start (sec)'):
-        ('Vehicle.StartTime', null),
+    // _canon('Time since engine start (sec)'):
+    //     ('Vehicle.StartTime', null),
     _canon('Latitude (deg)'):
         ('Vehicle.CurrentLocation.Latitude', null),
     _canon('Longitude (deg)'):
@@ -114,9 +177,15 @@ class VssMapper {
 
   /// CSV 한 줄 -> 우리가 보내는 완성 VSS 맵
   Map<String, dynamic> rowToVssFull(
-    List<String> headers,
-    List<dynamic> row,
+    CsvTable table,
+    int rowIndex,
+    // List<String> headers,
+    // List<dynamic> row,
   ) {
+
+    final headers = table.headers;
+    final row = table.rows[rowIndex];
+
     // CSV에 있는 것들로 맵 구성
     final out = <String, dynamic>{};
 
@@ -143,10 +212,21 @@ class VssMapper {
       out[vssPath] = asNum ?? value.toString();
     }
 
+    String timeStamp = DateTime.now().toUtc().toIso8601String().replaceFirstMapped(
+      RegExp(r'\.(\d+)(Z|$)'),
+      (m) => '.${m[1]!.substring(0, 3)}Z',
+    );
+
     // 2) 메타/고정 필드 주입
-    out['Timestamp'] = DateTime.now().toUtc().toIso8601String();
+    out['Timestamp'] = timeStamp;
     out['VehicleModelID'] = defaultVehicleModelId;
     out['UserID'] = defaultUserId;
+
+    // start time 맨 위 행으로 채우기
+    final isoFromHeader = _parseKoreanStartTime(table.rawFirstLine);
+    if (isoFromHeader != null) {
+      out['Vehicle.StartTime'] = isoFromHeader;
+    }
 
     // 3) 없는 애들은 null / '-' 로 채우기
     for (final key in kRequiredKeys) {
@@ -160,22 +240,27 @@ class VssMapper {
   }
 
   /// 테이블의 마지막 행을 기준으로 완성 VSS 맵 만들기
-  Map<String, dynamic> lastRowToVssFull(
-    List<String> headers,
-    List<List<dynamic>> rows,
-  ) {
-    if (rows.isEmpty) {
-      // 행이 하나도 없을 때도 완전한 형태로 반환
-      final m = <String, dynamic>{
-        'Timestamp': DateTime.now().toUtc().toIso8601String(),
-        'VehicleModelID': defaultVehicleModelId,
-        'UserID': defaultUserId,
-      };
-      for (final key in kRequiredKeys) {
-        m.putIfAbsent(key, () => '-');
-      }
-      return m;
-    }
-    return rowToVssFull(headers, rows.last);
-  }
+  // Map<String, dynamic> lastRowToVssFull(
+  //   CsvTable table,
+  //   // List<String> headers,
+  //   // List<List<dynamic>> rows,
+  // ) {
+
+  //   final headers = table.headers;
+  //   final rows = table.rows;
+
+  //   if (rows.isEmpty) {
+  //     // 행이 하나도 없을 때도 완전한 형태로 반환
+  //     final m = <String, dynamic>{
+  //       'Timestamp': DateTime.now().toUtc().toIso8601String(),
+  //       'VehicleModelID': defaultVehicleModelId,
+  //       'UserID': defaultUserId,
+  //     };
+  //     for (final key in kRequiredKeys) {
+  //       m.putIfAbsent(key, () => '-');
+  //     }
+  //     return m;
+  //   }
+  //   return rowToVssFull(table, table);
+  // }
 }
