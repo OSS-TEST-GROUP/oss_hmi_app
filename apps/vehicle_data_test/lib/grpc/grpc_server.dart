@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:grpc/grpc.dart';
 import 'package:vehicle_data_test/src/generated/VISSv3.0.pbgrpc.dart';
 import 'package:vehicle_data_test/services/sim_bus.dart';
+import '../services/sim_bus.dart';
 import 'subscription_registry.dart';
 
 class VissService extends VISSServiceBase {
@@ -186,12 +187,17 @@ class GrpcServer {
   }
 
   Future<void> stop() async {
+    debugPrint('[grpc] stop() called.');
     final s = _server;
     _server = null;
+    SimulatorBus.instance.close();
     if (s != null) {
+      debugPrint('this is stop() if');
       await s.shutdown();
       // ignore: avoid_print
       print('gRPC server stopped');
+    } else {
+      debugPrint('[grpc] server is already null.');
     }
   }
 }
