@@ -2,28 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:adsw_monitor/view/adsw_view_page.dart';
 import 'package:adsw_monitor/view/mw_view_page.dart';
 import 'package:get/get.dart';
-import 'package:roslibdart/roslibdart.dart';
 import 'dart:async';
+import 'package:adsw_monitor/config/app_config.dart';
+import 'package:adsw_monitor/config/config_loader.dart';
+import 'ros_keeper.dart';
 
-void main() {
-  final ros = Ros(url: 'ws://172.16.10.97:9090');
-  ros.connect();
-  Get.put<Ros>(ros);
-  
+late AppConfig appConfig;
+late RosKeeper rosKeeper;
+
+Future<void> main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  appConfig = await loadConfig(args);
+  rosKeeper = RosKeeper(appConfig);
+  await rosKeeper.start();
+
+  Get.put(rosKeeper.ros, permanent: true);
+
   runApp(AdswMonitorApp());
-  publishState();
-}
-
-void publishState() {
-  Topic statePublisher = Topic(
-    ros: Get.find<Ros>(),
-    name: '/app_status/adsw_monitor',
-    type: 'std_msgs/String',
-  );
-
-  Timer.periodic(Duration(seconds: 1), (timer) {
-    statePublisher.publish({'data': 'running'});
-  });
 }
 
 class AdswMonitorApp extends StatelessWidget {
@@ -67,6 +63,7 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
   @override
   void dispose() {
     _tabController.dispose();
+    rosKeeper.stop();
     super.dispose();
   }
 
