@@ -12,6 +12,12 @@ class SimulatorBus {
     _controller.add(_mapToDataPackages(data));
   }
 
+  void close() {
+    if (!_controller.isClosed) {
+      _controller.close();
+    }
+  }
+
   DataPackages _mapToDataPackages(Map<String, dynamic> data) {
     final dp = DataPackages();
     final ts = DateTime.now().toUtc().toIso8601String();
