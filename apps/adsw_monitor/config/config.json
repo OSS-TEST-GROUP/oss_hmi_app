@@ -1,0 +1,4 @@
+{
+  "rosbridge": { "url": "ws://172.16.10.97:9090" },
+  "statusTopic": "/app_status/adsw_monitor"
+}
