@@ -45,7 +45,6 @@ app.*.map.json
 # platforms
 ios/
 macos/
-web/
 windows/
 
 # mock files

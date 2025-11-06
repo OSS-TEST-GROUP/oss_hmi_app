@@ -1,25 +1,59 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:adsw_monitor/view/adsw_view_page.dart';
-import 'package:adsw_monitor/view/mw_view_page.dart';
 import 'package:get/get.dart';
 import 'dart:async';
-import 'package:adsw_monitor/config/app_config.dart';
+
 import 'package:adsw_monitor/config/config_loader.dart';
+import 'package:adsw_monitor/config/app_config.dart';
+import 'package:roslibdart/roslibdart.dart';
 import 'ros_keeper.dart';
+
+import 'package:adsw_monitor/view/adsw_view_page.dart';
+import 'package:adsw_monitor/view/mw_view_page.dart';
+import 'package:adsw_monitor/view/web_prompt_bootstrap.dart';
 
 late AppConfig appConfig;
 late RosKeeper rosKeeper;
 
-Future<void> main(List<String> args) async {
-  WidgetsFlutterBinding.ensureInitialized();
+Future<void> _startRosWithUri(Uri rosUrl) async {
+  // 웹에서 입력 받은 URL로 AppConfig 구성
+  appConfig = AppConfig(rosUrl: rosUrl, statusTopic: '/app_status/adsw_monitor');
 
-  appConfig = await loadConfig(args);
+  // RosKeeper 시작
   rosKeeper = RosKeeper(appConfig);
   await rosKeeper.start();
 
-  Get.put(rosKeeper.ros, permanent: true);
+  // GetX 주입
+  if (!Get.isRegistered<Ros>()) {
+    Get.put<Ros>(rosKeeper.ros, permanent: true);
+  } else {
+    Get.replace<Ros>(rosKeeper.ros);
+  }
+}
 
-  runApp(AdswMonitorApp());
+Future<void> main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+   if (kIsWeb) {
+    // 웹: 부트스트랩으로 주소 입력 → 연결 후 메인 앱 표시
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: WebPromptBootstrap(
+        onConfigured: _startRosWithUri,
+        child: const AdswMonitorApp(), // 기존 앱 그대로
+      ),
+    ));
+  } else {
+    // IO: 기존 흐름 그대로
+    appConfig = await loadConfig(args);
+    rosKeeper = RosKeeper(appConfig);
+    await rosKeeper.start();
+
+    Get.put<Ros>(rosKeeper.ros, permanent: true);
+
+    runApp(AdswMonitorApp());
+  }
 }
 
 class AdswMonitorApp extends StatelessWidget {
