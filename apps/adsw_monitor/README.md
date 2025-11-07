@@ -21,20 +21,25 @@ You should run rosbridge server to enable ROS communication.
 
 1. install rosbridge server
 ```
+sudo apt-get update
 sudo apt-get install ros-humble-rosbridge-server
 ```
-2. run rosbridge server
+2. set custom message
+```
+git clone 
+cd [oss_hmi_app path]/apps/adsw_monitor/diagnosticmgr
+colcon build --packages-select diagnosticmgr
+source install/setup.bash
+ros2 interface show diagnosticmgr/msg/DiagnosticInfoResponse #check custom message
+```
+3. run rosbridge server
 ```
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ```
 
 #### Run the 'adsw_monitor'
 
-1. git clone
-```
-git clone https://lotte-autops.com/oss_group1/oss_hmi_app.git
-```
-2. flutter run
+1. flutter run
 After moving to the root directory of the 'adsw_monitor' project, run the following command.
 ```
 flutter run
@@ -65,10 +70,5 @@ flutter pub run build_runner build
 1. build the custom ROS message  
 Create custom msg and srv files
 - https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Custom-ROS2-Interfaces.html
-2. copy/move the build outputs  
-Use the following command to move the build output directory to the ROS shared library directory.
-```
-cp -r install/{package_name}/share/{package_name} /opt/ros/humble/share
-```
-3. source the setup files  
-Source the **local_setup.bash** and **package.bash** located in the directory moved in step 2.
+2. source the setup files  
+Source the **local_setup.bash** and **package.bash**.
