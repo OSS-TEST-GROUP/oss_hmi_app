@@ -26,8 +26,9 @@ sudo apt-get install ros-humble-rosbridge-server
 ```
 2. set custom message
 ```
-git clone 
+git clone https://github.com/obigo-gov/oss_hmi_app.git
 cd [oss_hmi_app path]/apps/adsw_monitor/diagnosticmgr
+
 colcon build --packages-select diagnosticmgr
 source install/setup.bash
 ros2 interface show diagnosticmgr/msg/DiagnosticInfoResponse #check custom message
