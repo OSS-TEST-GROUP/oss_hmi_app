@@ -27,7 +27,7 @@ class DataViewWidget extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF374151).withOpacity(0.5),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: const Color(0xFF374151), width: 0.5),
       ),
       child: Column(
@@ -36,7 +36,7 @@ class DataViewWidget extends StatelessWidget {
             onTap: onTap,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(20),
               child: Row(
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -46,35 +46,35 @@ class DataViewWidget extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
                             color: const Color(0xFF3B82F6).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(icon, color: iconColor, size: 16),
+                          child: Icon(icon, color: iconColor, size: 23),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 15),
                         Flexible(
                           fit: FlexFit.loose,
                           child: Text(
                             title,
                             style: const TextStyle(
-                              fontSize: 14,
+                              fontSize: 23,
                               fontWeight: FontWeight.w500,
                               color: Colors.white,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        _buildStatusIndicator(status),
+                        //const SizedBox(width: 12),
+                        //_buildStatusIndicator(status),
                       ],
                     ),
                   ),
                   Icon(
                     isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
                     color: const Color(0xFF9CA3AF),
-                    size: 16,
+                    size: 22,
                   ),
                 ],
               ),
@@ -83,15 +83,15 @@ class DataViewWidget extends StatelessWidget {
           if (isExpanded)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(15),
               decoration: const BoxDecoration(
                 border: Border(top: BorderSide(color: Color(0xFF374151), width: 0.3)),
               ),
               child: Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: const Color(0xFF111827).withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

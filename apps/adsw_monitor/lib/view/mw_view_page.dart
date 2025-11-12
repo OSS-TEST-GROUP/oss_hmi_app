@@ -102,130 +102,84 @@ class MwViewPageState extends State<MwViewPage>
                         ],
                       );
                     })
-
-                    // const Padding(
-                    //   padding: EdgeInsets.only(bottom: 8),
-                    //   child: Text(
-                    //     'Test:',
-                    //     style: TextStyle(
-                    //       fontSize: 12,
-                    //       color: Color(0xFF9CA3AF),
-                    //       fontWeight: FontWeight.w500,
-                    //     ),
-                    //   ),
-                    // ),
-                    // KeyValueItem(label: 'diag response', value: _mwCollector.topicData['Diagnostic status'].toString(), status: StatusType.good),
-
-                    // const SizedBox(height: 8),
-                    // Container(
-                    //   padding: const EdgeInsets.all(8),
-                    //   decoration: BoxDecoration(
-                    //     color: const Color(0xFF7F1D1D).withOpacity(0.3),
-                    //     borderRadius: BorderRadius.circular(4),
-                    //     border: Border.all(
-                    //       color: const Color(0xFFEF4444).withOpacity(0.3),
-                    //     ),
-                    //   ),
-                    //   child: const Column(
-                    //     crossAxisAlignment: CrossAxisAlignment.start,
-                    //     children: [
-                    //       Text(
-                    //         'Abnormal Nodes:',
-                    //         style: TextStyle(
-                    //           fontSize: 12,
-                    //           color: Color(0xFFF87171),
-                    //           fontWeight: FontWeight.w500,
-                    //         ),
-                    //       ),
-                    //       SizedBox(height: 4),
-                    //       Text(
-                    //         'localization_node: Connection timeout',
-                    //         style: TextStyle(
-                    //           fontSize: 10,
-                    //           color: Color(0xFFFCA5A5),
-                    //         ),
-                    //       ),
-                    //     ],
-                    //   ),
-                    // ),
                   ],
                 )
               ],
             ),
           ),
-          const SizedBox(width: 24),
-          // Right Column - Security
-          Expanded(
-            child: Column(
-              children: [
-                Obx(() {
-                  return DataViewWidget(
-                    title: 'Security Status',
-                    icon: Icons.lock,
-                    iconColor: const Color(0xFFFBBF24),
-                    status: StatusType.warning,
-                    isExpanded: _expandedSections['security'] ?? false,
-                    onTap: () => _toggleSection('security'),
-                    children: [
-                      KeyValueItem(
-                          label: 'Security Level',
-                          value:
-                              _mwCollector.topicData['Ota status'].toString()),
-                      KeyValueItem(
-                          label: 'Encryption',
-                          value:
-                              _mwCollector.topicData['Ota status'].toString()),
-                      KeyValueItem(
-                          label: 'Certificate',
-                          value:
-                              _mwCollector.topicData['Ota status'].toString()),
-                      KeyValueItem(
-                          label: 'Intrusion Det',
-                          value:
-                              _mwCollector.topicData['Ota status'].toString(),
-                          status: StatusType.warning),
-                      KeyValueItem(
-                          label: 'Firewall',
-                          value:
-                              _mwCollector.topicData['Ota status'].toString()),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF78350F).withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: const Color(0xFFFBBF24).withOpacity(0.3),
-                          ),
-                        ),
-                        child: const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Security Alert:',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFFFBBF24),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Unusual network activity at 14:32',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFFFDE68A),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                }),
-              ],
-            ),
-          ),
+          // const SizedBox(width: 24),
+          // // Right Column - Security
+          // Expanded(
+          //   child: Column(
+          //     children: [
+          //       Obx(() {
+          //         return DataViewWidget(
+          //           title: 'Security Status',
+          //           icon: Icons.lock,
+          //           iconColor: const Color(0xFFFBBF24),
+          //           status: StatusType.warning,
+          //           isExpanded: _expandedSections['security'] ?? false,
+          //           onTap: () => _toggleSection('security'),
+          //           children: [
+          //             KeyValueItem(
+          //                 label: 'Security Level',
+          //                 value:
+          //                     _mwCollector.topicData['Ota status'].toString()),
+          //             KeyValueItem(
+          //                 label: 'Encryption',
+          //                 value:
+          //                     _mwCollector.topicData['Ota status'].toString()),
+          //             KeyValueItem(
+          //                 label: 'Certificate',
+          //                 value:
+          //                     _mwCollector.topicData['Ota status'].toString()),
+          //             KeyValueItem(
+          //                 label: 'Intrusion Det',
+          //                 value:
+          //                     _mwCollector.topicData['Ota status'].toString(),
+          //                 status: StatusType.warning),
+          //             KeyValueItem(
+          //                 label: 'Firewall',
+          //                 value:
+          //                     _mwCollector.topicData['Ota status'].toString()),
+          //             const SizedBox(height: 8),
+          //             Container(
+          //               padding: const EdgeInsets.all(8),
+          //               decoration: BoxDecoration(
+          //                 color: const Color(0xFF78350F).withOpacity(0.3),
+          //                 borderRadius: BorderRadius.circular(4),
+          //                 border: Border.all(
+          //                   color: const Color(0xFFFBBF24).withOpacity(0.3),
+          //                 ),
+          //               ),
+          //               child: const Column(
+          //                 crossAxisAlignment: CrossAxisAlignment.start,
+          //                 children: [
+          //                   Text(
+          //                     'Security Alert:',
+          //                     style: TextStyle(
+          //                       fontSize: 12,
+          //                       color: Color(0xFFFBBF24),
+          //                       fontWeight: FontWeight.w500,
+          //                     ),
+          //                   ),
+          //                   SizedBox(height: 4),
+          //                   Text(
+          //                     'Unusual network activity at 14:32',
+          //                     style: TextStyle(
+          //                       fontSize: 10,
+          //                       color: Color(0xFFFDE68A),
+          //                     ),
+          //                   ),
+          //                 ],
+          //               ),
+          //             ),
+          //           ],
+          //         );
+          //       }),
+          //     ],
+          //   ),
+          // ),
         ],
       ),
     );

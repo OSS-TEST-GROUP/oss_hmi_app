@@ -122,7 +122,7 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     ],
                   );
                 }),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
                 Obx(() {
                   return DataViewWidget(
                     title: 'Sensor',
@@ -133,18 +133,16 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     onTap: () => _toggleSection('sensor'),
                     children: [
                       KeyValueItem(label: 'Number of sensor', value: _adswCollector.topicData['Number of sensor'].toString()),
-                      KeyValueItem(label: 'Sensor status', value: _adswCollector.topicData['Sensor status'].toString()),
-                      KeyValueItem(label: 'Camera', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'LiDAR', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Radar', value: _adswCollector.topicData['Gear'].toString(), status: StatusType.warning),
-                      KeyValueItem(label: 'GPS', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Imu - orientation covariance', value: _adswCollector.topicData['Imu Data - orientation_covariance'].toString()),
+                      // KeyValueItem(label: 'Camera', value: _adswCollector.topicData['Gear'].toString()),
+                      // KeyValueItem(label: 'LiDAR', value: _adswCollector.topicData['Gear'].toString()),
                     ],
                   );
                 }),
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 20),
           // Center-Left Column
           Expanded(
             child: Column(
@@ -158,15 +156,15 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['perception'] ?? false,
                     onTap: () => _toggleSection('perception'),
                     children: [
-                      KeyValueItem(label: 'Objects', value: _adswCollector.topicData['Object recognition'].toString()),
-                      KeyValueItem(label: 'Vehicles', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Pedestrians', value: _adswCollector.topicData['Gear'].toString()),
-                      KeyValueItem(label: 'Cyclists', value: _adswCollector.topicData['Gear'].toString()),
+                      KeyValueItem(label: 'Objects', value: (_adswCollector.topicData['Object recognition'] as String?) ?? '-'),//_adswCollector.topicData['Object recognition'].toString()),
+                      // KeyValueItem(label: 'Vehicles', value: _adswCollector.topicData['Gear'].toString()),
+                      // KeyValueItem(label: 'Pedestrians', value: _adswCollector.topicData['Gear'].toString()),
+                      // KeyValueItem(label: 'Cyclists', value: _adswCollector.topicData['Gear'].toString()),
                       KeyValueItem(label: 'Traffic Light', value: _adswCollector.topicData['Traffic light'].toString()),
                     ],
                   );
                 }),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
                 Obx(() {
                   return DataViewWidget(
                     title: 'Planning',
@@ -176,14 +174,22 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['planning'] ?? false,
                     onTap: () => _toggleSection('planning'),
                     children: [
-                      KeyValueItem(label: 'Planning path', value: _adswCollector.topicData['Planning path'].toString()),
+                      KeyValueItem(label: 'Planning goal x', value: (_adswCollector.topicData['Planning path x'] is num)
+                                                                    ? (_adswCollector.topicData['Planning path x'] as num).toStringAsFixed(3)
+                                                                    : (_adswCollector.topicData['Planning path x']?.toString() ?? '-')),
+                      KeyValueItem(label: 'Planning goal y', value: (_adswCollector.topicData['Planning path y'] is num)
+                                                                    ? (_adswCollector.topicData['Planning path y'] as num).toStringAsFixed(3)
+                                                                    : (_adswCollector.topicData['Planning path y']?.toString() ?? '-')),
+                      KeyValueItem(label: 'Planning goal z', value: (_adswCollector.topicData['Planning path z'] is num)
+                                                                    ? (_adswCollector.topicData['Planning path z'] as num).toStringAsFixed(3)
+                                                                    : (_adswCollector.topicData['Planning path z']?.toString() ?? '-')),
                     ],
                   );
                 }),
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 20),
           // Center-Right Column
           Expanded(
             child: Column(
@@ -205,7 +211,7 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     ],
                   );
                 }),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
                 Obx(() {
                   return DataViewWidget(
                     title: 'Map',
@@ -215,7 +221,8 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
                     isExpanded: _expandedSections['map'] ?? false,
                     onTap: () => _toggleSection('map'),
                     children: [
-                      KeyValueItem(label: 'Speed Limit', value: _adswCollector.topicData['Speed limit'].toString()),
+                      KeyValueItem(label: 'Pointcloud height', value: _adswCollector.topicData['pcd height'].toString()),
+                      KeyValueItem(label: 'Pointcloud width', value: _adswCollector.topicData['pcd width'].toString())
                     ],
                   );
                 }),

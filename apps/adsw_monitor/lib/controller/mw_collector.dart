@@ -1,49 +1,62 @@
-// import 'package:roslibdart/roslibdart.dart';
-// import 'package:get/get.dart';
-
-// class MwCollector extends GetxController {
-//   late Ros ros = Get.find<Ros>();
-//   RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
-//   List<SubscribeHandler> handlerList = [];
-
-//   final Topic Function(Ros ros, String name, String type) topicFactory;
-
-//   final Map<int, String> diagList = {};
-
-//   MwCollector({required this.topicFactory}) {
-//     handlerList = [handleLifecycle, handleSecurity, ];
-
-
-//   }
-
-//   void subscribeTopic(List<String> topics, List<String> types, List<SubscribeHandler> handlers){
-
-//     for(int i=0;i<topics.length;i++) {
-//       final topic = topicFactory(ros, topics[i], types[i]);
-//       topic.subscribe(handlers[i]);
-//     }
-
-//   }
-
-//   Future<void> handleLifecycle(Map<String, dynamic> msg) async {
-
-//     topicData['Diagnostic status'] = msg['diag_name'];
-
-//   }
-
-//   Future<void> handleSecurity(Map<String, dynamic> msg) async {
-
-//     topicData['Security status'] = msg;
-
-//     // 보안 문제 검사 코드
-
-//   }
-
-// }
-
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
+
+// --- Logging helpers ---
+void _logInfoListResponse(Map<String, dynamic> msg) {
+  final retRaw = msg['ret_code'];
+  final codesRaw = msg['diag_codes'];
+  final namesRaw = msg['diag_names'];
+
+  // 타입/값 1차 로그
+  debugPrint('[InfoListResp] ret_code(type=${retRaw?.runtimeType}) value=$retRaw');
+  debugPrint('[InfoListResp] diag_codes(type=${codesRaw?.runtimeType}) value=$codesRaw');
+  debugPrint('[InfoListResp] diag_names(type=${namesRaw?.runtimeType}) value=$namesRaw');
+
+  // 배열 파싱(방어)
+  final List<dynamic> codesList = (codesRaw is List) ? codesRaw : const [];
+  final List<dynamic> namesList = (namesRaw is List) ? namesRaw : const [];
+
+  // 요약 로그
+  final int clen = codesList.length;
+  final int nlen = namesList.length;
+  final int showN = 5; // 처음 몇 개만 보기
+  final firstCodes = codesList.take(showN).toList();
+  final firstNames = namesList.take(showN).toList();
+
+  debugPrint('[InfoListResp] counts: codes=$clen, names=$nlen, minPair=${clen < nlen ? clen : nlen}');
+  debugPrint('[InfoListResp] sample codes(<=${showN}): $firstCodes${clen > showN ? ' ...' : ''}');
+  debugPrint('[InfoListResp] sample names(<=${showN}): $firstNames${nlen > showN ? ' ...' : ''}');
+
+  // 페어로 몇 개만 묶어 미리보기
+  final int pairShow = (clen < nlen ? clen : nlen).clamp(0, showN);
+  if (pairShow > 0) {
+    final pairs = List.generate(pairShow, (i) => '${codesList[i]} -> ${namesList[i]}');
+    debugPrint('[InfoListResp] pairs(<=${showN}): $pairs${(clen.min(nlen) > showN) ? ' ...' : ''}');
+  }
+}
+
+void _logInfoResponse(Map<String, dynamic> msg) {
+  final retRaw = msg['ret_code'];
+  final codeRaw = msg['diag_code'];
+  final nameRaw = msg['diag_name'];
+  final statusRaw = msg['status'];
+  final messageRaw = msg['message'];
+
+  // 타입/원시값
+  debugPrint('[InfoResp] ret_code(type=${retRaw?.runtimeType}) value=$retRaw');
+  debugPrint('[InfoResp] diag_code(type=${codeRaw?.runtimeType}) value=$codeRaw');
+  debugPrint('[InfoResp] diag_name(type=${nameRaw?.runtimeType}) value=$nameRaw');
+  debugPrint('[InfoResp] status(type=${statusRaw?.runtimeType}) value=$statusRaw');
+  debugPrint('[InfoResp] message(type=${messageRaw?.runtimeType}) value=$messageRaw');
+}
+
+// 작은 유틸: min 확장 (null 안전)
+extension _NumMin on int {
+  int min(int other) => this < other ? this : other;
+}
+
 
 class MwCollector extends GetxController {
   // 의존성
@@ -59,7 +72,7 @@ class MwCollector extends GetxController {
   final Map<int, String> _codeToName = {};
 
   // 토픽들 (패키지명은 환경에 맞게 조정)
-  static const _pkg = 'diagnosticmgr/msg'; // 또는 'diagnosticmgr_msgs/msg'
+  static const _pkg = 'diagnosticmgr/msg';
   late final Topic _infoReqPub;
   late final Topic _infoListReqPub;
   late final Topic _infoRespSub;
@@ -124,7 +137,10 @@ class MwCollector extends GetxController {
 
     Future<void> loop() async {
       if (_gotListOnce) return;
-      try { await _infoListReqPub.publish({}); } catch (_) {}
+      try { 
+        await _infoListReqPub.publish({});
+        debugPrint("info list request send"); 
+      } catch (_) {}
       _listRetryTimer = Timer(delay, () async {
         if (_gotListOnce) return;
         delay = delay * 2; if (delay > maxDelay) delay = maxDelay;
@@ -136,11 +152,14 @@ class MwCollector extends GetxController {
   }
 
   Future<void> _sendInfoRequest(int code, String name) async {
+    debugPrint("info request send");
     try { await _infoReqPub.publish({'diag_code': code, 'diag_name': name}); } catch (_) {}
   }
 
   // ===== 핸들러 =====
   Future<void> _onInfoListResponse(Map<String, dynamic> msg) async {
+    debugPrint("_onInfoListResponse(): ${msg['diag_codes']}");
+    _logInfoListResponse(msg);
     final List codes = (msg['diag_codes'] ?? []) as List;
     final List names = (msg['diag_names'] ?? []) as List;
 
@@ -180,6 +199,8 @@ class MwCollector extends GetxController {
   }
 
   Future<void> _onInfoResponse(Map<String, dynamic> msg) async {
+    debugPrint("_onInfoResponse()");
+    _logInfoResponse(msg);
     final int code = msg['diag_code'] is int ? msg['diag_code'] as int : int.tryParse('${msg['diag_code']}') ?? -1;
     final String name = _codeToName[code] ?? '${msg['diag_name'] ?? 'unknown'}';
 

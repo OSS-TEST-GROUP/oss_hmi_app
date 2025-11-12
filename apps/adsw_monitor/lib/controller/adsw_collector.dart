@@ -17,12 +17,12 @@ class AdswCollector extends GetxController {
       handleCurrentVelocity,
       handleBattery,
       handleSensorCount,
-      handleSensorStatus,
+      handleSensorData,
       handleObjectRecognition,
       handleTrafficLight,
       handlePlanningPath,
       handleLocalizationData,
-      handleSpeedLimit,
+      handleMapData,
       handleLaneDeparture,
     ];
   }
@@ -33,6 +33,16 @@ class AdswCollector extends GetxController {
       final topic = topicFactory(ros, topics[i], types[i]);
       topic.subscribe(handlers[i]);
     }
+  }
+
+  String _f2(num? v) => v == null ? '-' : v.toStringAsFixed(2);
+
+  String _fmtVec3(Map? m) {
+    if (m == null) return '-';
+    final x = _f2(m['x'] as num?);
+    final y = _f2(m['y'] as num?);
+    final z = _f2(m['z'] as num?);
+    return 'x:$x, y:$y, z:$z'; // 혹은 '($x, $y, $z)'
   }
 
   Future<void> handleVehicleStatus(Map<String, dynamic> msg) async {
@@ -50,12 +60,20 @@ class AdswCollector extends GetxController {
     topicData['Hazard light'] = hzText[hz] ?? '-';
     // topicData['Energy %'] = energy?.toStringAsFixed(1);
 
-    topicData['Steering tire angle'] = msg['steering_tire_angle'];
+    topicData['Steering tire angle'] = _f2(msg['steering_tire_angle']);
     //topicData['Bettery status'] = msg['energy_percentage'];
   }
 
   Future<void> handleCurrentVelocity(Map<String, dynamic> msg) async {
-    topicData['Current velocity'] = msg['longitudinal_velocity'];
+    final velocity = msg['longitudinal_velocity'];
+
+    if (velocity is num) {
+      // 숫자면 소수점 2자리까지만 문자열로 저장
+      topicData['Current velocity'] = velocity.toStringAsFixed(2);
+    } else {
+      // 숫자가 아니면 그대로 저장
+      topicData['Current velocity'] = velocity;
+    }
   }
 
   Future<void> handleBattery(Map<String, dynamic> msg) async {
@@ -63,15 +81,72 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleSensorCount(Map<String, dynamic> msg) async {
-    topicData['Number of sensor'] = msg;
+    topicData['Number of sensor'] = msg['data'];
   }
 
-  Future<void> handleSensorStatus(Map<String, dynamic> msg) async {
-    topicData['Sensor status'] = msg;
+  Future<void> handleSensorData(Map<String, dynamic> msg) async {
+    topicData['Imu Data - orientation_covariance'] =
+        msg['orientation_covariance'];
   }
 
   Future<void> handleObjectRecognition(Map<String, dynamic> msg) async {
-    topicData['Object recognition'] = msg['objects'];
+    //topicData['Object recognition'] = msg['objects'];
+    final List objs = (msg['objects'] as List?) ?? const [];
+
+    if (objs.isEmpty) {
+      topicData['Object recognition'] = '-';
+      topicData['Object recognition count'] = 0;
+      return;
+    }
+
+    const labelMap = {
+      0: 'UNKNOWN',
+      1: 'CAR',
+      2: 'TRUCK',
+      3: 'BUS',
+      4: 'TRAILER',
+      5: 'MOTORCYCLE',
+      6: 'BICYCLE',
+      7: 'PEDESTRIAN',
+    };
+
+    final List<String> lines = [];
+
+    for (final o in objs) {
+      if (o is! Map) {
+        lines.add('UNKNOWN');
+        continue;
+      }
+
+      final List klass = (o['classification'] as List?) ?? const [];
+
+      if (klass.isEmpty) {
+        lines.add('UNKNOWN');
+        continue;
+      }
+
+      // 확률이 가장 높은 분류 하나 선택 (top-1)
+      Map? best;
+      double bestP = -1.0;
+      for (final c in klass) {
+        if (c is! Map) continue;
+        final p = (c['probability'] as num?)?.toDouble() ?? 0.0;
+        if (p > bestP) {
+          bestP = p;
+          best = c;
+        }
+      }
+
+      final labelIdx = (best?['label'] as num?)?.toInt() ?? 0;
+      final name = labelMap[labelIdx] ?? 'UNKNOWN';
+      final prob = bestP.clamp(0.0, 1.0).toStringAsFixed(2);
+
+      lines.add('$name ($prob)');
+    }
+
+    // 여러개면 줄바꿈으로 좌르륵
+    topicData['Object recognition'] = lines.join('\n');
+    topicData['Object recognition count'] = lines.length;
   }
 
   Future<void> handleTrafficLight(Map<String, dynamic> msg) async {
@@ -79,19 +154,62 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handlePlanningPath(Map<String, dynamic> msg) async {
-    topicData['Planning path'] = msg;
+    final List<dynamic> points = (msg['points'] as List?) ?? const [];
+
+    if (points.isEmpty) {
+      topicData['Planning path index'] = null;
+      topicData['Planning path x'] = null;
+      topicData['Planning path y'] = null;
+      topicData['Planning path z'] = null;
+      return;
+    }
+
+    // 1) is_final == true를 우선 사용
+    int idx = points.indexWhere((p) => (p is Map && p['is_final'] == true));
+
+    // 첫 포인트
+    // int idx = 0.clamp(0, points.length - 1);
+
+    // 2) is_final이 없다면 마지막 포인트 사용
+    if (idx < 0) idx = points.length - 1;
+
+    final Map<String, dynamic>? point = points[idx] as Map<String, dynamic>?;
+    final Map<String, dynamic>? pose = point?['pose'] as Map<String, dynamic>?;
+    final Map<String, dynamic>? pos =
+        pose?['position'] as Map<String, dynamic>?;
+
+    final double? x = (pos?['x'] as num?)?.toDouble();
+    final double? y = (pos?['y'] as num?)?.toDouble();
+    final double? z = (pos?['z'] as num?)?.toDouble();
+
+    topicData['Planning path index'] = idx;
+    topicData['Planning path x'] = x;
+    topicData['Planning path y'] = y;
+    topicData['Planning path z'] = z;
   }
 
   Future<void> handleLocalizationData(Map<String, dynamic> msg) async {
-    topicData['Localization pose x'] = msg['pose']['pose']['position']['x'];
-    topicData['Localization pose y'] = msg['pose']['pose']['position']['y'];
-    topicData['Localization pose z'] = msg['pose']['pose']['position']['z'];
-    topicData['Localization twist linear'] = msg['twist']['twist']['linear'];
-    topicData['Localization twist angular'] = msg['twist']['twist']['angular'];
+    // topicData['Localization pose x'] = msg['pose']['pose']['position']['x'];
+    // topicData['Localization pose y'] = msg['pose']['pose']['position']['y'];
+    // topicData['Localization pose z'] = msg['pose']['pose']['position']['z'];
+    // topicData['Localization twist linear'] = msg['twist']['twist']['linear'];
+    // topicData['Localization twist angular'] = msg['twist']['twist']['angular'];
+    final pos = (msg['pose']?['pose']?['position']) as Map?;
+    final lin = (msg['twist']?['twist']?['linear']) as Map?;
+    final ang = (msg['twist']?['twist']?['angular']) as Map?;
+
+    topicData['Localization pose x'] = _f2(pos?['x'] as num?);
+    topicData['Localization pose y'] = _f2(pos?['y'] as num?);
+    topicData['Localization pose z'] = _f2(pos?['z'] as num?);
+
+    // 벡터는 x/y/z 각각 두 자리로 포맷해 문자열로 저장
+    topicData['Localization twist linear'] = _fmtVec3(lin);
+    topicData['Localization twist angular'] = _fmtVec3(ang);
   }
 
-  Future<void> handleSpeedLimit(Map<String, dynamic> msg) async {
-    topicData['Speed limit'] = msg;
+  Future<void> handleMapData(Map<String, dynamic> msg) async {
+    topicData['pcd height'] = msg['height'];
+    topicData['pcd width'] = msg['width'];
   }
 
   Future<void> handleLaneDeparture(Map<String, dynamic> msg) async {

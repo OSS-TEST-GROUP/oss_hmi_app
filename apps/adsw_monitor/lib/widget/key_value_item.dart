@@ -15,7 +15,7 @@ class KeyValueItem extends StatelessWidget{
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -23,7 +23,7 @@ class KeyValueItem extends StatelessWidget{
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 12,
+                fontSize: 19,
                 color: Color(0xFF9CA3AF),
               ),
               overflow: TextOverflow.ellipsis,
@@ -31,12 +31,12 @@ class KeyValueItem extends StatelessWidget{
           ),
           Row(
             children: [
-              _buildStatusIndicator(status),
-              const SizedBox(width: 4),
+              //_buildStatusIndicator(status),
+              //const SizedBox(width: 4),
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 17,
                   color: Colors.white,
                   fontFamily: 'monospace',
                 ),
