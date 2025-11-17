@@ -65,15 +65,18 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleCurrentVelocity(Map<String, dynamic> msg) async {
-    final velocity = msg['longitudinal_velocity'];
+    final vMs = msg['longitudinal_velocity'] as num?;
+    final vKmh = vMs != null ? (vMs * 3.6).toStringAsFixed(2) : '-';
+    topicData['Current velocity'] = vKmh;
+    // final velocity = msg['longitudinal_velocity'];
 
-    if (velocity is num) {
-      // 숫자면 소수점 2자리까지만 문자열로 저장
-      topicData['Current velocity'] = velocity.toStringAsFixed(2);
-    } else {
-      // 숫자가 아니면 그대로 저장
-      topicData['Current velocity'] = velocity;
-    }
+    // if (velocity is num) {
+    //   // 숫자면 소수점 2자리까지만 문자열로 저장
+    //   topicData['Current velocity'] = velocity.toStringAsFixed(2);
+    // } else {
+    //   // 숫자가 아니면 그대로 저장
+    //   topicData['Current velocity'] = velocity;
+    // }
   }
 
   Future<void> handleBattery(Map<String, dynamic> msg) async {

@@ -10,9 +10,12 @@ void _logInfoListResponse(Map<String, dynamic> msg) {
   final namesRaw = msg['diag_names'];
 
   // 타입/값 1차 로그
-  debugPrint('[InfoListResp] ret_code(type=${retRaw?.runtimeType}) value=$retRaw');
-  debugPrint('[InfoListResp] diag_codes(type=${codesRaw?.runtimeType}) value=$codesRaw');
-  debugPrint('[InfoListResp] diag_names(type=${namesRaw?.runtimeType}) value=$namesRaw');
+  debugPrint(
+      '[InfoListResp] ret_code(type=${retRaw?.runtimeType}) value=$retRaw');
+  debugPrint(
+      '[InfoListResp] diag_codes(type=${codesRaw?.runtimeType}) value=$codesRaw');
+  debugPrint(
+      '[InfoListResp] diag_names(type=${namesRaw?.runtimeType}) value=$namesRaw');
 
   // 배열 파싱(방어)
   final List<dynamic> codesList = (codesRaw is List) ? codesRaw : const [];
@@ -25,15 +28,20 @@ void _logInfoListResponse(Map<String, dynamic> msg) {
   final firstCodes = codesList.take(showN).toList();
   final firstNames = namesList.take(showN).toList();
 
-  debugPrint('[InfoListResp] counts: codes=$clen, names=$nlen, minPair=${clen < nlen ? clen : nlen}');
-  debugPrint('[InfoListResp] sample codes(<=${showN}): $firstCodes${clen > showN ? ' ...' : ''}');
-  debugPrint('[InfoListResp] sample names(<=${showN}): $firstNames${nlen > showN ? ' ...' : ''}');
+  debugPrint(
+      '[InfoListResp] counts: codes=$clen, names=$nlen, minPair=${clen < nlen ? clen : nlen}');
+  debugPrint(
+      '[InfoListResp] sample codes(<=${showN}): $firstCodes${clen > showN ? ' ...' : ''}');
+  debugPrint(
+      '[InfoListResp] sample names(<=${showN}): $firstNames${nlen > showN ? ' ...' : ''}');
 
   // 페어로 몇 개만 묶어 미리보기
   final int pairShow = (clen < nlen ? clen : nlen).clamp(0, showN);
   if (pairShow > 0) {
-    final pairs = List.generate(pairShow, (i) => '${codesList[i]} -> ${namesList[i]}');
-    debugPrint('[InfoListResp] pairs(<=${showN}): $pairs${(clen.min(nlen) > showN) ? ' ...' : ''}');
+    final pairs =
+        List.generate(pairShow, (i) => '${codesList[i]} -> ${namesList[i]}');
+    debugPrint(
+        '[InfoListResp] pairs(<=${showN}): $pairs${(clen.min(nlen) > showN) ? ' ...' : ''}');
   }
 }
 
@@ -46,10 +54,14 @@ void _logInfoResponse(Map<String, dynamic> msg) {
 
   // 타입/원시값
   debugPrint('[InfoResp] ret_code(type=${retRaw?.runtimeType}) value=$retRaw');
-  debugPrint('[InfoResp] diag_code(type=${codeRaw?.runtimeType}) value=$codeRaw');
-  debugPrint('[InfoResp] diag_name(type=${nameRaw?.runtimeType}) value=$nameRaw');
-  debugPrint('[InfoResp] status(type=${statusRaw?.runtimeType}) value=$statusRaw');
-  debugPrint('[InfoResp] message(type=${messageRaw?.runtimeType}) value=$messageRaw');
+  debugPrint(
+      '[InfoResp] diag_code(type=${codeRaw?.runtimeType}) value=$codeRaw');
+  debugPrint(
+      '[InfoResp] diag_name(type=${nameRaw?.runtimeType}) value=$nameRaw');
+  debugPrint(
+      '[InfoResp] status(type=${statusRaw?.runtimeType}) value=$statusRaw');
+  debugPrint(
+      '[InfoResp] message(type=${messageRaw?.runtimeType}) value=$messageRaw');
 }
 
 // 작은 유틸: min 확장 (null 안전)
@@ -57,6 +69,17 @@ extension _NumMin on int {
   int min(int other) => this < other ? this : other;
 }
 
+const _statusText = {
+  0: 'UNKNOWN',
+  1: 'PASS',
+  2: 'FATAL',
+  3: 'WARNING',
+};
+const _retText = {
+  0: 'UNKNOWN',
+  1: 'PASS',
+  2: 'FAIL',
+};
 
 class MwCollector extends GetxController {
   // 의존성
@@ -100,16 +123,32 @@ class MwCollector extends GetxController {
   void onClose() {
     _listRetryTimer?.cancel();
     _detailTimer?.cancel();
-    try { _infoListRespSub.unsubscribe(); _infoRespSub.unsubscribe(); } catch (_) {}
-    try { _infoReqPub.unadvertise(); _infoListReqPub.unadvertise(); } catch (_) {}
+    try {
+      _infoListRespSub.unsubscribe();
+      _infoRespSub.unsubscribe();
+    } catch (_) {}
+    try {
+      _infoReqPub.unadvertise();
+      _infoListReqPub.unadvertise();
+    } catch (_) {}
     super.onClose();
   }
 
   void _prepareTopics() {
-    _infoReqPub = topicFactory(ros, '/mmf/diagnosticmgr/DiagnosticInfoRequest',       '$_pkg/DiagnosticInfoRequest');
-    _infoListReqPub = topicFactory(ros, '/mmf/diagnosticmgr/DiagnosticInfoListRequest','$_pkg/DiagnosticInfoListRequest');
-    _infoRespSub = topicFactory(ros, '/mmf/diagnosticmgr/DiagnosticInfoResponse',     '$_pkg/DiagnosticInfoResponse');
-    _infoListRespSub = topicFactory(ros, '/mmf/diagnosticmgr/DiagnosticInfoListResponse','$_pkg/DiagnosticInfoListResponse');
+    _infoReqPub = topicFactory(ros, '/mmf/diagnosticmgr/DiagnosticInfoRequest',
+        '$_pkg/DiagnosticInfoRequest');
+    _infoListReqPub = topicFactory(
+        ros,
+        '/mmf/diagnosticmgr/DiagnosticInfoListRequest',
+        '$_pkg/DiagnosticInfoListRequest');
+    _infoRespSub = topicFactory(
+        ros,
+        '/mmf/diagnosticmgr/DiagnosticInfoResponse',
+        '$_pkg/DiagnosticInfoResponse');
+    _infoListRespSub = topicFactory(
+        ros,
+        '/mmf/diagnosticmgr/DiagnosticInfoListResponse',
+        '$_pkg/DiagnosticInfoListResponse');
   }
 
   void _wireSubs() {
@@ -137,23 +176,27 @@ class MwCollector extends GetxController {
 
     Future<void> loop() async {
       if (_gotListOnce) return;
-      try { 
+      try {
         await _infoListReqPub.publish({});
-        debugPrint("info list request send"); 
+        debugPrint("info list request send");
       } catch (_) {}
       _listRetryTimer = Timer(delay, () async {
         if (_gotListOnce) return;
-        delay = delay * 2; if (delay > maxDelay) delay = maxDelay;
+        delay = delay * 2;
+        if (delay > maxDelay) delay = maxDelay;
         await loop();
       });
     }
+
     // 즉시 시작
     unawaited(loop());
   }
 
   Future<void> _sendInfoRequest(int code, String name) async {
     debugPrint("info request send");
-    try { await _infoReqPub.publish({'diag_code': code, 'diag_name': name}); } catch (_) {}
+    try {
+      await _infoReqPub.publish({'diag_code': code, 'diag_name': name});
+    } catch (_) {}
   }
 
   // ===== 핸들러 =====
@@ -167,7 +210,8 @@ class MwCollector extends GetxController {
     diagNames.clear();
 
     for (int i = 0; i < codes.length && i < names.length; i++) {
-      final int code = codes[i] is int ? codes[i] as int : int.tryParse('${codes[i]}') ?? -1;
+      final int code =
+          codes[i] is int ? codes[i] as int : int.tryParse('${codes[i]}') ?? -1;
       final String name = '${names[i]}';
       if (code >= 0) {
         _codeToName[code] = name;
@@ -198,18 +242,60 @@ class MwCollector extends GetxController {
     });
   }
 
+  // dynamic _extractStatus(dynamic raw) {
+  //   if (raw is Map && raw.containsKey('diag_status')) return raw['diag_status'];
+  //   return raw;
+  // }
+
+  //   Future<void> _onInfoResponse(Map<String, dynamic> msg) async {
+  //   debugPrint("_onInfoResponse()");
+  //   _logInfoResponse(msg);
+  //   final int code = msg['diag_code'] is int
+  //       ? msg['diag_code'] as int
+  //       : int.tryParse('${msg['diag_code']}') ?? -1;
+  //   final String name = _codeToName[code] ?? '${msg['diag_name'] ?? 'unknown'}';
+
+  //   final dynamic status = _extractStatus(msg['status']); // enum 포맷 다양성 대비
+  //   topicData[name] = status;
+  // }
+
+  int? _extractRetCode(dynamic raw) {
+    if (raw is Map && raw['ret_code'] is num)
+      return (raw['ret_code'] as num).toInt();
+    if (raw is num) return raw.toInt();
+    return null;
+  }
+
+  int? _extractDiagStatus(dynamic raw) {
+    if (raw is Map && raw['diag_status'] is num)
+      return (raw['diag_status'] as num).toInt();
+    if (raw is num) return raw.toInt();
+    return null;
+  }
+
   Future<void> _onInfoResponse(Map<String, dynamic> msg) async {
     debugPrint("_onInfoResponse()");
     _logInfoResponse(msg);
-    final int code = msg['diag_code'] is int ? msg['diag_code'] as int : int.tryParse('${msg['diag_code']}') ?? -1;
+
+    final int code = msg['diag_code'] is int
+        ? msg['diag_code'] as int
+        : int.tryParse('${msg['diag_code']}') ?? -1;
+
     final String name = _codeToName[code] ?? '${msg['diag_name'] ?? 'unknown'}';
 
-    final dynamic status = _extractStatus(msg['status']); // enum 포맷 다양성 대비
-    topicData[name] = status;
-  }
+    final int? ret = _extractRetCode(msg['ret_code']);
+    final int? stat = _extractDiagStatus(msg['status']);
 
-  dynamic _extractStatus(dynamic raw) {
-    if (raw is Map && raw.containsKey('diag_status')) return raw['diag_status'];
-    return raw;
+    final info = {
+      'name': name,
+      'code': code,
+      'ret_code': ret,
+      'ret_text': ret != null ? (_retText[ret] ?? '$ret') : null,
+      'status': stat,
+      'status_text': stat != null ? (_statusText[stat] ?? '$stat') : null,
+      'message': msg['message'],
+    };
+
+    topicData[name] = info; // ← 숫자 대신 구조화된 정보 저장
   }
 }

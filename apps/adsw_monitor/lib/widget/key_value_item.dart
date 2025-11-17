@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 class KeyValueItem extends StatelessWidget{
   final String label;
   final String value;
+  final String? subtitle;
   final StatusType status;// = StatusType.good;
 
   const KeyValueItem({
     super.key,
     required this.label,
     required this.value,
+    this.subtitle,
     this.status = StatusType.good,
   });
 
@@ -17,6 +19,7 @@ class KeyValueItem extends StatelessWidget{
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
@@ -29,20 +32,56 @@ class KeyValueItem extends StatelessWidget{
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Row(
-            children: [
-              //_buildStatusIndicator(status),
-              //const SizedBox(width: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 17,
-                  color: Colors.white,
-                  fontFamily: 'monospace',
+          const SizedBox(width: 12),
+          // 오른쪽 값 + (옵션) 서브타이틀
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 1) 메인 값 (한 줄)
+                Text(
+                  value,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    color: Colors.white,
+                    fontFamily: 'monospace',
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+                // 2) (옵션) 서브타이틀: 작은 글씨, 여러 줄 허용
+                if (subtitle != null && subtitle!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      subtitle!,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Color(0xFF9CA3AF),
+                        height: 1.25,
+                      ),
+                      softWrap: true,
+                    ),
+                  ),
+              ],
+            ),
           ),
+          // Row(
+          //   children: [
+          //     _buildStatusIndicator(status),
+          //     const SizedBox(width: 4),
+          //     Text(
+          //       value,
+          //       style: const TextStyle(
+          //         fontSize: 17,
+          //         color: Colors.white,
+          //         fontFamily: 'monospace',
+          //       ),
+          //     ),
+          //   ],
+          // ),
         ],
       ),
     );
