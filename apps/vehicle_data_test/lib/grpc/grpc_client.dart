@@ -10,9 +10,9 @@ class GrpcClient {
     this.metadata = const <String, String>{},
   });
 
-  final String host;
-  final int port;
-  final String path;
+  String host;
+  int port;
+  String path;
   final Map<String, String> metadata;
 
   ClientChannel? _channel;
@@ -38,6 +38,45 @@ class GrpcClient {
     _stub = VISSClient(_channel!);
     print('[CLOUD] Connected to $host:$port');
     await subscribe();
+  }
+
+  Future<void> connectTo({
+    required String host,
+    required int port,
+    String? path,
+  }) async {
+    // 기존 구독 해제
+    if (isSubscribed) {
+      await unsubscribe();
+    }
+    // 기존 채널 정리
+    if (_channel != null) {
+      await _channel!.shutdown();
+      _channel = null;
+      _stub = null;
+    }
+
+    this.host = host;
+    this.port = port;
+    if (path != null) {
+      this.path = path;
+    }
+
+    await connect();
+  }
+
+  Future<void> changePath(String newPath) async {
+    path = newPath;
+    if (_stub == null) {
+      // 아직 연결 안 됐으면, 그냥 path만 기억해두고 끝
+      print('[CLOUD] Path set to $path (not connected yet)');
+      return;
+    }
+    // 이미 subscribe 되어 있으면 다시 구독
+    if (isSubscribed) {
+      await unsubscribe(requestId: 'cloud-unsub-repath');
+    }
+    await subscribe(requestId: 'cloud-sub-repath');
   }
 
   Future<void> disconnect() async {

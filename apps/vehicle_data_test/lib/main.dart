@@ -9,7 +9,7 @@ import 'package:vehicle_data_test/services/csv_playback.dart';
 
 final grpcClient = GrpcClient(
   host: '127.0.0.1',
-  port: 50052,
+  port: 50052, //default 5443
   path: '*',
 );
 
@@ -20,7 +20,7 @@ void main() async {
   try {
     await GrpcServer.instance.start(port: 50052, address: '0.0.0.0');
     debugPrint('[main] start() returned');
-    await grpcClient.connect();
+    // await grpcClient.connect();
   } catch (e) {
     // ignore: avoid_print
     print('Failed to start gRPC server: $e');
@@ -208,6 +208,20 @@ class _VehicleHomePageState extends State<VehicleHomePage> with SingleTickerProv
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                 ),
               ),
+              // ElevatedButton.icon(
+              //   onPressed: () async {
+              //     await GrpcServer.instance.stop();
+              //   },
+              //   icon: Icon(Icons.stop, color: Colors.white),
+              //   label: Text('서버 종료', style:const TextStyle(color:Colors.white)),
+              //   style: ElevatedButton.styleFrom(
+              //     backgroundColor: const Color.fromARGB(255, 107, 107, 107),
+              //     shape: RoundedRectangleBorder(
+              //       borderRadius: BorderRadius.circular(10),
+              //     ),
+              //     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              //   ),
+              // ),
             ],
           ),
         ],
