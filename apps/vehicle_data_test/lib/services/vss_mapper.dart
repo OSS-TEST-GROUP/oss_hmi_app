@@ -31,8 +31,8 @@ class VssMapper {
     'Vehicle.CurrentLocation.Longitude',
     'Vehicle.CurrentLocation.Altitude',
     'Vehicle.CurrentLocation.Heading',
-    'Vehicle.Body.Lights.DirectionIndicator.Left.IsSignalling',
-    'Vehicle.Body.Lights.DirectionIndicator.Right.IsSignalling',
+    'Vehicle.Body.Lights.DirectionIndicator.Left.IsSignaling',
+    'Vehicle.Body.Lights.DirectionIndicator.Right.IsSignaling',
     'Vehicle.Body.Lights.Backup.IsOn',
     'Vehicle.Body.Windshield.Front.Wiping.System.IsWiping',
     'Vehicle.Powertrain.Transmission.TravelledDistance',
@@ -42,8 +42,7 @@ class VssMapper {
     'Vehicle.Exterior.AirTemperature',
   ];
 
-  static String _canon(String s) =>
-      s.trim().replaceAll(RegExp(r'\s+'), ' ');
+  static String _canon(String s) => s.trim().replaceAll(RegExp(r'\s+'), ' ');
 
   // ===== 단위 변환 =====
   num? _toNum(dynamic v) {
@@ -138,41 +137,50 @@ class VssMapper {
 
   // 헤더 → (vss path, 변환기)
   late final Map<String, (String path, Transform? tx)> _map = {
-    _canon('Vehicle speed (MPH)'):
-        ('Vehicle.Speed', useSiUnits ? _milesToKm : null),
-    _canon('Engine RPM (RPM)'):
-        ('Vehicle.Powertrain.CombustionEngine.Speed', null),
-    _canon('Accelerator pedal position D (%)'):
-        ('Vehicle.Chassis.Accelerator.PedalPosition', null),
-    _canon('Fuel level input (%)'):
-        ('Vehicle.Powertrain.FuelSystem.RelativeLevel', null),
-    _canon('Trip Distance (miles)'):
-        ('Vehicle.Powertrain.Transmission.TravelledDistance',
-            useSiUnits ? _milesToKm : null),
+    _canon('Vehicle speed (MPH)'): (
+      'Vehicle.Speed',
+      useSiUnits ? _milesToKm : null
+    ),
+    _canon('Engine RPM (RPM)'): (
+      'Vehicle.Powertrain.CombustionEngine.Speed',
+      null
+    ),
+    _canon('Accelerator pedal position D (%)'): (
+      'Vehicle.Chassis.Accelerator.PedalPosition',
+      null
+    ),
+    _canon('Fuel level input (%)'): (
+      'Vehicle.Powertrain.FuelSystem.RelativeLevel',
+      null
+    ),
+    _canon('Trip Distance (miles)'): (
+      'Vehicle.Powertrain.Transmission.TravelledDistance',
+      useSiUnits ? _milesToKm : null
+    ),
     // _canon('Time since engine start (sec)'):
     //     ('Vehicle.StartTime', null),
-    _canon('Latitude (deg)'):
-        ('Vehicle.CurrentLocation.Latitude', null),
-    _canon('Longitude (deg)'):
-        ('Vehicle.CurrentLocation.Longitude', null),
-    _canon('Accel X (ft/s²)'):
-        ('Vehicle.Acceleration.Longitudinal',
-            useSiUnits ? _ftps2ToMs2 : null),
-    _canon('Accel Y (ft/s²)'):
-        ('Vehicle.Acceleration.Lateral',
-            useSiUnits ? _ftps2ToMs2 : null),
-    _canon('Accel Z (ft/s²)'):
-        ('Vehicle.Acceleration.Vertical',
-            useSiUnits ? _ftps2ToMs2 : null),
-    _canon('Yaw (deg)'):
-        ('Vehicle.Attitude.Yaw', null),
-    _canon('Roll (deg)'):
-        ('Vehicle.Attitude.Roll', null),
-    _canon('Pitch (deg)'):
-        ('Vehicle.Attitude.Pitch', null),
-    _canon('Ambient air temperature (°F)'):
-        ('Vehicle.Exterior.AirTemperature',
-            useSiUnits ? _fToC : null),
+    _canon('Latitude (deg)'): ('Vehicle.CurrentLocation.Latitude', null),
+    _canon('Longitude (deg)'): ('Vehicle.CurrentLocation.Longitude', null),
+    _canon('Accel X (ft/s²)'): (
+      'Vehicle.Acceleration.Longitudinal',
+      useSiUnits ? _ftps2ToMs2 : null
+    ),
+    _canon('Accel Y (ft/s²)'): (
+      'Vehicle.Acceleration.Lateral',
+      useSiUnits ? _ftps2ToMs2 : null
+    ),
+    _canon('Accel Z (ft/s²)'): (
+      'Vehicle.Acceleration.Vertical',
+      useSiUnits ? _ftps2ToMs2 : null
+    ),
+    _canon('Yaw (deg)'): ('Vehicle.Attitude.Yaw', null),
+    _canon('Roll (deg)'): ('Vehicle.Attitude.Roll', null),
+    _canon('Pitch (deg)'): ('Vehicle.Attitude.Pitch', null),
+    _canon('Ambient air temperature (°F)'): (
+      'Vehicle.Exterior.AirTemperature',
+      useSiUnits ? _fToC : null
+    ),
+    _canon('Altitude (ft)'): ('Vehicle.CurrentLocation.Altitude', null),
   };
 
   /// CSV 한 줄 -> 우리가 보내는 완성 VSS 맵
@@ -182,7 +190,6 @@ class VssMapper {
     // List<String> headers,
     // List<dynamic> row,
   ) {
-
     final headers = table.headers;
     final row = table.rows[rowIndex];
 
@@ -203,19 +210,18 @@ class VssMapper {
       final vssPath = entry.$1;
       final transformer = entry.$2;
 
-      final value =
-          transformer == null ? raw : transformer(raw);
+      final value = transformer == null ? raw : transformer(raw);
 
       // 숫자 시도
-      final num? asNum =
-          value is num ? value : num.tryParse(value.toString());
+      final num? asNum = value is num ? value : num.tryParse(value.toString());
       out[vssPath] = asNum ?? value.toString();
     }
 
-    String timeStamp = DateTime.now().toUtc().toIso8601String().replaceFirstMapped(
-      RegExp(r'\.(\d+)(Z|$)'),
-      (m) => '.${m[1]!.substring(0, 3)}Z',
-    );
+    String timeStamp =
+        DateTime.now().toUtc().toIso8601String().replaceFirstMapped(
+              RegExp(r'\.(\d+)(Z|$)'),
+              (m) => '.${m[1]!.substring(0, 3)}Z',
+            );
 
     // 2) 메타/고정 필드 주입
     out['Timestamp'] = timeStamp;
@@ -235,6 +241,21 @@ class VssMapper {
         //out[key] = '-';
       }
     }
+
+    const dummyDefaults = {
+      'Vehicle.Attitude.Yaw': 0.0,
+      'Vehicle.Body.Lights.DirectionIndicator.Left.IsSignaling': false,
+      'Vehicle.Body.Lights.DirectionIndicator.Right.IsSignaling': false,
+      'Vehicle.Body.Lights.Backup.IsOn': false,
+      'Vehicle.Body.Windshield.Front.Wiping.System.IsWiping': false,
+    };
+
+// dummyDefaults에 있는 키만 덮어쓰기
+    dummyDefaults.forEach((key, value) {
+      if (out[key] == null) {
+        out[key] = value;
+      }
+    });
 
     return out;
   }

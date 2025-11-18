@@ -36,8 +36,8 @@ class _CanDataPageState extends State<CanDataPage>
     'Vehicle.CurrentLocation.Longitude': 'Longitude',
     'Vehicle.CurrentLocation.Altitude': 'Altitude',
     'Vehicle.CurrentLocation.Heading': 'Heading',
-    'Vehicle.Body.Lights.DirectionIndicator.Left.IsSignalling': 'Left Indicator',
-    'Vehicle.Body.Lights.DirectionIndicator.Right.IsSignalling': 'Right Indicator',
+    'Vehicle.Body.Lights.DirectionIndicator.Left.IsSignaling': 'Left Indicator',
+    'Vehicle.Body.Lights.DirectionIndicator.Right.IsSignaling': 'Right Indicator',
     'Vehicle.Body.Lights.Backup.IsOn': 'Backup Lights',
     'Vehicle.Body.Windshield.Front.Wiping.System.IsWiping': 'Wiper',
     'Vehicle.Powertrain.Transmission.TravelledDistance': 'Travelled Distance',
@@ -297,10 +297,10 @@ class _CanDataPageState extends State<CanDataPage>
           const Text('조명 및 신호',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           const Divider(thickness: 0.5, color: Colors.grey),
-          _signalRow('LeftIsSignalling', _flDoor, (v) {
+          _signalRow('LeftIsSignaling', _flDoor, (v) {
             setState(() => _flDoor = v);
           }),
-          _signalRow('RightIsSignalling', _frDoor, (v) {
+          _signalRow('RightIsSignaling', _frDoor, (v) {
             setState(() => _frDoor = v);
           }),
           _signalRow('BackupIsOn', _rlDoor, (v) {

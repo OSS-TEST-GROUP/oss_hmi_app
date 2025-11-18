@@ -23,7 +23,7 @@ class GrpcClient {
   String? _subscriptionId;
 
   bool get isConnected => _channel != null;
-  bool get isSubscribed => _subscriptionId != null;
+  // bool get isSubscribed => _subscriptionId != null;
 
   final _events = StreamController<DataPackages>.broadcast();
   Stream<DataPackages> get events => _events.stream;
@@ -37,7 +37,7 @@ class GrpcClient {
     );
     _stub = VISSClient(_channel!);
     print('[CLOUD] Connected to $host:$port');
-    await subscribe();
+    // await subscribe();
   }
 
   Future<void> connectTo({
@@ -46,10 +46,24 @@ class GrpcClient {
     String? path,
   }) async {
     // 기존 구독 해제
-    if (isSubscribed) {
-      await unsubscribe();
-    }
-    // 기존 채널 정리
+    // if (isSubscribed) {
+    //   await unsubscribe();
+    // }
+    // // 기존 채널 정리
+    // if (_channel != null) {
+    //   await _channel!.shutdown();
+    //   _channel = null;
+    //   _stub = null;
+    // }
+
+    // this.host = host;
+    // this.port = port;
+    // if (path != null) {
+    //   this.path = path;
+    // }
+
+    // await connect();
+
     if (_channel != null) {
       await _channel!.shutdown();
       _channel = null;
@@ -63,24 +77,36 @@ class GrpcClient {
     }
 
     await connect();
+
+    // 연결 직후 현재 path로 한 번 Get 호출
+    await fetchLatest(requestId: 'cloud-get-connect');
   }
 
   Future<void> changePath(String newPath) async {
+    // path = newPath;
+    // if (_stub == null) {
+    //   // 아직 연결 안 됐으면, 그냥 path만 기억해두고 끝
+    //   print('[CLOUD] Path set to $path (not connected yet)');
+    //   return;
+    // }
+    // // 이미 subscribe 되어 있으면 다시 구독
+    // if (isSubscribed) {
+    //   await unsubscribe(requestId: 'cloud-unsub-repath');
+    // }
+    // await subscribe(requestId: 'cloud-sub-repath');
+
     path = newPath;
     if (_stub == null) {
-      // 아직 연결 안 됐으면, 그냥 path만 기억해두고 끝
       print('[CLOUD] Path set to $path (not connected yet)');
       return;
     }
-    // 이미 subscribe 되어 있으면 다시 구독
-    if (isSubscribed) {
-      await unsubscribe(requestId: 'cloud-unsub-repath');
-    }
-    await subscribe(requestId: 'cloud-sub-repath');
+
+    print('[CLOUD] Path changed to $path, fetching once via Get...');
+    await fetchLatest(requestId: 'cloud-get-repath');
   }
 
   Future<void> disconnect() async {
-    await unsubscribe();
+    // await unsubscribe();
     await _channel?.shutdown();
     _channel = null;
     _stub = null;
@@ -93,6 +119,36 @@ class GrpcClient {
     //   await ch.shutdown();
     //   print('[CLOUD] Disconnected');
     // }
+  }
+
+  Future<void> fetchLatest({String requestId = 'cloud-get-latest'}) async {
+    if (_stub == null) {
+      throw StateError('Not connected. Call connect() first.');
+    }
+
+    final req = GetRequestMessage()
+      ..path = path
+      ..requestId = requestId;
+
+    final ctx = CallOptions(
+      metadata: metadata.isNotEmpty ? metadata : null,
+    );
+
+    print('[CLOUD][GET] request path=$path reqId=$requestId');
+    final resp = await _stub!.getRequest(req, options: ctx);
+
+    print('[CLOUD][GET] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
+
+    if (resp.hasSuccessResponse() && resp.successResponse.hasDataPack()) {
+      final dp = resp.successResponse.dataPack;
+      // 👉 UI에서 StreamBuilder로 받을 수 있도록 push
+      _events.add(dp);
+    } else if (resp.hasErrorResponse()) {
+      final err = resp.errorResponse;
+      print('[CLOUD][GET][ERROR] ${err.number} ${err.reason} ${err.description}');
+    } else {
+      print('[CLOUD][GET] No DataPack / No ErrorResponse');
+    }
   }
 
   Future<void> subscribe({String requestId = 'cloud-sub-1'}) async {
@@ -178,7 +234,7 @@ class GrpcClient {
     _subscriptionId = null;
   }
 
-  Future<void> getOnce(String vssPath, {String requestId = 'cloyd-get-1'}) async {
+  Future<void> getOnce(String vssPath, {String requestId = 'cloud-get-1'}) async {
     if (_stub == null) throw StateError('Not connected.');
     final req = GetRequestMessage()
       ..path = vssPath
@@ -187,6 +243,7 @@ class GrpcClient {
     print('[CLOUD][GET] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
     if (resp.hasSuccessResponse() && resp.successResponse.hasDataPack()) {
       final dp = resp.successResponse.dataPack;
+      _events.add(dp);
       for (final pkg in dp.data) {
         for (final p in pkg.dp) {
           print(' - ${pkg.path} = ${p.value} @ ${p.ts}');

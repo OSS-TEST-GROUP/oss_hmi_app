@@ -18,7 +18,8 @@ class VissService extends VISSServiceBase {
       ServiceCall call, SubscribeRequestMessage request) async* {
     final subId = 'sim-${DateTime.now().millisecondsSinceEpoch}';
     final md = call.clientMetadata ?? const <String, String>{};
-    final clientLabel = md['x-client-id'] ?? md['user-agent'] ?? md[':authority'] ?? 'unknown';
+    final clientLabel =
+        md['x-client-id'] ?? md['user-agent'] ?? md[':authority'] ?? 'unknown';
 
     final pattern = request.path.isEmpty ? '*' : request.path;
     final re = _globToRegexCI(pattern);
@@ -29,7 +30,8 @@ class VissService extends VISSServiceBase {
 
     debugPrint('!!!!---- request 옴!! requestId: ${request.requestId}');
 
-    GrpcServer.instance.subs.add(subId, client: clientLabel, pathPattern: pattern);
+    GrpcServer.instance.subs
+        .add(subId, client: clientLabel, pathPattern: pattern);
 
     try {
       // ACK
@@ -85,7 +87,7 @@ class VissService extends VISSServiceBase {
         if (filtered.data.isEmpty) continue;
 
         debugPrint('[TX] subId=$subId client=$clientLabel path=$pattern '
-                   'items=${filtered.data.length} ts=${_now()}');
+            'items=${filtered.data.length} ts=${_now()}');
 
         sent++;
         yield SubscribeStreamMessage()
@@ -108,7 +110,21 @@ class VissService extends VISSServiceBase {
   @override
   Future<GetResponseMessage> getRequest(
       ServiceCall call, GetRequestMessage request) async {
-    debugPrint('!!!!---- getrequest 옴!!\n');
+    // debugPrint('!!!!---- getrequest 옴!!\n');
+    // final resp = GetResponseMessage()
+    //   ..status = ResponseStatus.SUCCESS
+    //   ..ts = _now();
+
+    // if (request.hasRequestId()) resp.requestId = request.requestId;
+    // if (request.hasAuthorization()) resp.authorization = request.authorization;
+
+    // resp.successResponse = (GetResponseMessage_SuccessResponseMessage()
+    //   ..dataPack = DataPackages()); // 간단히 빈 DataPackages 반환
+
+    // return resp;
+    debugPrint(
+        '!!!!---- getrequest 옴!! path=${request.path} reqId=${request.requestId}');
+
     final resp = GetResponseMessage()
       ..status = ResponseStatus.SUCCESS
       ..ts = _now();
@@ -116,8 +132,37 @@ class VissService extends VISSServiceBase {
     if (request.hasRequestId()) resp.requestId = request.requestId;
     if (request.hasAuthorization()) resp.authorization = request.authorization;
 
-    resp.successResponse = (GetResponseMessage_SuccessResponseMessage()
-      ..dataPack = DataPackages()); // 간단히 빈 DataPackages 반환
+    // 1) 패턴 → 정규식
+    final pattern = request.path.isEmpty ? '*' : request.path;
+    final re = _globToRegexCI(pattern);
+
+    // 2) 시뮬레이터에서 마지막 스냅샷 하나 가져오기
+    final last = SimulatorBus.instance.lastPack;
+
+    final filtered = DataPackages();
+
+    if (last != null) {
+      for (final pkg in last.data) {
+        if (!re.hasMatch(pkg.path)) continue;
+
+        final copy = DataPackages_DataPackage()..path = pkg.path;
+        for (final p in pkg.dp) {
+          copy.dp.add(
+            DataPackages_DataPackage_DataPoint()
+              ..value = p.value
+              ..ts = p.ts,
+          );
+        }
+        if (copy.dp.isNotEmpty) {
+          filtered.data.add(copy);
+        }
+      }
+    }
+
+    debugPrint('[GET] pattern=$pattern matched=${filtered.data.length} pkgs');
+
+    resp.successResponse =
+        (GetResponseMessage_SuccessResponseMessage()..dataPack = filtered);
 
     return resp;
   }

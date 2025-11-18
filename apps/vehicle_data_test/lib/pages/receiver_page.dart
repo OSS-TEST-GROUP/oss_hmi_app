@@ -24,11 +24,29 @@ class _ReceiverPageState extends State<ReceiverPage>
       TextEditingController(text: '50052'); // 기본 포트값
 
   final List<String> _paths = const [
-    '*',
-    'Vehicle.*',
     'Vehicle.Speed',
     'Vehicle.Powertrain.CombustionEngine.Speed',
+    //'Vehicle.Chassis.SteeringWheel.Angle',
+    // 'Vehicle.Chassis.Brake.PedalPosition',
+    'Vehicle.Acceleration.Longitudinal',
+    'Vehicle.Acceleration.Lateral',
+    'Vehicle.Acceleration.Vertical',
+    'Vehicle.Attitude.Yaw',
+    'Vehicle.Attitude.Roll',
+    'Vehicle.Attitude.Pitch',
+    'Vehicle.CurrentLocation.Latitude',
+    'Vehicle.CurrentLocation.Longitude',
+    'Vehicle.CurrentLocation.Altitude',
+    // 'Vehicle.CurrentLocation.Heading',
+    'Vehicle.Body.Lights.DirectionIndicator.Left.IsSignaling',
+    'Vehicle.Body.Lights.DirectionIndicator.Right.IsSignaling',
+    'Vehicle.Body.Lights.Backup.IsOn',
+    'Vehicle.Body.Windshield.Front.Wiping.System.IsWiping',
+    'Vehicle.Powertrain.Transmission.TravelledDistance',
+    'Vehicle.StartTime',
     'Vehicle.Chassis.Accelerator.PedalPosition',
+    'Vehicle.Powertrain.FuelSystem.RelativeLevel',
+    'Vehicle.Exterior.AirTemperature',
   ];
 
   String? _selectedPath;
@@ -189,7 +207,7 @@ class _ReceiverPageState extends State<ReceiverPage>
                           )
                         : const Icon(Icons.link, color: Colors.white),
                     label: Text(
-                      _isConnected ? '재연결' : '연결',
+                      _isConnected ? 'GET AGAIN' : 'GET',
                       style: const TextStyle(color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(

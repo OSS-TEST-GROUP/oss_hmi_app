@@ -8,7 +8,10 @@ class SimulatorBus {
   final _controller = StreamController<DataPackages>.broadcast();
   Stream<DataPackages> get stream => _controller.stream;
 
+  DataPackages? lastPack;
+
   void pushData(Map<String, dynamic> data) {
+    lastPack = _mapToDataPackages(data);
     _controller.add(_mapToDataPackages(data));
   }
 
