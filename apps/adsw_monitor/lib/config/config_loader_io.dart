@@ -2,12 +2,20 @@ import 'dart:convert';
 import 'dart:io';
 import 'app_config.dart';
 
-Future<AppConfig> loadConfig(List<String> args) async {
-  final file = await _findConfigFile(args);
+typedef ConfigFileFinder = Future<File?> Function(List<String> args);
+
+Future<AppConfig> loadConfig(
+  List<String> args, {
+  ConfigFileFinder? finder,
+}) async {
+  // 테스트에서는 finder를 주입, 실제 앱에서는 _findConfigFile 사용
+  final file = await (finder ?? _findConfigFile)(args);
+
   if (file == null) {
     stderr.writeln('[config] no config file found; using defaults');
     return AppConfig.defaults();
   }
+
   try {
     final txt = await file.readAsString();
     final map = json.decode(txt) as Map<String, dynamic>;

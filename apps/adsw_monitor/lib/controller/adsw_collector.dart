@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:roslibdart/roslibdart.dart';
 import 'package:get/get.dart';
 
@@ -12,6 +14,7 @@ class AdswCollector extends GetxController {
   AdswCollector({
     required this.topicFactory,
   }) {
+    stdout.writeln('[Adsw collector] created.');
     handlerList = [
       handleVehicleStatus,
       handleCurrentVelocity,
@@ -46,6 +49,7 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleVehicleStatus(Map<String, dynamic> msg) async {
+    stdout.writeln('type: autoware_adapi_v1_msgs/VehicleStatus / topic: /api/vehicle/status \n msg: $msg');
     final gear = (msg['gear']?['status'] as num?)?.toInt();
     final ti = (msg['turn_indicators']?['status'] as num?)?.toInt();
     final hz = (msg['hazard_lights']?['status'] as num?)?.toInt();
@@ -65,6 +69,7 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleCurrentVelocity(Map<String, dynamic> msg) async {
+    stdout.writeln('type: autoware_vehicle_msgs/VelocityReport / topic: /vehicle/status/velocity_status \n msg: $msg');
     final vMs = msg['longitudinal_velocity'] as num?;
     final vKmh = vMs != null ? (vMs * 3.6).toStringAsFixed(2) : '-';
     topicData['Current velocity'] = vKmh;
@@ -93,6 +98,7 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleObjectRecognition(Map<String, dynamic> msg) async {
+    stdout.writeln('type: autoware_adapi_v1_msgs/DynamicObjectArray / topic: /api/perception/objects \n msg: $msg');
     //topicData['Object recognition'] = msg['objects'];
     final List objs = (msg['objects'] as List?) ?? const [];
 
@@ -192,6 +198,7 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleLocalizationData(Map<String, dynamic> msg) async {
+    stdout.writeln('type: / topic:  \n msg: ${msg}');
     // topicData['Localization pose x'] = msg['pose']['pose']['position']['x'];
     // topicData['Localization pose y'] = msg['pose']['pose']['position']['y'];
     // topicData['Localization pose z'] = msg['pose']['pose']['position']['z'];

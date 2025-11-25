@@ -104,25 +104,25 @@ class DataViewWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusIndicator(StatusType status) {
-    Color color;
-    IconData icon;
+  // Widget _buildStatusIndicator(StatusType status) {
+  //   Color color;
+  //   IconData icon;
 
-    switch (status) {
-      case StatusType.good:
-        color = const Color(0xFF10B981);
-        icon = Icons.check_circle;
-        break;
-      case StatusType.warning:
-        color = const Color(0xFFF59E0B);
-        icon = Icons.warning;
-        break;
-      case StatusType.error:
-        color = const Color(0xFFEF4444);
-        icon = Icons.error;
-        break;
-    }
+  //   switch (status) {
+  //     case StatusType.good:
+  //       color = const Color(0xFF10B981);
+  //       icon = Icons.check_circle;
+  //       break;
+  //     case StatusType.warning:
+  //       color = const Color(0xFFF59E0B);
+  //       icon = Icons.warning;
+  //       break;
+  //     case StatusType.error:
+  //       color = const Color(0xFFEF4444);
+  //       icon = Icons.error;
+  //       break;
+  //   }
 
-    return Icon(icon, color: color, size: 12);
-  }
+  //   return Icon(icon, color: color, size: 12);
+  // }
 }

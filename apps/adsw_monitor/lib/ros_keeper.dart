@@ -2,10 +2,28 @@ import 'dart:async';
 import 'package:roslibdart/roslibdart.dart';
 import '../config/app_config.dart';
 
+typedef RosFactory = Ros Function(String url);
+typedef TopicFactory = Topic Function(Ros ros, String name, String type);
+typedef TimerFactory = Timer Function(
+    Duration duration, void Function(Timer) onTick);
+
 class RosKeeper {
-  RosKeeper(this.cfg);
+  RosKeeper(
+    this.cfg, {
+    RosFactory? rosFactory,
+    TopicFactory? topicFactory,
+    TimerFactory? timerFactory,
+  })  : _rosFactory = rosFactory ?? ((url) => Ros(url: url)),
+        _topicFactory = topicFactory ??
+            ((ros, name, type) => Topic(ros: ros, name: name, type: type)),
+        _timerFactory = timerFactory ??
+            ((duration, onTick) => Timer.periodic(duration, onTick));
 
   final AppConfig cfg;
+  final RosFactory _rosFactory;
+  final TopicFactory _topicFactory;
+  final TimerFactory _timerFactory;
+
   Ros? _ros;
   Topic? _statusTopic;
   Timer? _timer;
@@ -13,21 +31,24 @@ class RosKeeper {
   Ros get ros => _ros ?? (throw StateError('ROS not initialized'));
 
   Future<void> start() async {
-    await stop(); // 안전 정리
+    // 안전 정리
+    await stop();
 
-    _ros = Ros(url: cfg.rosUrl.toString());
+    _ros = _rosFactory(cfg.rosUrl.toString());
     _ros!.connect();
 
-    _statusTopic = Topic(
-      ros: _ros!,
-      name: cfg.statusTopic,
-      type: 'std_msgs/String',
+    _statusTopic = _topicFactory(
+      _ros!,
+      cfg.statusTopic,
+      'std_msgs/String',
     );
 
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _timer = _timerFactory(const Duration(seconds: 1), (_) {
       try {
         _statusTopic?.publish({'data': 'running'});
-      } catch (_) {}
+      } catch (_) {
+        // ignore
+      }
     });
   }
 
@@ -37,8 +58,12 @@ class RosKeeper {
     _statusTopic = null;
 
     try {
-      await _ros?.close();
+      final result = _ros?.close();
+      if (result is Future) {
+        await result;
+      }
     } catch (_) {}
+
     _ros = null;
   }
 }

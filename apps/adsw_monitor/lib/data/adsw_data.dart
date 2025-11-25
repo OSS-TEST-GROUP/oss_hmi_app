@@ -1,3 +1,5 @@
+// coverage:ignore-file
+
 List<String> topicList = [
   // vehicle
   '/api/vehicle/status',

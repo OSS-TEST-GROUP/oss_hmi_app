@@ -15,12 +15,37 @@ import 'package:adsw_monitor/view/web_prompt_bootstrap.dart';
 late AppConfig appConfig;
 late RosKeeper rosKeeper;
 
-Future<void> _startRosWithUri(Uri rosUrl) async {
+typedef RosKeeperFactory = RosKeeper Function(AppConfig cfg);
+
+// Future<void> _startRosWithUri(Uri rosUrl) async {
+//   // 웹에서 입력 받은 URL로 AppConfig 구성
+//   appConfig = AppConfig(rosUrl: rosUrl, statusTopic: '/app_status/adsw_monitor');
+
+//   // RosKeeper 시작
+//   rosKeeper = RosKeeper(appConfig);
+//   await rosKeeper.start();
+
+//   // GetX 주입
+//   if (!Get.isRegistered<Ros>()) {
+//     Get.put<Ros>(rosKeeper.ros, permanent: true);
+//   } else {
+//     Get.replace<Ros>(rosKeeper.ros);
+//   }
+// }
+
+Future<void> startRosWithUri(
+  Uri rosUrl, {
+  RosKeeperFactory? keeperFactory,
+}) async {
   // 웹에서 입력 받은 URL로 AppConfig 구성
-  appConfig = AppConfig(rosUrl: rosUrl, statusTopic: '/app_status/adsw_monitor');
+  appConfig =
+      AppConfig(rosUrl: rosUrl, statusTopic: '/app_status/adsw_monitor');
+
+  // RosKeeper 생성 (테스트에서는 keeperFactory로 주입)
+  final factory = keeperFactory ?? ((cfg) => RosKeeper(cfg));
+  rosKeeper = factory(appConfig);
 
   // RosKeeper 시작
-  rosKeeper = RosKeeper(appConfig);
   await rosKeeper.start();
 
   // GetX 주입
@@ -40,7 +65,7 @@ Future<void> main(List<String> args) async {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: WebPromptBootstrap(
-        onConfigured: _startRosWithUri,
+        onConfigured: startRosWithUri, //_startRosWithUri,
         child: const AdswMonitorApp(), // 기존 앱 그대로
       ),
     ));
@@ -77,8 +102,16 @@ class AdswMonitorApp extends StatelessWidget {
 }
 
 class AdswMonitorHomePage extends StatefulWidget {
-  const AdswMonitorHomePage({super.key, required this.title,});
+  const AdswMonitorHomePage({
+    super.key, 
+    required this.title,
+    this.adswPageBuilder,
+    this.mwPageBuilder,
+  });
   final String title;
+
+  final Widget Function()? adswPageBuilder;
+  final Widget Function()? mwPageBuilder;
 
   @override
   State<AdswMonitorHomePage> createState() => _AdswMonitorHomePageState();
@@ -207,8 +240,8 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  AdswViewPage(),
-                  MwViewPage(),
+                  widget.adswPageBuilder?.call() ?? const AdswViewPage(),
+                  widget.mwPageBuilder?.call() ?? const MwViewPage(),
                 ],
               ),
             ),

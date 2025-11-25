@@ -17,7 +17,6 @@ class FakeAdswViewPage extends StatefulWidget {
 }
 
 class _FakeAdswViewPageState extends State<FakeAdswViewPage> {
-
   final Map<String, bool> _expandedSections = {
     'vehicle': false,
     'control': false,
@@ -34,26 +33,29 @@ class _FakeAdswViewPageState extends State<FakeAdswViewPage> {
     return Row(
       children: [
         Obx(() {
-          if(widget.collector.isLaneDeparture.value == 'true'){
-            Future.microtask(() => showDialog(
-              context: context,
-              builder: (BuildContext context) {
-                return AlertDialog(
-                  title: const Text('Lane departure'),
-                  content: Text(widget.collector.topicData['Lane departure']),
-                  actions: <Widget>[
-                    TextButton(
-                      child: const Text('close'),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    TextButton(
-                      child: const Text('ok'),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ]
-                );
-              }
-            ));
+          if (widget.collector.isLaneDeparture.value == 'true') {
+            Future.microtask(
+              () => showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return AlertDialog(
+                    title: const Text('Lane departure'),
+                    content:
+                        Text(widget.collector.topicData['Lane departure']),
+                    actions: <Widget>[
+                      TextButton(
+                        child: const Text('close'),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                      TextButton(
+                        child: const Text('ok'),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
             return const SizedBox();
           } else {
             return const SizedBox();
@@ -71,8 +73,11 @@ class _FakeAdswViewPageState extends State<FakeAdswViewPage> {
                   isExpanded: _expandedSections['vehicle'] ?? false,
                   onTap: () => _toggleSection('vehicle'),
                   children: [
-                    KeyValueItem(label: 'Gear', value: widget.collector.topicData['Gear'].toString()),
-                  ]
+                    KeyValueItem(
+                      label: 'Gear',
+                      value: widget.collector.topicData['Gear'].toString(),
+                    ),
+                  ],
                 );
               }),
             ],
@@ -90,8 +95,12 @@ class _FakeAdswViewPageState extends State<FakeAdswViewPage> {
                   isExpanded: _expandedSections['control'] ?? false,
                   onTap: () => _toggleSection('control'),
                   children: [
-                    KeyValueItem(label: 'Lane Departure', value: widget.collector.topicData['Lane departure'].toString()),
-                  ]
+                    KeyValueItem(
+                      label: 'Lane Departure',
+                      value: widget.collector.topicData['Lane departure']
+                          .toString(),
+                    ),
+                  ],
                 );
               }),
             ],
@@ -101,6 +110,7 @@ class _FakeAdswViewPageState extends State<FakeAdswViewPage> {
     );
   }
 }
+
 class MockRos extends Mock implements Ros {}
 
 class MockTopic extends Mock implements Topic {}
@@ -115,6 +125,7 @@ void main() {
     mockTopic = MockTopic();
 
     // Get에 mockRos 등록
+    Get.reset();
     Get.put<Ros>(mockRos);
 
     // Topic.subscribe의 기본 동작 정의
@@ -126,61 +137,68 @@ void main() {
     );
   });
 
-  testWidgets('FakeAdswViewPage displays updated values and toggles sections', (WidgetTester tester) async {
-    
-    collector.topicData['Gear'] = 'D';
-    collector.isLaneDeparture.value = 'false';
-
-    await tester.pumpWidget(
-      GetMaterialApp(
-        home: Scaffold(
-          body: FakeAdswViewPage(collector: collector),
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('Vehicle'), findsOneWidget);
-    expect(find.text('Control'), findsOneWidget);
-
-        // Vehicle 섹션 확장
-    await tester.tap(find.text('Vehicle'));
-    await tester.pump();
-
-    // Control 섹션 확장
-    await tester.tap(find.text('Control'));
-    await tester.pump();
-
-    expect(find.text('Gear'), findsOneWidget);
-    expect(find.text('D'), findsOneWidget);
-    expect(find.text('Lane Departure'), findsOneWidget);
-
-    // topicData 업데이트 (Obx 반영 확인)
-    collector.topicData['Gear'] = 'P';
-    collector.isLaneDeparture.value = 'true';
-    collector.topicData['Lane departure'] = 'Out of lane!';
-    await tester.pump(); // Obx 리렌더
-    await tester.pump(const Duration(milliseconds: 100)); // dialog 예약된 microtask 실행
-    await tester.pumpAndSettle();   
-
-    // 데이터 반영 확인
-    expect(find.text('P'), findsNWidgets(1));
-    expect(find.text('Out of lane!'), findsNWidgets(2));
-
-    // 다이얼로그 존재 확인
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.text('Lane departure'), findsOneWidget);
-    expect(find.text('Out of lane!'), findsNWidgets(2));
-
-    // close 버튼 눌러 다이얼로그 닫기
-    await tester.tap(find.text('close'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AlertDialog), findsNothing);
-
-    // 내부 값이 계속 유지되고 있는지 확인
-    expect(find.text('P'), findsNWidgets(1));
-    expect(find.text('Out of lane!'), findsOneWidget);
+  tearDown(() {
+    Get.reset();
   });
+
+  testWidgets(
+    'FakeAdswViewPage reflects topicData and shows lane departure dialog',
+    (WidgetTester tester) async {
+      // given: 초기 상태 (차선 이탈 X, 기어 D)
+      collector.topicData['Gear'] = 'D';
+      collector.isLaneDeparture.value = 'false';
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          home: Scaffold(
+            body: FakeAdswViewPage(collector: collector),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // 섹션 제목이 보이는지 확인
+      expect(find.text('Vehicle'), findsOneWidget);
+      expect(find.text('Control'), findsOneWidget);
+
+      // Vehicle 섹션 확장
+      await tester.tap(find.text('Vehicle'));
+      await tester.pump();
+
+      // Control 섹션 확장
+      await tester.tap(find.text('Control'));
+      await tester.pump();
+
+      // Gear / Lane Departure 라벨 및 초기 값 확인
+      expect(find.text('Gear'), findsOneWidget);
+      expect(find.text('D'), findsOneWidget);
+      expect(find.text('Lane Departure'), findsOneWidget);
+
+      // when: topicData / isLaneDeparture 업데이트
+      collector.topicData['Gear'] = 'P';
+      collector.topicData['Lane departure'] = 'Out of lane!';
+      collector.isLaneDeparture.value = 'true';
+
+      // Obx 리렌더 + dialog microtask 처리
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      // then: UI 값 업데이트 + 다이얼로그 표시 확인
+      expect(find.text('P'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Lane departure'), findsOneWidget);
+      expect(find.text('Out of lane!'), findsNWidgets(2)); // 본문 + 컨트롤 섹션
+
+      // when: close 버튼 눌러 다이얼로그 닫기
+      await tester.tap(find.text('close'));
+      await tester.pumpAndSettle();
+
+      // then: 다이얼로그는 사라지지만 값은 유지
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('P'), findsOneWidget);
+      expect(find.text('Out of lane!'), findsOneWidget);
+    },
+  );
 }
