@@ -84,8 +84,18 @@ python3 create_aot_with_yocto_sdk.py --app-path={adsw monitor app path}
 Transfer the build artifact (adsw_monitor-release.tar.gz) to the AGL environment via **SCP**.
   
 **flutter_auto**
-
+```
+export XDG_RUNTIME_DIR=/run/user/1001
+/usr/bin/flutter-auto -b [압축파일 푼 위치]/usr/share/flutter/adsw_monitor/3.32.2/release --xdg-shell-app-id adsw_monitor
+```
 **docker**
+```
+docker pull oss_hmi_container
+docker run ~
+docker exec oss_hmi_container sh -lc '' # change the bundle file
+docker commit ~~
+docker run ~~~~
+```
 
 ### How to Use custom ROS message
 
