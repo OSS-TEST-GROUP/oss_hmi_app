@@ -69,10 +69,19 @@ flutter pub run build_runner build
 ## How to build for arm
 ### Setting cross compile environment
 1. install agl-sdk
+```
+wget http://172.16.10.216:8081/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
+```
 2. download python script
-3. build
 
+3. build
+```
+source {agl adk path}/environment-setup-aarch64-agl-linux
+cd {python script path}
+python3 create_aot_with_yocto_sdk.py --app-path={adsw monitor app path}
+```
 ### How to run in agl
+Transfer the build artifact (adsw_monitor-release.tar.gz) to the AGL environment via **SCP**.
 **flutter_auto**
 
 **docker**
