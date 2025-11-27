@@ -73,7 +73,7 @@ flutter pub run build_runner build
 wget http://172.16.10.216:8081/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
 ```
 2. download python script
-
+  
 3. build
 ```
 source {agl adk path}/environment-setup-aarch64-agl-linux
