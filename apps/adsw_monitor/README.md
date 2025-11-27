@@ -6,7 +6,7 @@ A new Flutter project for AD SW monitoring.
 <img width="500" height="819" alt="Screenshot from 2025-10-27 10-22-14" src="https://github.com/user-attachments/assets/811d299c-98fd-438c-8b47-f05131d440fb" />
 
 
-## Getting Started
+## Getting Started in x86
 
 ### Development Environment Setup
 
@@ -65,6 +65,17 @@ Before running the **adsw_collector_test** and **mw_collector_test**, you need t
 ```
 flutter pub run build_runner build
 ```
+
+## How to build for arm
+### Setting cross compile environment
+1. install agl-sdk
+2. download python script
+3. build
+
+### How to run in agl
+**flutter_auto**
+
+**docker**
 
 ### How to Use custom ROS message
 
