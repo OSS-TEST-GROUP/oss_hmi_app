@@ -56,7 +56,7 @@ The executable files for each platform are located in the following paths.
 - Linux: adsw_monitor/build/linux/x64/{build_mode}/bundle/
 
 ### How to Run static analysis
-In the root directory of the 'adsw_monitor' project, run the following command.
+In the root directory of the 'adsw_monitor' project, run the following command:
 ```
 flutter analyze
 ```
@@ -64,13 +64,23 @@ For more details, please check https://dart.dev/tools/dart-analyze
   
 ### How to Run Tests
 
-In the root directory of the 'adsw_monitor' project, run the following command.
+In the root directory of the 'adsw_monitor' project, run the following command:
 ```
 flutter test test/{test_file_name}.dart
 ```
-Before running the **adsw_collector_test** and **mw_collector_test**, you need to generate the mock files using the following command.
+Before running the **adsw_collector_test** and **mw_collector_test**, you need to generate the mock files using the following command:
 ```
 flutter pub run build_runner build
+```
+### How to create coverage report
+In the root directory of the 'adsw_monitor' project, run the following command:
+```
+flutter test --coverage
+```
+This will generate the **coverage/lcov.info** file.
+To view it as HTML, run the following command:
+```
+genhtml coverage/lcov.info -o coverage/html
 ```
 
 ## How to build for arm
