@@ -60,7 +60,7 @@ In the root directory of the 'adsw_monitor' project, run the following command:
 ```
 flutter analyze
 ```
-For more details, please check https://dart.dev/tools/dart-analyze
+For more details, please check https://dart.dev/tools/dart-analyze  
   
 ### How to Run Tests
 
