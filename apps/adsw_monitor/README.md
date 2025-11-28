@@ -83,6 +83,7 @@ To view it as HTML, run the following command:
 genhtml coverage/lcov.info -o coverage/html
 ```
 
+  
 ## How to build for arm
 ### Setting cross compile environment
 1. install agl-sdk
@@ -93,7 +94,7 @@ wget http://172.16.10.216:8081/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarc
   
 3. build
 ```
-source {agl adk path}/environment-setup-aarch64-agl-linux
+source {agl sdk path}/environment-setup-aarch64-agl-linux
 cd {python script path}
 python3 create_aot_with_yocto_sdk.py --app-path={adsw monitor app path}
 ```
@@ -105,14 +106,7 @@ Transfer the build artifact (adsw_monitor-release.tar.gz) to the AGL environment
 export XDG_RUNTIME_DIR=/run/user/1001
 /usr/bin/flutter-auto -b [압축파일 푼 위치]/usr/share/flutter/adsw_monitor/3.32.2/release --xdg-shell-app-id adsw_monitor
 ```
-**docker**
-```
-docker pull oss_hmi_container
-docker run ~
-docker exec oss_hmi_container sh -lc '' # change the bundle file
-docker commit ~~
-docker run ~~~~
-```
+
 
 ### How to Use custom ROS message
 
