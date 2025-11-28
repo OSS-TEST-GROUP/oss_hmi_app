@@ -61,7 +61,9 @@ In the root directory of the 'adsw_monitor' project, run the following command:
 flutter analyze
 ```
 For more details, please check https://dart.dev/tools/dart-analyze  
-  
+
+<br/>
+
 ### How to Run Tests
 
 In the root directory of the 'adsw_monitor' project, run the following command:
@@ -72,6 +74,7 @@ Before running the **adsw_collector_test** and **mw_collector_test**, you need t
 ```
 flutter pub run build_runner build
 ```
+<br/>
 ### How to create coverage report
 In the root directory of the 'adsw_monitor' project, run the following command:
 ```
@@ -82,8 +85,8 @@ To view it as HTML, run the following command:
 ```
 genhtml coverage/lcov.info -o coverage/html
 ```
-
-  
+<br/>
+<br/>
 ## How to build for arm
 ### Setting cross compile environment
 1. install agl-sdk
