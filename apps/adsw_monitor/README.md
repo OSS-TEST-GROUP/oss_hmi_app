@@ -54,6 +54,7 @@ flutter run --release
 The executable files for each platform are located in the following paths.
 - Android: adsw_monitor/build/app/outputs/flutter-apk/
 - Linux: adsw_monitor/build/linux/x64/{build_mode}/bundle/
+<br/>
 
 ### How to Run static analysis
 In the root directory of the 'adsw_monitor' project, run the following command:
@@ -75,18 +76,20 @@ Before running the **adsw_collector_test** and **mw_collector_test**, you need t
 flutter pub run build_runner build
 ```
 <br/>
+
 ### How to create coverage report
 In the root directory of the 'adsw_monitor' project, run the following command:
 ```
 flutter test --coverage
 ```
-This will generate the **coverage/lcov.info** file.
+This will generate the **coverage/lcov.info** file.  
 To view it as HTML, run the following command:
 ```
 genhtml coverage/lcov.info -o coverage/html
 ```
 <br/>
 <br/>
+
 ## How to build for arm
 ### Setting cross compile environment
 1. install agl-sdk
