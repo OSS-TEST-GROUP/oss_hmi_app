@@ -88,7 +88,7 @@ cd {python script path}
 python3 create_aot_with_yocto_sdk.py --app-path={adsw monitor app path}
 ```
 ### How to run in agl
-Transfer the build artifact (adsw_monitor-release.tar.gz) to the AGL environment via **SCP**.
+Transfer the build artifact (adsw_monitor-release.tar.gz) to the AGL environment via **SCP** and extract it.
   
 **flutter_auto**
 ```
