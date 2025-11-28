@@ -55,6 +55,13 @@ The executable files for each platform are located in the following paths.
 - Android: adsw_monitor/build/app/outputs/flutter-apk/
 - Linux: adsw_monitor/build/linux/x64/{build_mode}/bundle/
 
+### How to Run static analysis
+In the root directory of the 'adsw_monitor' project, run the following command.
+```
+flutter analyze
+```
+For more details, please check https://dart.dev/tools/dart-analyze
+  
 ### How to Run Tests
 
 In the root directory of the 'adsw_monitor' project, run the following command.
