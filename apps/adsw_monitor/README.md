@@ -71,7 +71,8 @@ In the root directory of the 'adsw_monitor' project, run the following command:
 ```
 flutter test test/{test_file_name}.dart
 ```
-Before running the **adsw_collector_test** and **mw_collector_test**, you need to generate the mock files using the following command:
+Before running the **adsw_collector_test** and **mw_collector_test**,  
+you need to generate the mock files using the following command:
 ```
 flutter pub run build_runner build
 ```
@@ -82,8 +83,7 @@ In the root directory of the 'adsw_monitor' project, run the following command:
 ```
 flutter test --coverage
 ```
-This will generate the **coverage/lcov.info** file.  
-To view it as HTML, run the following command:
+This will generate the **coverage/lcov.info** file. To view it as HTML, run the following command:
 ```
 genhtml coverage/lcov.info -o coverage/html
 ```
@@ -112,7 +112,7 @@ Transfer the build artifact (adsw_monitor-release.tar.gz) to the AGL environment
 export XDG_RUNTIME_DIR=/run/user/1001
 /usr/bin/flutter-auto -b [압축파일 푼 위치]/usr/share/flutter/adsw_monitor/3.32.2/release --xdg-shell-app-id adsw_monitor
 ```
-
+<br/>
 
 ### How to Use custom ROS message
 
