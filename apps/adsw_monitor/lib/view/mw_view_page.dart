@@ -73,87 +73,122 @@ class MwViewPageState extends State<MwViewPage>
           Expanded(
             child: Column(
               children: [
-                DataViewWidget(
-                  title: 'Diagnostic Status',
-                  icon: Icons.settings,
-                  iconColor: const Color(0xFF34D399),
-                  status: StatusType.error,
-                  isExpanded: _expandedSections['diagnostic'] ?? false,
-                  onTap: () => _toggleSection('diagnostic'),
-                  children: [
-                    Obx(() {
-                      final names = _mwCollector.diagNames.toList();
-                      if (names.isEmpty) {
-                        // ✅ 리스트 오기 전
-                        return const KeyValueItem(
-                          label: 'Waiting for diagnostic list…',
-                          value: '-',
-                          // 필요하면 status: StatusType.warning,
-                        );
-                      }
+                Obx(() {
+                  final names = _mwCollector.diagNames.toList();
 
-                      StatusType _statusOf(int? s) {
-                        switch (s) {
-                          case 1: return StatusType.good;
-                          case 3: return StatusType.warning;
-                          case 2: return StatusType.error;
-                          default: return StatusType.good;
-                        }
-                      }
+                  StatusType _statusOf(int? s) {
+                    switch (s) {
+                      case 1: return StatusType.good;
+                      case 3: return StatusType.warning;
+                      case 2: return StatusType.error;
+                      default: return StatusType.good;
+                    }
+                  }
 
-                      String _mainValue(dynamic raw) {
-                        if (raw is Map && raw['status_text'] != null) {
-                          return raw['status_text'] as String;
-                        }
-                        final n = (raw is num) ? raw.toInt() : null;
-                        switch (n) {
-                          case 1: return 'PASS';
-                          case 2: return 'FATAL';
-                          case 3: return 'WARNING';
-                          default: return 'UNKNOWN';
-                        }
-                      }
+                  String? _subtitle(dynamic raw) {
+                    if (raw is! Map) return null;
+                    //final name = raw['name'];
+                    final code = raw['code'];
+                    final retT = raw['ret_text'];
+                    final msg = raw['message'];
 
-                      String? _subtitle(dynamic raw) {
-                        if (raw is! Map) return null;
-                        //final name = raw['name'];
-                        final code = raw['code'];
-                        final retT = raw['ret_text'];
-                        final msg = raw['message'];
+                    final lines = <String>[];
+                    //if (name != null) lines.add('name: $name');
+                    lines.add('code: ${code ?? '-'} ret: ${retT ?? '-'}');
+                    if (msg != null && (msg as String).isNotEmpty) lines.add('msg: $msg');
 
-                        final lines = <String>[];
-                        //if (name != null) lines.add('name: $name');
-                        lines.add('code: ${code ?? '-'} ret: ${retT ?? '-'}');
-                        if (msg != null && (msg as String).isNotEmpty) lines.add('msg: $msg');
+                    return lines.join('\n');
+                  }
 
-                        return lines.join('\n');
-                      }
-                      
-                      return Column(
+                  final List<Widget> children = names.isEmpty
+                    ? const [
+                      KeyValueItem(label: 'Waiting for diagnostic list...', value: '-'),
+                    ]
+                    : [
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           for (final name in names)
                             Builder(builder: (_) {
                               final raw = _mwCollector.topicData[name];
-                              final statusNum = (raw is Map) ? raw['status'] as int? : (raw is num ? raw.toInt() : null);
+
+                              final int? statusNum = (raw is Map)
+                                ? (raw['status'] as num?)?.toInt()
+                                : (raw is num ? raw.toInt() : null);
+
+                              final value = (raw is Map)
+                                ? (raw['status_text']?.toString() ?? '-')
+                                : (raw?.toString() ?? '-');
+
                               return KeyValueItem(
                                 label: name,
-                                value: raw['status_text'], //_mainValue(raw),
+                                value: value,
                                 subtitle: _subtitle(raw),
                                 status: _statusOf(statusNum),
                               );
-                            })
-                            // KeyValueItem(
-                            //   label: name, // diag name
-                            //   value: (_mwCollector.topicData[name] ?? '-')
-                            //       .toString(), // status
-                            //   status: StatusType.good, // 필요시 status 매핑 로직 추가
-                            // ),
+                            }),
                         ],
-                      );
-                    })
-                  ],
-                )
+                      ),
+                    ];
+
+                  return DataViewWidget(
+                    title: 'Diagnostic Status',
+                    icon: Icons.settings,
+                    iconColor: const Color(0xFF34D399),
+                    status: StatusType.error,
+                    isExpanded: _expandedSections['diagnostic'] ?? false,
+                    onTap: () => _toggleSection('diagnostic'),
+                    children: children,
+                    // [
+                      
+                    //   if (names.isEmpty) {
+                    //     const KeyValueItem(
+                    //       label: 'Waiting for diagnostic list…',
+                    //       value: '-',
+                    //       // status: StatusType.warning,
+                    //     )
+                    //   }
+
+                      
+
+                    //   String _mainValue(dynamic raw) {
+                    //     if (raw is Map && raw['status_text'] != null) {
+                    //       return raw['status_text'] as String;
+                    //     }
+                    //     final n = (raw is num) ? raw.toInt() : null;
+                    //     switch (n) {
+                    //       case 1: return 'PASS';
+                    //       case 2: return 'FATAL';
+                    //       case 3: return 'WARNING';
+                    //       default: return 'UNKNOWN';
+                    //     }
+                    //   }
+                      
+                    //   return Column(
+                    //     crossAxisAlignment: CrossAxisAlignment.start,
+                    //     children: [
+                    //       for (final name in names)
+                    //         Builder(builder: (_) {
+                    //           final raw = _mwCollector.topicData[name];
+                    //           final statusNum = (raw is Map) ? raw['status'] as int? : (raw is num ? raw.toInt() : null);
+                    //           return KeyValueItem(
+                    //             label: name,
+                    //             value: raw['status_text'], //_mainValue(raw),
+                    //             subtitle: _subtitle(raw),
+                    //             status: _statusOf(statusNum),
+                    //           );
+                    //         })
+                    //         // KeyValueItem(
+                    //         //   label: name, // diag name
+                    //         //   value: (_mwCollector.topicData[name] ?? '-')
+                    //         //       .toString(), // status
+                    //         //   status: StatusType.good, // 필요시 status 매핑 로직 추가
+                    //         // ),
+                    //     ],
+                    //   );
+                    // ],
+                  );
+                })
               ],
             ),
           ),
