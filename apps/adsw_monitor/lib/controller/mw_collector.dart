@@ -3,67 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
 
-// --- Logging helpers ---
-void _logInfoListResponse(Map<String, dynamic> msg) {
-  final retRaw = msg['ret_code'];
-  final codesRaw = msg['diag_codes'];
-  final namesRaw = msg['diag_names'];
-
-  // 타입/값 1차 로그
-  debugPrint(
-      '[InfoListResp] ret_code(type=${retRaw?.runtimeType}) value=$retRaw');
-  debugPrint(
-      '[InfoListResp] diag_codes(type=${codesRaw?.runtimeType}) value=$codesRaw');
-  debugPrint(
-      '[InfoListResp] diag_names(type=${namesRaw?.runtimeType}) value=$namesRaw');
-
-  // 배열 파싱(방어)
-  final List<dynamic> codesList = (codesRaw is List) ? codesRaw : const [];
-  final List<dynamic> namesList = (namesRaw is List) ? namesRaw : const [];
-
-  // 요약 로그
-  final int clen = codesList.length;
-  final int nlen = namesList.length;
-  final int showN = 5; // 처음 몇 개만 보기
-  final firstCodes = codesList.take(showN).toList();
-  final firstNames = namesList.take(showN).toList();
-
-  debugPrint(
-      '[InfoListResp] counts: codes=$clen, names=$nlen, minPair=${clen < nlen ? clen : nlen}');
-  debugPrint(
-      '[InfoListResp] sample codes(<=${showN}): $firstCodes${clen > showN ? ' ...' : ''}');
-  debugPrint(
-      '[InfoListResp] sample names(<=${showN}): $firstNames${nlen > showN ? ' ...' : ''}');
-
-  // 페어로 몇 개만 묶어 미리보기
-  final int pairShow = (clen < nlen ? clen : nlen).clamp(0, showN);
-  if (pairShow > 0) {
-    final pairs =
-        List.generate(pairShow, (i) => '${codesList[i]} -> ${namesList[i]}');
-    debugPrint(
-        '[InfoListResp] pairs(<=${showN}): $pairs${(clen.min(nlen) > showN) ? ' ...' : ''}');
-  }
-}
-
-void _logInfoResponse(Map<String, dynamic> msg) {
-  final retRaw = msg['ret_code'];
-  final codeRaw = msg['diag_code'];
-  final nameRaw = msg['diag_name'];
-  final statusRaw = msg['status'];
-  final messageRaw = msg['message'];
-
-  // 타입/원시값
-  debugPrint('[InfoResp] ret_code(type=${retRaw?.runtimeType}) value=$retRaw');
-  debugPrint(
-      '[InfoResp] diag_code(type=${codeRaw?.runtimeType}) value=$codeRaw');
-  debugPrint(
-      '[InfoResp] diag_name(type=${nameRaw?.runtimeType}) value=$nameRaw');
-  debugPrint(
-      '[InfoResp] status(type=${statusRaw?.runtimeType}) value=$statusRaw');
-  debugPrint(
-      '[InfoResp] message(type=${messageRaw?.runtimeType}) value=$messageRaw');
-}
-
 // 작은 유틸: min 확장 (null 안전)
 extension _NumMin on int {
   int min(int other) => this < other ? this : other;
@@ -82,31 +21,33 @@ const _retText = {
 };
 
 class MwCollector extends GetxController {
-  // 의존성
   late final Ros ros = Get.find<Ros>();
   final Topic Function(Ros ros, String name, String type) topicFactory;
 
-  // UI 바인딩: name -> status
   final RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
-  // 표시 순서 보존용
   final RxList<String> diagNames = <String>[].obs;
 
-  // 내부 매핑: code -> name
   final Map<int, String> _codeToName = {};
 
-  // 토픽들 (패키지명은 환경에 맞게 조정)
+  final Map<int, int> _missCount = {};
+
+  static const int _removeAfterMisses = 2;
+
   static const _pkg = 'diagnosticmgr/msg';
   late final Topic _infoReqPub;
   late final Topic _infoListReqPub;
   late final Topic _infoRespSub;
   late final Topic _infoListRespSub;
 
-  // 재시도/주기
-  final Duration _reqGap = const Duration(milliseconds: 120);
-  final Duration _detailRefreshEvery = const Duration(seconds: 10);
+  final Duration _reqGap = const Duration(milliseconds: 100);
+  final Duration _detailRefreshEvery = const Duration(seconds: 5);
+  final Duration _listRefreshEvery = const Duration(seconds: 5);
+
   Timer? _listRetryTimer;
+  Timer? _listPollTimer;
   Timer? _detailTimer;
-  bool _gotListOnce = false;
+
+  //bool _gotListOnce = false;
   bool _advertised = false;
 
   MwCollector({required this.topicFactory});
@@ -121,8 +62,11 @@ class MwCollector extends GetxController {
 
   @override
   void onClose() {
+    _missCount.clear();
     _listRetryTimer?.cancel();
+    _listPollTimer?.cancel();
     _detailTimer?.cancel();
+
     try {
       _infoListRespSub.unsubscribe();
       _infoRespSub.unsubscribe();
@@ -165,31 +109,46 @@ class MwCollector extends GetxController {
 
   Future<void> _start() async {
     await _advertiseOnce();
-    _kickInfoListWithRetry(); // 외부 프로그램이 늦게 떠도 받게 지수 백오프 재시도
+
+    _kickInfoListWithRetryUntilFirstResponse();
+
+    _listPollTimer?.cancel();
+    _listPollTimer = Timer.periodic(_listRefreshEvery, (_) async {
+      await _sendInfoListRequest();
+    });
   }
 
   // ===== 퍼블리시 =====
-  void _kickInfoListWithRetry() {
+
+  Future<void> _sendInfoListRequest() async {
+    try {
+      await _infoListReqPub.publish({});
+      debugPrint('[MwCollector] info list request send');
+    } catch (e) {
+      debugPrint('[MwCollector] info list request failed: $e');
+    }
+  }
+
+  void _kickInfoListWithRetryUntilFirstResponse() {
     _listRetryTimer?.cancel();
+
     Duration delay = const Duration(seconds: 1);
     const maxDelay = Duration(seconds: 8);
 
     Future<void> loop() async {
-      if (_gotListOnce) return;
       try {
-        await _infoListReqPub.publish({});
-        debugPrint("info list request send");
+        await _sendInfoListRequest();
       } catch (_) {}
+
       _listRetryTimer = Timer(delay, () async {
-        if (_gotListOnce) return;
         delay = delay * 2;
         if (delay > maxDelay) delay = maxDelay;
         await loop();
       });
     }
 
-    // 즉시 시작
     unawaited(loop());
+
   }
 
   Future<void> _sendInfoRequest(int code, String name) async {
@@ -199,65 +158,100 @@ class MwCollector extends GetxController {
     } catch (_) {}
   }
 
+  // == parsing ==
+  int _toInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('$v') ?? -1;
+  }
+
+  List<dynamic> _asList(dynamic v) => (v is List) ? v : const []; 
+
   // ===== 핸들러 =====
   Future<void> _onInfoListResponse(Map<String, dynamic> msg) async {
-    debugPrint("_onInfoListResponse(): ${msg['diag_codes']}");
-    _logInfoListResponse(msg);
-    final List codes = (msg['diag_codes'] ?? []) as List;
-    final List names = (msg['diag_names'] ?? []) as List;
+    
+    _listRetryTimer?.cancel();
 
-    _codeToName.clear();
-    diagNames.clear();
+    final codes = _asList(msg['diag_codes']);
+    final names = _asList(msg['diag_names']);
 
-    for (int i = 0; i < codes.length && i < names.length; i++) {
-      final int code =
-          codes[i] is int ? codes[i] as int : int.tryParse('${codes[i]}') ?? -1;
+    final seen = <int>{};
+
+    bool addedAny = false;
+
+    final int n = codes.length.min(names.length);
+    for (int i = 0; i < n; i++) {
+      final int code = _toInt(codes[i]);
+      if (code < 0) continue;
+
       final String name = '${names[i]}';
-      if (code >= 0) {
-        _codeToName[code] = name;
+      seen.add(code);
+      _missCount[code] = 0;
+      final existed = _codeToName.containsKey(code);
+
+      _codeToName[code] = name;
+
+      if (!diagNames.contains(name)) {
         diagNames.add(name);
-        // 초기 상태값을 미리 비워둠(뷰에서 바로 렌더 가능)
-        topicData[name] = topicData[name] ?? '-';
+        addedAny = true;
+      }
+
+      topicData[name] = topicData[name] ?? {
+        'name': name,
+        'code': code,
+        'ret_code': null,
+        'ret_text': null,
+        'status': null,
+        'status_text': 'UNKOWN',
+        'message': null,
+      };
+
+      if (!existed) {
+        await _sendInfoRequest(code, name);
+        await Future<void>.delayed(_reqGap);
       }
     }
 
-    if (_codeToName.isNotEmpty) {
-      _gotListOnce = true;
-      _listRetryTimer?.cancel();
+    // 이번 응답에서 안보인 애들
+    final toRemove = <int>[];
+
+    for (final code in _codeToName.keys.toList()) {
+      if (seen.contains(code)) continue;
+
+      final nextMiss = (_missCount[code] ?? 0) + 1;
+      _missCount[code] = nextMiss;
+
+      if (nextMiss >= _removeAfterMisses) {
+        toRemove.add(code);
+      }
     }
 
-    // 상세 요청 순차 발사
-    for (final e in _codeToName.entries) {
-      await _sendInfoRequest(e.key, e.value);
-      await Future<void>.delayed(_reqGap);
+    for (final code in toRemove) {
+      final name = _codeToName.remove(code);
+      _missCount.remove(code);
+
+      if (name != null) {
+        diagNames.remove(name);
+        topicData.remove(name);
+      }
     }
 
-    // 주기 갱신(상세만)
-    _detailTimer?.cancel();
-    _detailTimer = Timer.periodic(_detailRefreshEvery, (_) async {
+    if (toRemove.isNotEmpty) {
+      debugPrint('[MwCollector] removed by misses($_removeAfterMisses): $toRemove');
+    }
+
+    _detailTimer ??= Timer.periodic(_detailRefreshEvery, (_) async {
       for (final e in _codeToName.entries) {
         await _sendInfoRequest(e.key, e.value);
         await Future<void>.delayed(_reqGap);
       }
     });
+
+    if (addedAny) {
+      debugPrint('[MwCollector] diag list updated. total=${diagNames.length}');
+    }
+
   }
-
-  // dynamic _extractStatus(dynamic raw) {
-  //   if (raw is Map && raw.containsKey('diag_status')) return raw['diag_status'];
-  //   return raw;
-  // }
-
-  //   Future<void> _onInfoResponse(Map<String, dynamic> msg) async {
-  //   debugPrint("_onInfoResponse()");
-  //   _logInfoResponse(msg);
-  //   final int code = msg['diag_code'] is int
-  //       ? msg['diag_code'] as int
-  //       : int.tryParse('${msg['diag_code']}') ?? -1;
-  //   final String name = _codeToName[code] ?? '${msg['diag_name'] ?? 'unknown'}';
-
-  //   final dynamic status = _extractStatus(msg['status']); // enum 포맷 다양성 대비
-  //   topicData[name] = status;
-  // }
 
   int? _extractRetCode(dynamic raw) {
     if (raw is Map && raw['ret_code'] is num)
@@ -275,11 +269,13 @@ class MwCollector extends GetxController {
 
   Future<void> _onInfoResponse(Map<String, dynamic> msg) async {
     debugPrint("_onInfoResponse()");
-    _logInfoResponse(msg);
 
-    final int code = msg['diag_code'] is int
-        ? msg['diag_code'] as int
-        : int.tryParse('${msg['diag_code']}') ?? -1;
+    final code = _toInt(msg['diag_code']);
+    // _logInfoResponse(msg);
+
+    // final int code = msg['diag_code'] is int
+    //     ? msg['diag_code'] as int
+    //     : int.tryParse('${msg['diag_code']}') ?? -1;
 
     final String name = _codeToName[code] ?? '${msg['diag_name'] ?? 'unknown'}';
 
@@ -296,6 +292,6 @@ class MwCollector extends GetxController {
       'message': msg['message'],
     };
 
-    topicData[name] = info; // ← 숫자 대신 구조화된 정보 저장
+    topicData[name] = info;
   }
 }
