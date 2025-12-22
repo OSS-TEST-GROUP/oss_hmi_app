@@ -123,9 +123,9 @@ class MwCollector extends GetxController {
   Future<void> _sendInfoListRequest() async {
     try {
       await _infoListReqPub.publish({});
-      debugPrint('[MwCollector] info list request send');
+      debugPrint('info list request send');
     } catch (e) {
-      debugPrint('[MwCollector] info list request failed: $e');
+      debugPrint('info list request failed: $e');
     }
   }
 
@@ -148,11 +148,10 @@ class MwCollector extends GetxController {
     }
 
     unawaited(loop());
-
   }
 
   Future<void> _sendInfoRequest(int code, String name) async {
-    debugPrint("info request send");
+    debugPrint("info request send: $code, $name");
     try {
       await _infoReqPub.publish({'diag_code': code, 'diag_name': name});
     } catch (_) {}
@@ -165,11 +164,10 @@ class MwCollector extends GetxController {
     return int.tryParse('$v') ?? -1;
   }
 
-  List<dynamic> _asList(dynamic v) => (v is List) ? v : const []; 
+  List<dynamic> _asList(dynamic v) => (v is List) ? v : const [];
 
   // ===== 핸들러 =====
   Future<void> _onInfoListResponse(Map<String, dynamic> msg) async {
-    
     _listRetryTimer?.cancel();
 
     final codes = _asList(msg['diag_codes']);
@@ -196,15 +194,16 @@ class MwCollector extends GetxController {
         addedAny = true;
       }
 
-      topicData[name] = topicData[name] ?? {
-        'name': name,
-        'code': code,
-        'ret_code': null,
-        'ret_text': null,
-        'status': null,
-        'status_text': 'UNKOWN',
-        'message': null,
-      };
+      topicData[name] = topicData[name] ??
+          {
+            'name': name,
+            'code': code,
+            'ret_code': null,
+            'ret_text': null,
+            'status': null,
+            'status_text': 'UNKOWN',
+            'message': null,
+          };
 
       if (!existed) {
         await _sendInfoRequest(code, name);
@@ -237,7 +236,8 @@ class MwCollector extends GetxController {
     }
 
     if (toRemove.isNotEmpty) {
-      debugPrint('[MwCollector] removed by misses($_removeAfterMisses): $toRemove');
+      debugPrint(
+          'removed by misses($_removeAfterMisses): $toRemove');
     }
 
     _detailTimer ??= Timer.periodic(_detailRefreshEvery, (_) async {
@@ -248,9 +248,8 @@ class MwCollector extends GetxController {
     });
 
     if (addedAny) {
-      debugPrint('[MwCollector] diag list updated. total=${diagNames.length}');
+      debugPrint('diag list updated. total=${diagNames.length}');
     }
-
   }
 
   int? _extractRetCode(dynamic raw) {
@@ -268,7 +267,7 @@ class MwCollector extends GetxController {
   }
 
   Future<void> _onInfoResponse(Map<String, dynamic> msg) async {
-    debugPrint("_onInfoResponse()");
+    debugPrint("_onInfoResponse(): $msg");
 
     final code = _toInt(msg['diag_code']);
     // _logInfoResponse(msg);
