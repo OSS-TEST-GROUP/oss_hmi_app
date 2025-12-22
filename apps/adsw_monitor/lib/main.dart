@@ -11,27 +11,12 @@ import 'ros_keeper.dart';
 import 'package:adsw_monitor/view/adsw_view_page.dart';
 import 'package:adsw_monitor/view/mw_view_page.dart';
 import 'package:adsw_monitor/view/web_prompt_bootstrap.dart';
+import 'package:adsw_monitor/view/log_overlay.dart';
 
 late AppConfig appConfig;
 late RosKeeper rosKeeper;
 
 typedef RosKeeperFactory = RosKeeper Function(AppConfig cfg);
-
-// Future<void> _startRosWithUri(Uri rosUrl) async {
-//   // 웹에서 입력 받은 URL로 AppConfig 구성
-//   appConfig = AppConfig(rosUrl: rosUrl, statusTopic: '/app_status/adsw_monitor');
-
-//   // RosKeeper 시작
-//   rosKeeper = RosKeeper(appConfig);
-//   await rosKeeper.start();
-
-//   // GetX 주입
-//   if (!Get.isRegistered<Ros>()) {
-//     Get.put<Ros>(rosKeeper.ros, permanent: true);
-//   } else {
-//     Get.replace<Ros>(rosKeeper.ros);
-//   }
-// }
 
 Future<void> startRosWithUri(
   Uri rosUrl, {
@@ -56,29 +41,29 @@ Future<void> startRosWithUri(
   }
 }
 
-Future<void> main(List<String> args) async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main(List<String> args) {
+  //WidgetsFlutterBinding.ensureInitialized();
 
-   if (kIsWeb) {
-    // 웹: 부트스트랩으로 주소 입력 → 연결 후 메인 앱 표시
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
-      home: WebPromptBootstrap(
-        onConfigured: startRosWithUri, //_startRosWithUri,
-        child: const AdswMonitorApp(), // 기존 앱 그대로
-      ),
-    ));
-  } else {
-    // IO: 기존 흐름 그대로
-    appConfig = await loadConfig(args);
-    rosKeeper = RosKeeper(appConfig);
-    await rosKeeper.start();
+  runWithLogCapture(() async {
+    if (kIsWeb) {
+      runApp(MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData.dark(),
+        home: WebPromptBootstrap(
+          onConfigured: startRosWithUri,
+          child: const AdswMonitorApp(),
+        ),
+      ));
+    } else {
+      appConfig = await loadConfig(args);
+      rosKeeper = RosKeeper(appConfig);
+      await rosKeeper.start();
 
-    Get.put<Ros>(rosKeeper.ros, permanent: true);
+      Get.put<Ros>(rosKeeper.ros, permanent: true);
 
-    runApp(AdswMonitorApp());
-  }
+      runApp(AdswMonitorApp());
+    }
+  });
 }
 
 class AdswMonitorApp extends StatelessWidget {
@@ -221,6 +206,18 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Logs',
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => const LogBottomSheet(),
+          );
+        },
+        child: const Icon(Icons.terminal),
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
