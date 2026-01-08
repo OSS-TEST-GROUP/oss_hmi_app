@@ -45,7 +45,7 @@ void runWithLogCapture(
     },
     zoneSpecification: ZoneSpecification(
       print: (self, parent, zone, line) {
-        parent.print(zone, line);
+        //parent.print(zone, line);
         if (Get.isRegistered<LogController>()) {
           Get.find<LogController>().add(line);
         }
@@ -85,8 +85,6 @@ class _LogBottomSheetState extends State<LogBottomSheet> {
       minChildSize: 0.25,
       maxChildSize: 0.95,
       builder: (context, sheetScrollController) {
-        // sheetScrollController - 시트 높이 드래그
-        // 실제 리스트 스크롤 - _listCtrl
         return Container(
           decoration: const BoxDecoration(
             color: Color(0xFF0B1220),
@@ -109,7 +107,7 @@ class _LogBottomSheetState extends State<LogBottomSheet> {
                     ),
                     const Expanded(
                       child: Text('Debug Log',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
                     ),
                     IconButton(
                       tooltip: _autoFollow ? 'Auto-follow: ON' : 'Auto-follow: OFF',
@@ -153,7 +151,7 @@ class _LogBottomSheetState extends State<LogBottomSheet> {
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: Text(
                         items[i],
-                        style: const TextStyle(fontSize: 11, color: Colors.white70),
+                        style: const TextStyle(fontSize: 15, color: Colors.white70),
                       ),
                     ),
                   );

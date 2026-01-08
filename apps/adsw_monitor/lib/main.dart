@@ -228,18 +228,18 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // floatingActionButton: FloatingActionButton(
-      //   tooltip: 'Logs',
-      //   onPressed: () {
-      //     showModalBottomSheet(
-      //       context: context,
-      //       isScrollControlled: true,
-      //       backgroundColor: Colors.transparent,
-      //       builder: (_) => const LogBottomSheet(),
-      //     );
-      //   },
-      //   child: const Icon(Icons.terminal),
-      // ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Logs',
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => const LogBottomSheet(),
+          );
+        },
+        child: const Icon(Icons.terminal),
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
