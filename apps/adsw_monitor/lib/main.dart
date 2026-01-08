@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'dart:async';
 
@@ -119,6 +122,16 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
     super.dispose();
   }
 
+  void quitApp() {
+
+    if (Platform.isLinux) {
+      exit(0);
+    } else if (Platform.isAndroid) {
+      SystemNavigator.pop();
+    }
+
+  }
+
   Widget _buildHeader() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -135,6 +148,15 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
           children: [
             Row(
               children: [
+                IconButton(
+                  icon: Icon(Icons.arrow_back),
+                  color: Colors.white,
+                  iconSize: 30,
+                  onPressed: () {
+                    quitApp();
+                  },
+                ),
+                const SizedBox(width: 20,),
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
@@ -206,18 +228,18 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Logs',
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (_) => const LogBottomSheet(),
-          );
-        },
-        child: const Icon(Icons.terminal),
-      ),
+      // floatingActionButton: FloatingActionButton(
+      //   tooltip: 'Logs',
+      //   onPressed: () {
+      //     showModalBottomSheet(
+      //       context: context,
+      //       isScrollControlled: true,
+      //       backgroundColor: Colors.transparent,
+      //       builder: (_) => const LogBottomSheet(),
+      //     );
+      //   },
+      //   child: const Icon(Icons.terminal),
+      // ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
