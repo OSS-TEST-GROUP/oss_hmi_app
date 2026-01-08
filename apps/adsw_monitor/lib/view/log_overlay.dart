@@ -85,8 +85,8 @@ class _LogBottomSheetState extends State<LogBottomSheet> {
       minChildSize: 0.25,
       maxChildSize: 0.95,
       builder: (context, sheetScrollController) {
-        // sheetScrollController는 "시트 높이" 드래그용으로만 쓰고
-        // 실제 리스트 스크롤은 _listCtrl로 따로 관리
+        // sheetScrollController - 시트 높이 드래그
+        // 실제 리스트 스크롤 - _listCtrl
         return Container(
           decoration: const BoxDecoration(
             color: Color(0xFF0B1220),
@@ -134,7 +134,6 @@ class _LogBottomSheetState extends State<LogBottomSheet> {
                 child: Obx(() {
                   final items = log.lines;
 
-                  // ✅ 새 로그가 들어올 때마다(Obx rebuild 시점) 맨 아래로
                   if (_autoFollow) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       _scrollToBottom();

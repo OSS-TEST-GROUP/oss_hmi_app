@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
 
-// 작은 유틸: min 확장 (null 안전)
 extension _NumMin on int {
   int min(int other) => this < other ? this : other;
 }
@@ -47,7 +46,6 @@ class MwCollector extends GetxController {
   Timer? _listPollTimer;
   Timer? _detailTimer;
 
-  //bool _gotListOnce = false;
   bool _advertised = false;
 
   MwCollector({required this.topicFactory});
@@ -118,8 +116,6 @@ class MwCollector extends GetxController {
     });
   }
 
-  // ===== 퍼블리시 =====
-
   Future<void> _sendInfoListRequest() async {
     try {
       await _infoListReqPub.publish({});
@@ -157,7 +153,6 @@ class MwCollector extends GetxController {
     } catch (_) {}
   }
 
-  // == parsing ==
   int _toInt(dynamic v) {
     if (v is int) return v;
     if (v is num) return v.toInt();
@@ -166,7 +161,6 @@ class MwCollector extends GetxController {
 
   List<dynamic> _asList(dynamic v) => (v is List) ? v : const [];
 
-  // ===== 핸들러 =====
   Future<void> _onInfoListResponse(Map<String, dynamic> msg) async {
     _listRetryTimer?.cancel();
 
@@ -211,7 +205,6 @@ class MwCollector extends GetxController {
       }
     }
 
-    // 이번 응답에서 안보인 애들
     final toRemove = <int>[];
 
     for (final code in _codeToName.keys.toList()) {
