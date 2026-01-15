@@ -1,20 +1,32 @@
-import 'dart:io';
+import 'dart:async';
 
 import 'package:roslibdart/roslibdart.dart';
 import 'package:get/get.dart';
 
+import 'package:flutter/material.dart';
+
+typedef SubscribeHandler = Future<void> Function(Map<String, dynamic> msg);
+
 class AdswCollector extends GetxController {
-  late Ros ros = Get.find<Ros>();
+  Ros get ros => Get.find<Ros>();
+
   final RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   List<SubscribeHandler> handlerList = [];
   RxString isLaneDeparture = 'false'.obs;
 
   final Topic Function(Ros ros, String name, String type) topicFactory;
 
-  AdswCollector({
-    required this.topicFactory,
-  }) {
-    stdout.writeln('[Adsw collector] created.');
+  final List<Topic> _subs = [];
+  Timer? _rosWatchdog;
+  Ros? _boundRos;
+  bool _resubscribing = false;
+
+  List<String> _topics = const [];
+  List<String> _types = const [];
+  List<SubscribeHandler> _handlers = const [];
+
+  AdswCollector({required this.topicFactory}) {
+    debugPrint('[Adsw collector] created.');
     handlerList = [
       handleVehicleStatus,
       handleCurrentVelocity,
@@ -30,12 +42,82 @@ class AdswCollector extends GetxController {
     ];
   }
 
-  void subscribeTopic(List<String> topics, List<String> types,
-      List<SubscribeHandler> handlers) {
-    for (int i = 0; i < topics.length; i++) {
-      final topic = topicFactory(ros, topics[i], types[i]);
-      topic.subscribe(handlers[i]);
+  @override
+  void onInit() {
+    super.onInit();
+    _rosWatchdog?.cancel();
+    _rosWatchdog = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      if (_resubscribing) return;
+
+      Ros r;
+      try {
+        r = ros;
+      } catch (_) {
+        return;
+      }
+
+      final rosChanged = _boundRos == null || !identical(_boundRos, r);
+      final connected = r.status == Status.connected;
+
+      if (connected && (rosChanged || _subs.isEmpty)) {
+        debugPrint('[Adsw] watchdog trigger. connected=$connected rosChanged=$rosChanged subsEmpty=${_subs.isEmpty} savedTopics=${_topics.length}');
+        await _rebindAndResubscribe(r);
+      }
+    });
+  }
+
+  @override
+  void onClose() {
+    _rosWatchdog?.cancel();
+    _rosWatchdog = null;
+    _unsubscribeAll();
+    super.onClose();
+  }
+
+  void subscribeTopic(List<String> topics, List<String> types, List<SubscribeHandler> handlers) {
+    debugPrint('[Adsw] subscribeTopic called. topics=${topics.length} types=${types.length} handlers=${handlers.length} rosStatus=${ros.status}');
+    _topics = List<String>.from(topics);
+    _types = List<String>.from(types);
+    _handlers = List<SubscribeHandler>.from(handlers);
+
+    final r = ros;
+    if (r.status == Status.connected) {
+      unawaited(_rebindAndResubscribe(r));
     }
+  }
+
+  Future<void> _rebindAndResubscribe(Ros r) async {
+    if (_resubscribing) return;
+    _resubscribing = true;
+    try {
+      if (r.status != Status.connected) return;
+      if (_topics.isEmpty || _types.isEmpty || _handlers.isEmpty) {
+        return;
+      }
+
+      debugPrint('[Adsw] resubscribe start. rosChanged=${_boundRos == null || !identical(_boundRos, r)}');
+      _boundRos = r;
+
+      _unsubscribeAll();
+
+      final n = [_topics.length, _types.length, _handlers.length].reduce((a, b) => a < b ? a : b);
+      for (int i = 0; i < n; i++) {
+        final t = topicFactory(r, _topics[i], _types[i]);
+        t.subscribe(_handlers[i]);
+        _subs.add(t);
+      }
+
+      debugPrint('[Adsw] resubscribe done. count=${_subs.length}');
+    } finally {
+      _resubscribing = false;
+    }
+  }
+
+  void _unsubscribeAll() {
+    for (final t in _subs) {
+      try { t.unsubscribe(); } catch (_) {}
+    }
+    _subs.clear();
   }
 
   String _f2(num? v) => v == null ? '-' : v.toStringAsFixed(2);
@@ -45,11 +127,11 @@ class AdswCollector extends GetxController {
     final x = _f2(m['x'] as num?);
     final y = _f2(m['y'] as num?);
     final z = _f2(m['z'] as num?);
-    return 'x:$x, y:$y, z:$z'; // 혹은 '($x, $y, $z)'
+    return 'x:$x, y:$y, z:$z';
   }
 
   Future<void> handleVehicleStatus(Map<String, dynamic> msg) async {
-    stdout.writeln('type: autoware_adapi_v1_msgs/VehicleStatus / topic: /api/vehicle/status \n msg: $msg');
+    // stdout.writeln('type: autoware_adapi_v1_msgs/VehicleStatus / topic: /api/vehicle/status \n msg: $msg');
     final gear = (msg['gear']?['status'] as num?)?.toInt();
     final ti = (msg['turn_indicators']?['status'] as num?)?.toInt();
     final hz = (msg['hazard_lights']?['status'] as num?)?.toInt();
@@ -69,7 +151,7 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleCurrentVelocity(Map<String, dynamic> msg) async {
-    stdout.writeln('type: autoware_vehicle_msgs/VelocityReport / topic: /vehicle/status/velocity_status \n msg: $msg');
+    // stdout.writeln('type: autoware_vehicle_msgs/VelocityReport / topic: /vehicle/status/velocity_status \n msg: $msg');
     final vMs = msg['longitudinal_velocity'] as num?;
     final vKmh = vMs != null ? (vMs * 3.6).toStringAsFixed(2) : '-';
     topicData['Current velocity'] = vKmh;
@@ -98,7 +180,7 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleObjectRecognition(Map<String, dynamic> msg) async {
-    stdout.writeln('type: autoware_adapi_v1_msgs/DynamicObjectArray / topic: /api/perception/objects \n msg: $msg');
+    // stdout.writeln('type: autoware_adapi_v1_msgs/DynamicObjectArray / topic: /api/perception/objects \n msg: $msg');
     //topicData['Object recognition'] = msg['objects'];
     final List objs = (msg['objects'] as List?) ?? const [];
 
@@ -198,7 +280,7 @@ class AdswCollector extends GetxController {
   }
 
   Future<void> handleLocalizationData(Map<String, dynamic> msg) async {
-    stdout.writeln('type: / topic:  \n msg: ${msg}');
+    // stdout.writeln('type: / topic:  \n msg: ${msg}');
     // topicData['Localization pose x'] = msg['pose']['pose']['position']['x'];
     // topicData['Localization pose y'] = msg['pose']['pose']['position']['y'];
     // topicData['Localization pose z'] = msg['pose']['pose']['position']['z'];
@@ -241,3 +323,4 @@ class AdswCollector extends GetxController {
     }
   }
 }
+

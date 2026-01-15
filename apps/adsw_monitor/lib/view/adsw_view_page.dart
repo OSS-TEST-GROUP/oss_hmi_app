@@ -42,18 +42,29 @@ class _AdswViewPageState extends State<AdswViewPage> with AutomaticKeepAliveClie
 
   void _startConnect() {
 
-    _adswCollector = AdswCollector(
-      topicFactory: (ros, name, type) => Topic(ros: ros, name: name, type: type),
-    );
-    _startSubscribe();
+    // _adswCollector = AdswCollector(
+    //   topicFactory: (ros, name, type) => Topic(ros: ros, name: name, type: type),
+    // );
+    // _startSubscribe();
+
+    if (Get.isRegistered<AdswCollector>()) {
+      _adswCollector = Get.find<AdswCollector>();
+    } else {
+      _adswCollector = Get.put(
+        AdswCollector(
+          topicFactory: (ros, name, type) => Topic(ros: ros, name: name, type: type),
+        ),
+      );
+      _adswCollector.subscribeTopic(topicList, typeList, _adswCollector.handlerList);
+    }
 
   }
 
-  void _startSubscribe() {
+  // void _startSubscribe() {
 
-    _adswCollector.subscribeTopic(topicList, typeList, _adswCollector.handlerList);
+  //   _adswCollector.subscribeTopic(topicList, typeList, _adswCollector.handlerList);
 
-  }
+  // }
 
   void _toggleSection(String section) {
     setState(() {

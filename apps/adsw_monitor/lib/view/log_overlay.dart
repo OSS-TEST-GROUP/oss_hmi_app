@@ -1,21 +1,52 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:adsw_monitor/logging/rolling_file_logger.dart';
+
 
 class LogController extends GetxController {
   final RxList<String> lines = <String>[].obs;
   final int maxLines;
   LogController({this.maxLines = 800});
 
-  void add(String s) {
+  RollingFileLogger? _fileLogger;
+
+  Future<void> enableFileLogging({
+    required String dirPath,
+    String fileName = 'adsw_monitor.log',
+    int maxBytes = 10 * 1024 * 1024,
+    int maxFiles = 5,
+  })async {
+    if (kIsWeb) return;
+    _fileLogger ??= RollingFileLogger(
+      dirPath: dirPath,
+      fileName: fileName,
+      maxBytes: maxBytes,
+      maxFiles: maxFiles,
+    );
+    await _fileLogger!.start();
+  }
+
+  void add(String s) 
+  {
     lines.add(s);
     if (lines.length > maxLines) {
       lines.removeRange(0, lines.length - maxLines);
+
+
     }
+    _fileLogger?.addLine(s);
   }
 
   void clear() => lines.clear();
+
+  @override
+  void onClose() {
+    _fileLogger?.stop();
+    super.onClose();
+  }
 }
 
 void runWithLogCapture(
@@ -30,9 +61,13 @@ void runWithLogCapture(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
-      if (!Get.isRegistered<LogController>()) {
-        Get.put(LogController(), permanent: true);
-      }
+      // if (!Get.isRegistered<LogController>()) {
+      //   Get.put(LogController(), permanent: true);
+      // }
+
+      final log = Get.find<LogController>();
+      await log.enableFileLogging(dirPath: '/tmp/adsw_monitor_logs');
+      
       await body();
     },
     (e, st) {
