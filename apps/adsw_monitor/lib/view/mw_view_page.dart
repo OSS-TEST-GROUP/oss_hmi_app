@@ -26,6 +26,7 @@ class MwViewPageState extends State<MwViewPage>
 
   final Map<String, bool> _expandedSections = {
     'diagnostic': false,
+    'ota': false,
     'security': false,
   };
 
@@ -69,12 +70,12 @@ class MwViewPageState extends State<MwViewPage>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left Column - Lifecycle
           Expanded(
             child: Column(
               children: [
                 Obx(() {
                   final names = _mwCollector.diagNames.toList();
+                  final logs = _mwCollector.diagLogs.toList();
 
                   StatusType _statusOf(int? s) {
                     switch (s) {
@@ -95,12 +96,49 @@ class MwViewPageState extends State<MwViewPage>
                     final lines = <String>[];
                     //if (name != null) lines.add('name: $name');
                     lines.add('code: ${code ?? '-'} ret: ${retT ?? '-'}');
-                    if (msg != null && (msg as String).isNotEmpty) lines.add('msg: $msg');
+                    //if (msg != null && (msg as String).isNotEmpty) lines.add('msg: $msg');
+                    if (msg != null && ('$msg').isNotEmpty) {
+                      lines.add('msg: $msg');
+                    }
 
                     return lines.join('\n');
                   }
 
-                  final List<Widget> children = names.isEmpty
+                  final List<Widget> children = logs.isEmpty
+                      ? const [
+                          KeyValueItem(
+                            label: 'Waiting for diagnostic messages...',
+                            value: '-',
+                          ),
+                        ]
+                      : [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final item in logs)
+                                Builder(builder: (_) {
+                                  final int? statusNum = (item['status'] is num)
+                                      ? (item['status'] as num).toInt()
+                                      : (item['status'] as int?);
+
+                                  final value =
+                                      item['status_text']?.toString() ?? '-';
+
+                                  final label = item['name']?.toString() ??
+                                      'unknown';
+
+                                  return KeyValueItem(
+                                    label: label,
+                                    value: value,
+                                    subtitle: _subtitle(item),
+                                    status: _statusOf(statusNum),
+                                  );
+                                }),
+                            ],
+                          ),
+                        ];
+
+                  final List<Widget> children2 = names.isEmpty
                     ? const [
                       KeyValueItem(label: 'Waiting for diagnostic list...', value: '-'),
                     ]
@@ -139,54 +177,24 @@ class MwViewPageState extends State<MwViewPage>
                     isExpanded: _expandedSections['diagnostic'] ?? false,
                     onTap: () => _toggleSection('diagnostic'),
                     children: children,
-                    // [
-                      
-                    //   if (names.isEmpty) {
-                    //     const KeyValueItem(
-                    //       label: 'Waiting for diagnostic list…',
-                    //       value: '-',
-                    //       // status: StatusType.warning,
-                    //     )
-                    //   }
-
-                      
-
-                    //   String _mainValue(dynamic raw) {
-                    //     if (raw is Map && raw['status_text'] != null) {
-                    //       return raw['status_text'] as String;
-                    //     }
-                    //     final n = (raw is num) ? raw.toInt() : null;
-                    //     switch (n) {
-                    //       case 1: return 'PASS';
-                    //       case 2: return 'FATAL';
-                    //       case 3: return 'WARNING';
-                    //       default: return 'UNKNOWN';
-                    //     }
-                    //   }
-                      
-                    //   return Column(
-                    //     crossAxisAlignment: CrossAxisAlignment.start,
-                    //     children: [
-                    //       for (final name in names)
-                    //         Builder(builder: (_) {
-                    //           final raw = _mwCollector.topicData[name];
-                    //           final statusNum = (raw is Map) ? raw['status'] as int? : (raw is num ? raw.toInt() : null);
-                    //           return KeyValueItem(
-                    //             label: name,
-                    //             value: raw['status_text'], //_mainValue(raw),
-                    //             subtitle: _subtitle(raw),
-                    //             status: _statusOf(statusNum),
-                    //           );
-                    //         })
-                    //         // KeyValueItem(
-                    //         //   label: name, // diag name
-                    //         //   value: (_mwCollector.topicData[name] ?? '-')
-                    //         //       .toString(), // status
-                    //         //   status: StatusType.good, // 필요시 status 매핑 로직 추가
-                    //         // ),
-                    //     ],
-                    //   );
-                    // ],
+                  );
+                }),
+                const SizedBox(height: 20),
+                Obx(() {
+                  return DataViewWidget(
+                    title: 'Ota Status', 
+                    icon: Icons.arrow_circle_up, 
+                    iconColor: const Color.fromARGB(255, 66, 165, 245), 
+                    status: StatusType.warning, 
+                    isExpanded: _expandedSections['ota'] ?? false, 
+                    onTap: () => _toggleSection('ota'), 
+                    children: [
+                      KeyValueItem(
+                          label: 'test',
+                          value:
+                              _mwCollector.topicData['Ota status'].toString()
+                      ),
+                    ],
                   );
                 })
               ],
