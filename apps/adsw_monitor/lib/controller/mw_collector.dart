@@ -184,6 +184,7 @@ class MwCollector extends GetxController {
   }
 
   Future<void> _sendInfoRequest(int code, String name) async {
+    debugPrint("send request code: $code, name: $name");
     await _infoReqPub?.publish({
       'diag_code': code,
       'diag_name': name,
@@ -231,6 +232,8 @@ class MwCollector extends GetxController {
   }
 
   Future<void> _onInfoListResponse(Map<String, dynamic> msg) async {
+    debugPrint("onInfoListResponse(): $msg");
+
     final codes = _asList(msg['diag_codes']);
     final names = _asList(msg['diag_names']);
 
@@ -247,6 +250,8 @@ class MwCollector extends GetxController {
         'status_text': 'UNKNOWN',
         'ret_text': null,
         'message': null,
+        'source_message_name': null,
+        'raw_data': null,
       });
 
       await _sendInfoRequest(code, name);
@@ -254,6 +259,7 @@ class MwCollector extends GetxController {
   }
 
   Future<void> _onInfoResponse(Map<String, dynamic> msg) async {
+    debugPrint("onInfoResponse(): $msg");
     final code = _toInt(msg['diag_code']);
 
     final index = diagnostics.indexWhere((e) => e['code'] == code);
@@ -270,6 +276,8 @@ class MwCollector extends GetxController {
       'status': stat,
       'status_text': stat != null ? (_statusText[stat] ?? '$stat') : null,
       'message': msg['message'],
+      'source_message_name': msg['source_message_name'],
+      'raw_data': msg['raw_data'],
     };
 
     diagnostics.refresh();

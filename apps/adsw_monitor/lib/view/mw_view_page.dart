@@ -249,11 +249,19 @@ class MwViewPageState extends State<MwViewPage>
               final code = raw['code'];
               final retT = raw['ret_text'];
               final msg = raw['message'];
+              final source = raw['source_message_name'];
+              final rawData = raw['raw_data'];
 
               final lines = <String>[];
               lines.add('code: ${code ?? '-'} ret: ${retT ?? '-'}');
               if (msg != null && ('$msg').isNotEmpty) {
                 lines.add('msg: $msg');
+              }
+              if (source != null && ('$source').isNotEmpty) {
+                lines.add('source: $source');
+              }
+              if (rawData != null && ('$rawData').isNotEmpty) {
+                lines.add('raw: $rawData');
               }
               return lines.join('\n');
             }
