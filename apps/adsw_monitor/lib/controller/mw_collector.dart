@@ -218,7 +218,6 @@ class MwCollector extends GetxController {
   int? _extractNotiStatus(dynamic raw) {
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
-
     if (raw is String) {
       final up = raw.trim().toUpperCase();
       for (final e in _statusText.entries) {
@@ -227,7 +226,18 @@ class MwCollector extends GetxController {
       final n = int.tryParse(up);
       if (n != null) return n;
     }
-
+    if (raw is Map) {
+      final v = raw['status'] ?? raw['diag_status'] ?? raw['value'];
+      if (v is num) return v.toInt();
+      if (v is String) {
+        final up = v.trim().toUpperCase();
+        for (final e in _statusText.entries) {
+          if (e.value == up) return e.key;
+        }
+        final n = int.tryParse(up);
+        if (n != null) return n;
+      }
+    }
     return null;
   }
 

@@ -119,7 +119,7 @@ class MwViewPageState extends State<MwViewPage>
   Widget build(BuildContext context) {
     super.build(context);
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,33 +186,23 @@ class MwViewPageState extends State<MwViewPage>
                   final Widget content = logs.isEmpty
                       ? const KeyValueItem(
                           label: 'Waiting for notifications...', value: '-')
-                      : LayoutBuilder(
-                          builder: (context, constraints) {
-                            final maxH = MediaQuery.of(context).size.height;
-                            final listMaxHeight =
-                                (maxH * 0.45).clamp(160.0, 420.0);
-
-                            return ConstrainedBox(
-                              constraints:
-                                  BoxConstraints(maxHeight: listMaxHeight),
-                              child: ListView.builder(
-                                itemCount: logs.length,
-                                itemBuilder: (_, i) {
-                                  final it = logs[i];
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: KeyValueItem(
-                                      label: _label(it),
-                                      value: _value(it),
-                                      status: _statusOf(it),
-                                    ),
-                                  );
-                                },
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: logs.length,
+                          itemBuilder: (_, i) {
+                            final it = logs[i];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: KeyValueItem(
+                                label: _label(it),
+                                value: _value(it),
+                                status: _statusOf(it),
                               ),
                             );
                           },
                         );
-
+                        
                   return DataViewWidget(
                     title: 'Diagnostic Notifications',
                     icon: Icons.notifications_active,
@@ -276,6 +266,8 @@ class MwViewPageState extends State<MwViewPage>
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 360),
                       child: ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: list.length,
                         itemBuilder: (_, i) {
                           final raw = list[i];
