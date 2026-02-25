@@ -10,6 +10,7 @@ class DataViewWidget extends StatelessWidget {
   final List<Widget> children;
   final bool isExpanded;
   final VoidCallback onTap;
+  final Widget? button;
 
   const DataViewWidget({
     super.key,
@@ -20,6 +21,7 @@ class DataViewWidget extends StatelessWidget {
     required this.isExpanded,
     required this.onTap,
     required this.children,
+    this.button,
   });
 
   @override
@@ -66,7 +68,8 @@ class DataViewWidget extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        //const SizedBox(width: 12),
+                        const SizedBox(width: 12),
+                        if (button != null) button!,
                         //_buildStatusIndicator(status),
                       ],
                     ),
