@@ -22,7 +22,18 @@ class KeyValueItem extends StatelessWidget{
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Flexible(
+          // Flexible(
+          //   child: Text(
+          //     label,
+          //     style: const TextStyle(
+          //       fontSize: 19,
+          //       color: Color(0xFF9CA3AF),
+          //     ),
+          //     overflow: TextOverflow.ellipsis,
+          //   ),
+          // ),
+          Expanded(
+            flex: 2,
             child: Text(
               label,
               style: const TextStyle(
@@ -34,26 +45,74 @@ class KeyValueItem extends StatelessWidget{
           ),
           const SizedBox(width: 12),
           // 오른쪽 값 + (옵션) 서브타이틀
-          Flexible(
+          // Flexible(
+          //   child: Column(
+          //     crossAxisAlignment: CrossAxisAlignment.end,
+          //     mainAxisSize: MainAxisSize.min,
+          //     children: [
+          //       // 1) 메인 값 (한 줄)
+          //       Text(
+          //         value,
+          //         textAlign: TextAlign.right,
+          //         style: const TextStyle(
+          //           fontSize: 17,
+          //           color: Colors.white,
+          //           fontFamily: 'monospace',
+          //         ),
+          //         overflow: TextOverflow.ellipsis,
+          //       ),
+          //       // 2) (옵션) 서브타이틀: 작은 글씨, 여러 줄 허용
+          //       if (subtitle != null && subtitle!.isNotEmpty)
+          //         Padding(
+          //           padding: const EdgeInsets.only(top: 4),
+          //           child: Text(
+          //             subtitle!,
+          //             textAlign: TextAlign.right,
+          //             style: const TextStyle(
+          //               fontSize: 15,
+          //               color: Color(0xFF9CA3AF),
+          //               height: 1.25,
+          //             ),
+          //             softWrap: true,
+          //           ),
+          //         ),
+          //     ],
+          //   ),
+          // ),
+          Expanded(
+            flex: 5,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1) 메인 값 (한 줄)
-                Text(
-                  value,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    color: Colors.white,
-                    fontFamily: 'monospace',
+                /// ✅ 스크롤 가능한 값 영역 (JSON 전체 표시)
+                Container(
+                  constraints: const BoxConstraints(
+                    maxHeight: 180, // 필요하면 조절
                   ),
-                  overflow: TextOverflow.ellipsis,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    //color: const Color(0xFF1F2937),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      value,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
                 ),
-                // 2) (옵션) 서브타이틀: 작은 글씨, 여러 줄 허용
+
+                /// 🔹 subtitle (옵션)
                 if (subtitle != null && subtitle!.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       subtitle!,
                       textAlign: TextAlign.right,

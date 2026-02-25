@@ -25,35 +25,47 @@ class MwViewPageState extends State<MwViewPage>
   late final MwCollector _mwCollector;
 
   final Map<String, bool> _expandedSections = {
-    'diagnostic': false,
-    'ota': false,
+    'notification': false,
     'security': false,
+    'diagnostic': false,
   };
+
+  Worker? _securityWorker;
+
+  final List<String> _securityQueue = [];
+  bool _showingSecurityDialog = false;
 
   @override
   void initState() {
     super.initState();
     _startConnect();
+
+    _securityWorker = ever<String?>(_mwCollector.securityData, (value) {
+      if (!mounted) return;
+      if (value == null || value.isEmpty) return;
+
+      _securityQueue.add(value);
+
+      // 다음 프레임에 실행(빌드 중 호출 방지)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _drainSecurityDialogs();
+      });
+    });
   }
 
   void _startConnect() {
-    // _mwCollector = MwCollector(
-    //   topicFactory: (ros, name, type) =>
-    //       Topic(ros: ros, name: name, type: type),
-    // );
-    //_startSubscribe();
-
-    _mwCollector = Get.put(
-      MwCollector(
-        topicFactory: (ros, name, type) =>
-            Topic(ros: ros, name: name, type: type),
-      ),
-    );
+    if (Get.isRegistered<MwCollector>()) {
+      _mwCollector = Get.find<MwCollector>();
+    } else {
+      _mwCollector = Get.put(
+        MwCollector(
+          topicFactory: (ros, name, type) =>
+              Topic(ros: ros, name: name, type: type),
+        ),
+      );
+    }
   }
-
-  // void _startSubscribe() {
-  //   _mwCollector.subscribeTopic(topicList, typeList, _mwCollector.handlerList);
-  // }
 
   void _toggleSection(String section) {
     setState(() {
@@ -62,217 +74,261 @@ class MwViewPageState extends State<MwViewPage>
   }
 
   @override
+  void dispose() {
+    _securityWorker?.dispose();
+    _securityWorker = null;
+    super.dispose();
+  }
+
+  Future<void> _drainSecurityDialogs() async {
+    if (_showingSecurityDialog) return;
+    _showingSecurityDialog = true;
+
+    try {
+      while (mounted && _securityQueue.isNotEmpty) {
+        final text = _securityQueue.removeAt(0);
+        await _showSecurityAlert(text);
+      }
+    } finally {
+      _showingSecurityDialog = false;
+    }
+  }
+
+  Future<void> _showSecurityAlert(String text) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Security Alert'),
+          content: SingleChildScrollView(
+            child: SelectableText(text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     super.build(context);
 
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              children: [
-                Obx(() {
-                  final names = _mwCollector.diagNames.toList();
-                  final logs = _mwCollector.diagLogs.toList();
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Obx(() {
+                  final logs = _mwCollector.notificationLogs.toList();
 
-                  StatusType _statusOf(int? s) {
-                    switch (s) {
-                      case 1: return StatusType.good;
-                      case 3: return StatusType.warning;
-                      case 2: return StatusType.error;
-                      default: return StatusType.good;
-                    }
-                  }
+                  String _label(DiagNotificationItem it) => it.label;
 
-                  String? _subtitle(dynamic raw) {
-                    if (raw is! Map) return null;
-                    //final name = raw['name'];
-                    final code = raw['code'];
-                    final retT = raw['ret_text'];
-                    final msg = raw['message'];
-
+                  String _value(DiagNotificationItem it) {
                     final lines = <String>[];
-                    //if (name != null) lines.add('name: $name');
-                    lines.add('code: ${code ?? '-'} ret: ${retT ?? '-'}');
-                    //if (msg != null && (msg as String).isNotEmpty) lines.add('msg: $msg');
-                    if (msg != null && ('$msg').isNotEmpty) {
-                      lines.add('msg: $msg');
+
+                    // status (숫자 + 텍스트)
+                    if (it.status != null) {
+                      final stText =
+                          (it.statusText != null && it.statusText!.isNotEmpty)
+                              ? it.statusText
+                              : '${it.status}';
+                      lines.add('status: $stText (${it.status})');
                     }
 
-                    return lines.join('\n');
+                    // message
+                    if (it.message.trim().isNotEmpty) {
+                      lines.add('message: ${it.message}');
+                    }
+
+                    // source message name
+                    if (it.sourceMessageName.trim().isNotEmpty) {
+                      lines.add('source: ${it.sourceMessageName}');
+                    }
+
+                    // raw_data (원문 그대로)
+                    if (it.rawData.trim().isNotEmpty) {
+                      lines.add('raw_data: ${it.rawData}');
+                    }
+
+                    // received_at
+                    lines
+                        .add('received_at: ${it.receivedAt.toIso8601String()}');
+
+                    return lines.isEmpty ? '-' : lines.join('\n');
                   }
 
-                  final List<Widget> children = logs.isEmpty
-                      ? const [
-                          KeyValueItem(
-                            label: 'Waiting for diagnostic messages...',
-                            value: '-',
-                          ),
-                        ]
-                      : [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final item in logs)
-                                Builder(builder: (_) {
-                                  final int? statusNum = (item['status'] is num)
-                                      ? (item['status'] as num).toInt()
-                                      : (item['status'] as int?);
+                  // 상태 색상 매핑
+                  StatusType _statusOf(DiagNotificationItem it) {
+                    // DiagnosticStatusType 매핑:
+                    // 1 PASS, 2 FATAL, 3 WARNING 같은 식이면
+                    switch (it.status) {
+                      case 1:
+                        return StatusType.good;
+                      case 3:
+                        return StatusType.warning;
+                      case 2:
+                        return StatusType.error;
+                      default:
+                        return StatusType.good;
+                    }
+                  }
 
-                                  final value =
-                                      item['status_text']?.toString() ?? '-';
+                  final Widget content = logs.isEmpty
+                      ? const KeyValueItem(
+                          label: 'Waiting for notifications...', value: '-')
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            final maxH = MediaQuery.of(context).size.height;
+                            final listMaxHeight =
+                                (maxH * 0.45).clamp(160.0, 420.0);
 
-                                  final label = item['name']?.toString() ??
-                                      'unknown';
-
-                                  return KeyValueItem(
-                                    label: label,
-                                    value: value,
-                                    subtitle: _subtitle(item),
-                                    status: _statusOf(statusNum),
+                            return ConstrainedBox(
+                              constraints:
+                                  BoxConstraints(maxHeight: listMaxHeight),
+                              child: ListView.builder(
+                                itemCount: logs.length,
+                                itemBuilder: (_, i) {
+                                  final it = logs[i];
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: KeyValueItem(
+                                      label: _label(it),
+                                      value: _value(it),
+                                      status: _statusOf(it),
+                                    ),
                                   );
-                                }),
-                            ],
-                          ),
-                        ];
-
-                  final List<Widget> children2 = names.isEmpty
-                    ? const [
-                      KeyValueItem(label: 'Waiting for diagnostic list...', value: '-'),
-                    ]
-                    : [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final name in names)
-                            Builder(builder: (_) {
-                              final raw = _mwCollector.topicData[name];
-
-                              final int? statusNum = (raw is Map)
-                                ? (raw['status'] as num?)?.toInt()
-                                : (raw is num ? raw.toInt() : null);
-
-                              final value = (raw is Map)
-                                ? (raw['status_text']?.toString() ?? '-')
-                                : (raw?.toString() ?? '-');
-
-                              return KeyValueItem(
-                                label: name,
-                                value: value,
-                                subtitle: _subtitle(raw),
-                                status: _statusOf(statusNum),
-                              );
-                            }),
-                        ],
-                      ),
-                    ];
+                                },
+                              ),
+                            );
+                          },
+                        );
 
                   return DataViewWidget(
-                    title: 'Diagnostic Status',
-                    icon: Icons.settings,
+                    title: 'Diagnostic Notifications',
+                    icon: Icons.notifications_active,
                     iconColor: const Color(0xFF34D399),
-                    status: StatusType.error,
-                    isExpanded: _expandedSections['diagnostic'] ?? false,
-                    onTap: () => _toggleSection('diagnostic'),
-                    children: children,
+                    status: StatusType.warning,
+                    isExpanded: _expandedSections['notification'] ?? false,
+                    onTap: () => _toggleSection('notification'),
+                    children: [content],
                   );
                 }),
-                const SizedBox(height: 20),
-                Obx(() {
-                  return DataViewWidget(
-                    title: 'Ota Status', 
-                    icon: Icons.arrow_circle_up, 
-                    iconColor: const Color.fromARGB(255, 66, 165, 245), 
-                    status: StatusType.warning, 
-                    isExpanded: _expandedSections['ota'] ?? false, 
-                    onTap: () => _toggleSection('ota'), 
-                    children: [
-                      KeyValueItem(
-                          label: 'test',
-                          value:
-                              _mwCollector.topicData['Ota status'].toString()
-                      ),
-                    ],
-                  );
-                })
-              ],
-            ),
+              ),
+            ],
           ),
-          // const SizedBox(width: 24),
-          // // Right Column - Security
-          // Expanded(
-          //   child: Column(
-          //     children: [
-          //       Obx(() {
-          //         return DataViewWidget(
-          //           title: 'Security Status',
-          //           icon: Icons.lock,
-          //           iconColor: const Color(0xFFFBBF24),
-          //           status: StatusType.warning,
-          //           isExpanded: _expandedSections['security'] ?? false,
-          //           onTap: () => _toggleSection('security'),
-          //           children: [
-          //             KeyValueItem(
-          //                 label: 'Security Level',
-          //                 value:
-          //                     _mwCollector.topicData['Ota status'].toString()),
-          //             KeyValueItem(
-          //                 label: 'Encryption',
-          //                 value:
-          //                     _mwCollector.topicData['Ota status'].toString()),
-          //             KeyValueItem(
-          //                 label: 'Certificate',
-          //                 value:
-          //                     _mwCollector.topicData['Ota status'].toString()),
-          //             KeyValueItem(
-          //                 label: 'Intrusion Det',
-          //                 value:
-          //                     _mwCollector.topicData['Ota status'].toString(),
-          //                 status: StatusType.warning),
-          //             KeyValueItem(
-          //                 label: 'Firewall',
-          //                 value:
-          //                     _mwCollector.topicData['Ota status'].toString()),
-          //             const SizedBox(height: 8),
-          //             Container(
-          //               padding: const EdgeInsets.all(8),
-          //               decoration: BoxDecoration(
-          //                 color: const Color(0xFF78350F).withOpacity(0.3),
-          //                 borderRadius: BorderRadius.circular(4),
-          //                 border: Border.all(
-          //                   color: const Color(0xFFFBBF24).withOpacity(0.3),
-          //                 ),
-          //               ),
-          //               child: const Column(
-          //                 crossAxisAlignment: CrossAxisAlignment.start,
-          //                 children: [
-          //                   Text(
-          //                     'Security Alert:',
-          //                     style: TextStyle(
-          //                       fontSize: 12,
-          //                       color: Color(0xFFFBBF24),
-          //                       fontWeight: FontWeight.w500,
-          //                     ),
-          //                   ),
-          //                   SizedBox(height: 4),
-          //                   Text(
-          //                     'Unusual network activity at 14:32',
-          //                     style: TextStyle(
-          //                       fontSize: 10,
-          //                       color: Color(0xFFFDE68A),
-          //                     ),
-          //                   ),
-          //                 ],
-          //               ),
-          //             ),
-          //           ],
-          //         );
-          //       }),
-          //     ],
-          //   ),
-          // ),
+          const SizedBox(
+            height: 30,
+          ),
+          Obx(() {
+            final list = _mwCollector.diagnostics;
+
+            StatusType _statusOf(int? s) {
+              switch (s) {
+                case 1:
+                  return StatusType.good;
+                case 3:
+                  return StatusType.warning;
+                case 2:
+                  return StatusType.error;
+                default:
+                  return StatusType.good;
+              }
+            }
+
+            String _subtitle(Map<String, dynamic> raw) {
+              final code = raw['code'];
+              final retT = raw['ret_text'];
+              final msg = raw['message'];
+              final source = raw['source_message_name'];
+              final rawData = raw['raw_data'];
+
+              final lines = <String>[];
+              lines.add('code: ${code ?? '-'} ret: ${retT ?? '-'}');
+              if (msg != null && ('$msg').isNotEmpty) {
+                lines.add('msg: $msg');
+              }
+              if (source != null && ('$source').isNotEmpty) {
+                lines.add('source: $source');
+              }
+              if (rawData != null && ('$rawData').isNotEmpty) {
+                lines.add('raw: $rawData');
+              }
+              return lines.join('\n');
+            }
+
+            final children = list.isEmpty
+                ? const [
+                    KeyValueItem(
+                        label: 'Press refresh to load diagnostics', value: '-'),
+                  ]
+                : [
+                    // overflow 방지: 높이 제한 + 스크롤
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 360),
+                      child: ListView.builder(
+                        itemCount: list.length,
+                        itemBuilder: (_, i) {
+                          final raw = list[i];
+                          final int? statusNum = (raw['status'] is num)
+                              ? (raw['status'] as num).toInt()
+                              : null;
+
+                          final value = raw['status_text']?.toString() ?? '-';
+                          final label = raw['name']?.toString() ?? 'unknown';
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: KeyValueItem(
+                              label: label,
+                              value: value,
+                              subtitle: _subtitle(raw),
+                              status: _statusOf(statusNum),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ];
+
+            final bool busy = _mwCollector.isRefreshing.value;
+
+            final Widget refreshButton = IconButton(
+              tooltip: busy ? 'Refreshing...' : 'Refresh',
+              onPressed: busy
+                  ? null
+                  : () async {
+                      await _mwCollector.refreshOnce();
+                    },
+              icon: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+            );
+
+            return DataViewWidget(
+              title: 'Diagnostic Status',
+              icon: Icons.settings,
+              iconColor: const Color(0xFF34D399),
+              status: StatusType.error,
+              isExpanded: _expandedSections['diagnostic'] ?? false,
+              onTap: () => _toggleSection('diagnostic'),
+              button: refreshButton,
+              children: children,
+            );
+          }),
         ],
       ),
     );
