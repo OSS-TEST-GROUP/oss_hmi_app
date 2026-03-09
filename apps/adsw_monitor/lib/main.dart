@@ -148,14 +148,14 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> with SingleTi
           children: [
             Row(
               children: [
-                IconButton(
-                  icon: Icon(Icons.arrow_back),
-                  color: Colors.white,
-                  iconSize: 30,
-                  onPressed: () {
-                    quitApp();
-                  },
-                ),
+                // IconButton(
+                //   icon: Icon(Icons.arrow_back),
+                //   color: Colors.white,
+                //   iconSize: 30,
+                //   onPressed: () {
+                //     quitApp();
+                //   },
+                // ),
                 const SizedBox(width: 20,),
                 Container(
                   padding: const EdgeInsets.all(6),

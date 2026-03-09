@@ -202,7 +202,7 @@ class MwViewPageState extends State<MwViewPage>
                             );
                           },
                         );
-                        
+
                   return DataViewWidget(
                     title: 'Diagnostic Notifications',
                     icon: Icons.notifications_active,
@@ -311,7 +311,7 @@ class MwViewPageState extends State<MwViewPage>
             );
 
             return DataViewWidget(
-              title: 'Diagnostic Status',
+              title: 'Diagnostic Info Get',
               icon: Icons.settings,
               iconColor: const Color(0xFF34D399),
               status: StatusType.error,
