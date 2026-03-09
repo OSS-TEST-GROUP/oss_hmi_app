@@ -44,19 +44,20 @@ class DiagNotificationItem {
 }
 
 class MwCollector extends GetxController {
-  final RxList<Map<String, dynamic>> diagnostics = <Map<String, dynamic>>[].obs;
+  static const _pkg = 'diagnosticmgr/msg';
+  static const Duration _watchdogInterval = Duration(milliseconds: 500);
 
+  final Topic Function(Ros ros, String name, String type) topicFactory;
+
+  Ros get ros => Get.find<Ros>();            
+
+  final RxList<Map<String, dynamic>> diagnostics = <Map<String, dynamic>>[].obs;
   final RxList<DiagNotificationItem> notificationLogs =
       <DiagNotificationItem>[].obs;
 
   final RxBool isRefreshing = false.obs;
   final RxnString lastError = RxnString();
-
-  Ros get ros => Get.find<Ros>();
-
-  final Topic Function(Ros ros, String name, String type) topicFactory;
-
-  static const _pkg = 'diagnosticmgr/msg';
+  final RxnString securityData = RxnString();
 
   Topic? _infoReqPub;
   Topic? _infoListReqPub;
@@ -64,103 +65,243 @@ class MwCollector extends GetxController {
   Topic? _infoListRespSub;
   Topic? _notificationSub;
 
-  bool _advertised = false;
+  Timer? _rosWatchdog;
   Ros? _boundRos;
 
-  final RxnString securityData = RxnString();
+  bool _advertised = false;
+  bool _rebinding = false;
+  bool _refreshInFlight = false;
 
   MwCollector({required this.topicFactory});
 
   @override
   void onInit() {
     super.onInit();
-
-    final r = ros;
-    if (r.status == Status.connected) {
-      _bindIfNeeded(r);
-    }
+    _startRosWatchdog();
   }
 
   @override
   void onClose() {
-    _tearDownComms();
+    _stopRosWatchdog();
+    _clearConnectionState(resetBoundRos: true);
     super.onClose();
   }
 
   Future<void> refreshOnce() async {
-    diagnostics.clear();
-    await _sendInfoListRequest();
-  }
+    if (_refreshInFlight) return;
 
-  Future<void> _bindIfNeeded(Ros r) async {
-    if (r.status != Status.connected) return;
-
-    final needRebind = _boundRos == null || !identical(_boundRos, r);
-
-    if (needRebind) {
-      _tearDownComms();
-      _boundRos = r;
-
-      _infoReqPub = topicFactory(
-        r,
-        '/mmf/diagnosticmgr/DiagnosticInfoRequest',
-        '$_pkg/DiagnosticInfoRequest',
-      );
-
-      _infoListReqPub = topicFactory(
-        r,
-        '/mmf/diagnosticmgr/DiagnosticInfoListRequest',
-        '$_pkg/DiagnosticInfoListRequest',
-      );
-
-      _infoRespSub = topicFactory(
-        r,
-        '/mmf/diagnosticmgr/DiagnosticInfoResponse',
-        '$_pkg/DiagnosticInfoResponse',
-      );
-
-      _infoListRespSub = topicFactory(
-        r,
-        '/mmf/diagnosticmgr/DiagnosticInfoListResponse',
-        '$_pkg/DiagnosticInfoListResponse',
-      );
-
-      _notificationSub = topicFactory(
-        r,
-        '/mmf/diagnosticmgr/DiagnosticNotification',
-        '$_pkg/DiagnosticNotification',
-      );
-
-      _infoListRespSub?.subscribe(_onInfoListResponse);
-      _infoRespSub?.subscribe(_onInfoResponse);
-      _notificationSub?.subscribe(_onNotification);
-    }
-
-    await _advertiseWithRetry();
-  }
-
-  Future<void> _advertiseWithRetry() async {
-    if (_advertised) return;
-    if (ros.status != Status.connected) return;
-
+    _refreshInFlight = true;
+    isRefreshing.value = true;
+    lastError.value = null;
     try {
-      await _infoListReqPub?.advertise();
-      await _infoReqPub?.advertise();
-      _advertised = true;
+      Ros r;
+      try {
+        r = ros;
+      } catch (e) {
+        lastError.value = 'ROS instance is not available';
+        debugPrint('[MW] ROS lookup failed: $e');
+        return;
+      }
+
+      if (r.status != Status.connected) {
+        lastError.value = 'ROS is not connected';
+        return;
+      }
+
+      final ready = await _ensureBoundAndReady(r);
+      if (!ready) {
+        lastError.value  = 'Failed to prepare diagnostic communication';
+        return;
+      }
+
+      diagnostics.clear();
+      await _sendInfoListRequest();
     } catch (e) {
-      debugPrint('[MW] advertise failed: $e');
+      lastError.value = "Refresh failed";
+      debugPrint('[MW] refreshOnce failed: $e');
+    } finally {
+      isRefreshing.value = false;
+      _refreshInFlight = false;
     }
   }
 
-  void _tearDownComms() {
+  void _startRosWatchdog() {
+    _rosWatchdog?.cancel();
+    _rosWatchdog = Timer.periodic(_watchdogInterval, (_) async {
+      if (_rebinding) return;
+
+      Ros r;
+      try {
+        r = ros;
+      } catch (_) {
+        if (_boundRos != null || _hasAnyCommObject()) {
+          debugPrint('[MW] ROS instance unavailable. clearing connection state');
+          _clearConnectionState(resetBoundRos: true);
+        }
+        return;
+      }
+
+      final connected = r.status == Status.connected;
+      final rosChanged = _boundRos == null || !identical(_boundRos, r);
+      final notReady  = !_isCommReady();
+
+      if (!connected) {
+        if (_boundRos != null || _hasAnyCommObject() || _advertised) {
+          debugPrint('[MW] ROS disconnected. tearing down comms');
+          _clearConnectionState(resetBoundRos: true);
+        }
+        return;
+      }
+
+      if (rosChanged || notReady) {
+        debugPrint(
+          '[MW] watchdog trigger. connected=$connected '
+          'rosChanged=$rosChanged notReady=$notReady',
+        );
+        await _ensureBoundAndReady(r);
+      }
+    });
+  }
+
+  void _stopRosWatchdog() {
+    _rosWatchdog?.cancel();
+    _rosWatchdog = null;
+  }
+
+  bool _hasAnyCommObject() {
+    return _infoReqPub != null ||
+    _infoListReqPub != null ||
+    _infoRespSub != null ||
+    _infoListRespSub != null ||
+    _notificationSub != null;
+  }
+
+  bool _isCommReady() {
+    return _boundRos != null &&
+          _infoReqPub != null &&
+          _infoListReqPub != null &&
+          _infoRespSub != null &&
+          _infoListRespSub != null &&
+          _notificationSub != null &&
+          _advertised;
+  }
+
+  Future<bool> _ensureBoundAndReady(Ros r) async {
+    if (_rebinding) return _isCommReady();
+    if (r.status != Status.connected) return false;
+
+    _rebinding = true;
+    try {
+      final needRecreateTopics =
+          _boundRos == null ||
+          !identical(_boundRos, r) ||
+          _infoReqPub == null ||
+          _infoListReqPub == null ||
+          _infoRespSub == null ||
+          _infoListRespSub == null ||
+          _notificationSub == null;
+
+      if (needRecreateTopics) {
+        _createAndSubscribeTopics(r);
+      }
+
+      final advertised = await _ensureAdvertised();
+      return advertised && _isCommReady();
+    } catch (e) {
+      debugPrint('[MW] _ensureBoundAndReady failed: $e');
+      return false;
+    } finally {
+      _rebinding = false;
+    }
+  }
+
+  void _createAndSubscribeTopics(Ros r) {
+    debugPrint(
+      '[MW] createAndSubscribeTopics. rosChanged='
+      '${_boundRos == null || !identical(_boundRos, r)}',
+    );
+
+    _clearConnectionState(resetBoundRos: false);
+    _boundRos = r;
+
+    _infoReqPub = topicFactory(
+      r,
+      '/mmf/diagnosticmgr/DiagnosticInfoRequest',
+      '$_pkg/DiagnosticInfoRequest',
+    );
+
+    _infoListReqPub = topicFactory(
+      r,
+      '/mmf/diagnosticmgr/DiagnosticInfoListRequest',
+      '$_pkg/DiagnosticInfoListRequest',
+    );
+
+    _infoRespSub = topicFactory(
+      r,
+      '/mmf/diagnosticmgr/DiagnosticInfoResponse',
+      '$_pkg/DiagnosticInfoResponse',
+    );
+
+    _infoListRespSub = topicFactory(
+      r,
+      '/mmf/diagnosticmgr/DiagnosticInfoListResponse',
+      '$_pkg/DiagnosticInfoListResponse',
+    );
+
+    _notificationSub = topicFactory(
+      r,
+      '/mmf/diagnosticmgr/DiagnosticNotification',
+      '$_pkg/DiagnosticNotification',
+    );
+
+    _infoListRespSub?.subscribe(_onInfoListResponse);
+    _infoRespSub?.subscribe(_onInfoResponse);
+    _notificationSub?.subscribe(_onNotification);
+
+    _advertised = false;
+  }
+
+  Future<bool> _ensureAdvertised({int maxRetry = 3}) async {
+    if (_advertised) return true;
+    if (ros.status != Status.connected) return false;
+    if (_infoReqPub == null || _infoListReqPub == null) return false;
+
+    for (int attempt = 1; attempt <= maxRetry; attempt++) {
+      try {
+        await _infoListReqPub!.advertise();
+        await _infoReqPub!.advertise();
+        _advertised = true;
+        debugPrint('[MW] advertise done (attempt=$attempt)');
+        return true;
+      } catch (e) {
+        debugPrint('[MW] advertise failed (attempt=$attempt): $e');
+        if (attempt < maxRetry) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+      }
+    }
+
+    return false;
+  }
+
+  void _clearConnectionState({required bool resetBoundRos}) {
     try {
       _infoListRespSub?.unsubscribe();
+    } catch (_) {}
+
+    try {
       _infoRespSub?.unsubscribe();
+    } catch (_) {}
+
+    try {
       _notificationSub?.unsubscribe();
     } catch (_) {}
 
     try {
       _infoReqPub?.unadvertise();
+    } catch (_) {}
+
+    try {
       _infoListReqPub?.unadvertise();
     } catch (_) {}
 
@@ -169,26 +310,38 @@ class MwCollector extends GetxController {
     _infoRespSub = null;
     _infoListRespSub = null;
     _notificationSub = null;
-
     _advertised = false;
+
+    if (resetBoundRos) {
+      _boundRos = null;
+    }
   }
 
   Future<void> _sendInfoListRequest() async {
     if (ros.status != Status.connected) return;
+    if (!_advertised || _infoListReqPub == null) return;
 
     try {
-      await _infoListReqPub?.publish({});
+      await _infoListReqPub!.publish({});
+      debugPrint('[MW] DiagnosticInfoListRequest published');
     } catch (e) {
       debugPrint('[MW] list request failed: $e');
     }
   }
 
   Future<void> _sendInfoRequest(int code, String name) async {
-    debugPrint("send request code: $code, name: $name");
-    await _infoReqPub?.publish({
-      'diag_code': code,
-      'diag_name': name,
-    });
+    if (ros.status != Status.connected) return;
+    if (!_advertised || _infoReqPub == null) return;
+
+    try {
+      debugPrint('[MW] send request code=$code name=$name');
+      await _infoReqPub!.publish({
+        'diag_code': code,
+        'diag_name': name,
+      });
+    } catch (e) {
+      debugPrint('[MW] info request failed: $e');
+    }
   }
 
   int _toInt(dynamic v) {
