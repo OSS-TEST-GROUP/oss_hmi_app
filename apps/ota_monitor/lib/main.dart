@@ -3,64 +3,31 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'dart:async';
 
 import 'package:ota_monitor/config/config_loader.dart';
 import 'package:ota_monitor/config/app_config.dart';
-import 'package:roslibdart/roslibdart.dart';
-import 'ros_keeper.dart';
+import 'package:ota_monitor/dds/dds_keeper.dart';
 
 import 'package:ota_monitor/view/ota_view_page.dart';
-import 'package:ota_monitor/view/web_prompt_bootstrap.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
 
 late AppConfig appConfig;
-late RosKeeper rosKeeper;
-
-typedef RosKeeperFactory = RosKeeper Function(AppConfig cfg);
-
-Future<void> startRosWithUri(
-  Uri rosUrl, {
-  RosKeeperFactory? keeperFactory,
-}) async {
-  // 웹에서 입력 받은 URL로 AppConfig 구성
-  appConfig = AppConfig(rosUrl: rosUrl, statusTopic: '/app_status/ota_monitor');
-
-  // RosKeeper 생성 (테스트에서는 keeperFactory로 주입)
-  final factory = keeperFactory ?? ((cfg) => RosKeeper(cfg));
-  rosKeeper = factory(appConfig);
-
-  // RosKeeper 시작
-  await rosKeeper.start();
-
-  // GetX 주입
-  if (!Get.isRegistered<Ros>()) {
-    Get.put<Ros>(rosKeeper.ros, permanent: true);
-  } else {
-    Get.replace<Ros>(rosKeeper.ros);
-  }
-}
+late DdsKeeper ddsKeeper;
 
 void main(List<String> args) {
   runWithLogCapture(() async {
-    if (kIsWeb) {
-      runApp(MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData.dark(),
-        home: WebPromptBootstrap(
-          onConfigured: startRosWithUri,
-          child: const OtaMonitorApp(),
-        ),
-      ));
-    } else {
-      appConfig = await loadConfig(args);
-      rosKeeper = RosKeeper(appConfig);
-      await rosKeeper.start();
+    appConfig = await loadConfig(args);
+    ddsKeeper = DdsKeeper(domainId: appConfig.ddsDomainId);
 
-      Get.put<Ros>(rosKeeper.ros, permanent: true);
-
-      runApp(const OtaMonitorApp());
+    final rc = ddsKeeper.init();
+    if (rc != 0) {
+      debugPrint('[main] DDS init failed: $rc');
     }
+
+    // Expose DdsKeeper via GetX for OtaCollector injection.
+    Get.put<DdsKeeper>(ddsKeeper, permanent: true);
+
+    runApp(const OtaMonitorApp());
   });
 }
 
@@ -106,7 +73,7 @@ class OtaMonitorHomePage extends StatelessWidget {
         color: const Color(0xFF1E293B),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),

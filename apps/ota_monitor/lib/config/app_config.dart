@@ -1,24 +1,13 @@
 import 'dart:core';
 
 class AppConfig {
-  final Uri rosUrl;
-  final String statusTopic;
+  final int ddsDomainId;
 
-  AppConfig({
-    required this.rosUrl,
-    required this.statusTopic,
-  });
+  AppConfig({this.ddsDomainId = 0});
 
-  factory AppConfig.defaults() => AppConfig(
-        rosUrl: Uri.parse('ws://172.16.10.56:9090'),
-        statusTopic: '/app_status/ota_monitor',
-      );
+  factory AppConfig.defaults() => AppConfig(ddsDomainId: 0);
 
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
-        rosUrl: Uri.parse(
-          (j['rosbridge']?['url'] as String?) ?? 'ws://172.16.10.56:9090',
-        ),
-        statusTopic:
-            (j['statusTopic'] as String?) ?? '/app_status/ota_monitor',
+        ddsDomainId: (j['dds']?['domain_id'] as int?) ?? 0,
       );
 }

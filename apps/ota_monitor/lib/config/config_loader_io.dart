@@ -4,43 +4,71 @@ import 'app_config.dart';
 
 typedef ConfigFileFinder = Future<File?> Function(List<String> args);
 
+/// 우선순위:
+///   1. CLI --domain=N
+///   2. 환경변수 OTA_DDS_DOMAIN=N
+///   3. 설정 파일 (dds.domain_id)
+///   4. 기본값 0
 Future<AppConfig> loadConfig(
   List<String> args, {
   ConfigFileFinder? finder,
 }) async {
-  // 테스트에서는 finder를 주입, 실제 앱에서는 _findConfigFile 사용
+  // 설정 파일에서 베이스 설정 로드
+  AppConfig cfg = AppConfig.defaults();
+
   final file = await (finder ?? _findConfigFile)(args);
-
-  if (file == null) {
+  if (file != null) {
+    try {
+      final txt = await file.readAsString();
+      final map = json.decode(txt) as Map<String, dynamic>;
+      cfg = AppConfig.fromJson(map);
+      stdout.writeln('[config] loaded: ${file.path} (dds_domain=${cfg.ddsDomainId})');
+    } catch (e) {
+      stderr.writeln('[config] failed to parse ${file.path}: $e (use defaults)');
+    }
+  } else {
     stderr.writeln('[config] no config file found; using defaults');
-    return AppConfig.defaults();
   }
 
-  try {
-    final txt = await file.readAsString();
-    final map = json.decode(txt) as Map<String, dynamic>;
-    final cfg = AppConfig.fromJson(map);
-    stdout.writeln('[config] loaded: ${file.path} (ros=${cfg.rosUrl})');
-    return cfg;
-  } catch (e) {
-    stderr.writeln('[config] failed to parse ${file.path}: $e (use defaults)');
-    return AppConfig.defaults();
+  // 환경변수 OTA_DDS_DOMAIN 적용
+  final envDomain = Platform.environment['OTA_DDS_DOMAIN'];
+  if (envDomain != null && envDomain.isNotEmpty) {
+    final v = int.tryParse(envDomain);
+    if (v != null) {
+      cfg = AppConfig(ddsDomainId: v);
+      stdout.writeln('[config] OTA_DDS_DOMAIN=$v');
+    }
   }
+
+  // CLI --domain=N 적용 (최우선)
+  final domainArg = args.firstWhere(
+    (a) => a.startsWith('--domain='),
+    orElse: () => '',
+  );
+  if (domainArg.isNotEmpty) {
+    final v = int.tryParse(domainArg.split('=')[1]);
+    if (v != null) {
+      cfg = AppConfig(ddsDomainId: v);
+      stdout.writeln('[config] --domain=$v (CLI override)');
+    }
+  }
+
+  stdout.writeln('[config] DDS domain: ${cfg.ddsDomainId}');
+  return cfg;
 }
 
 Future<File?> _findConfigFile(List<String> args) async {
-  // 1) CLI arg
-  // final arg = args.firstWhere(
-  //   (a) => a.startsWith('--config='),
-  //   orElse: () => '',
-  // );
-  // if (arg.isNotEmpty) {
-  //   final p = arg.split('=')[1];
-  //   final f = File(p);
-  //   if (await f.exists()) return f;
-  // }
+  // 1) CLI --config=<path>
+  final configArg = args.firstWhere(
+    (a) => a.startsWith('--config='),
+    orElse: () => '',
+  );
+  if (configArg.isNotEmpty) {
+    final f = File(configArg.split('=')[1]);
+    if (await f.exists()) return f;
+  }
 
-  // 2) ENV
+  // 2) ENV OTA_CONFIG
   final envPath = Platform.environment['OTA_CONFIG'];
   if (envPath != null && envPath.isNotEmpty) {
     final f = File(envPath);

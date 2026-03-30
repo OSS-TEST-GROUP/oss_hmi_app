@@ -1,306 +1,193 @@
-import 'dart:async';
-import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:roslibdart/roslibdart.dart';
 
 import 'package:ota_monitor/data/ota_data.dart';
-
-typedef SubscribeHandler = Future<void> Function(Map<String, dynamic> msg);
-typedef TopicFactory = Topic Function(Ros ros, String name, String type);
+import 'package:ota_monitor/dds/dds_keeper.dart';
 
 class OtaCollector extends GetxController {
-  // ROS 인스턴스 (GetX DI로부터 주입)
-  Ros get ros => Get.find<Ros>();
+  // DDS keeper injected via GetX
+  DdsKeeper get _dds => Get.find<DdsKeeper>();
 
-  // Topic Factory (테스트 주입 가능)
-  final TopicFactory topicFactory;
-
-  // 상태 데이터
+  // State data
   final RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   final RxList<Map<String, dynamic>> appList = <Map<String, dynamic>>[].obs;
   final RxList<Map<String, dynamic>> updateHistory =
       <Map<String, dynamic>>[].obs;
 
-  // Request ID 관리
+  // Request ID counter
   int _nextRequestId = 1000;
-
-  // 구독 관리
-  List<Topic> _subs = [];
-  Ros? _boundRos;
-
-  // Publisher 관리
-  Topic? _getSettingsPub;
-  Topic? _setSettingsPub;
-  Topic? _getStatePub;
-  Topic? _setUpdatePub;
-
-  // ROS 감시 타이머
-  Timer? _rosWatchdog;
-
-  OtaCollector({
-    TopicFactory? topicFactory,
-  }) : topicFactory =
-            topicFactory ?? ((ros, name, type) => Topic(ros: ros, name: name, type: type));
 
   @override
   void onInit() {
     super.onInit();
-
-    // ROS 연결 상태 감시 (500ms 주기)
-    _rosWatchdog = Timer.periodic(const Duration(milliseconds: 500), (_) async {
-      final r = ros;
-      final rosChanged = _boundRos == null || !identical(_boundRos, r);
-      final connected = r.status == Status.connected;
-
-      if (connected && (rosChanged || _subs.isEmpty)) {
-        debugPrint('[OTA] ROS (re)connected, rebinding...');
-        await _rebindAndResubscribe(r);
-      }
-    });
+    _subscribeAll();
   }
 
-  @override
-  void onClose() {
-    _rosWatchdog?.cancel();
-    _unsubscribeAll();
-    _unpublishAll();
-    super.onClose();
-  }
+  // ============= Subscribe to response topics =============
 
-  // 구독 설정
-  Future<void> _rebindAndResubscribe(Ros r) async {
-    _unsubscribeAll();
-    _boundRos = r;
-
-    // Response 토픽 구독
-    final handlers = [
-      handleGetAppUpdateSettingsResponse,
-      handleSetAppUpdateSettingsResponse,
-      handleGetAppUpdateStateResponse,
-      handleSetAppUpdateResponse,
-      handleNotifyAppUpdateStatus,
+  void _subscribeAll() {
+    final subs = [
+      (otaResponseTopics[0], otaDdsResponseTypes[0],
+          _handleGetAppUpdateSettingsResponse),
+      (otaResponseTopics[1], otaDdsResponseTypes[1],
+          _handleSetAppUpdateSettingsResponse),
+      (otaResponseTopics[2], otaDdsResponseTypes[2],
+          _handleGetAppUpdateStateResponse),
+      (otaResponseTopics[3], otaDdsResponseTypes[3],
+          _handleSetAppUpdateResponse),
+      (otaResponseTopics[4], otaDdsResponseTypes[4],
+          _handleNotifyAppUpdateStatus),
     ];
 
-    final n = min(otaResponseTopics.length, otaResponseTypes.length);
-    for (int i = 0; i < n && i < handlers.length; i++) {
-      try {
-        final t = topicFactory(r, otaResponseTopics[i], otaResponseTypes[i]);
-        t.subscribe(handlers[i]);
-        _subs.add(t);
-        debugPrint('[OTA] Subscribed to ${otaResponseTopics[i]}');
-      } catch (e) {
-        debugPrint('[OTA] Failed to subscribe ${otaResponseTopics[i]}: $e');
-      }
-    }
-
-    // Request 토픽 발행자 생성
-    try {
-      _getSettingsPub = topicFactory(
-        r,
-        '/mmf/otamanager/otaactor_service/GetAppUpdateSettings',
-        'ota_manager/GetAppUpdateSettings',
-      );
-      _setSettingsPub = topicFactory(
-        r,
-        '/mmf/otamanager/otaactor_service/SetAppUpdateSettings',
-        'ota_manager/SetAppUpdateSettings',
-      );
-      _getStatePub = topicFactory(
-        r,
-        '/mmf/otamanager/otaactor_service/GetAppUpdateState',
-        'ota_manager/GetAppUpdateState',
-      );
-      _setUpdatePub = topicFactory(
-        r,
-        '/mmf/otamanager/otaactor_service/SetAppUpdate',
-        'ota_manager/SetAppUpdate',
-      );
-      debugPrint('[OTA] Publishers created');
-    } catch (e) {
-      debugPrint('[OTA] Failed to create publishers: $e');
+    for (final (topic, type, handler) in subs) {
+      _dds.subscribe(topic, type, (t, json) {
+        try {
+          handler(json);
+        } catch (e) {
+          debugPrint('[OTA] handler error on $t: $e');
+        }
+      });
     }
   }
 
-  void _unsubscribeAll() {
-    for (final t in _subs) {
-      try {
-        t.unsubscribe();
-      } catch (_) {}
-    }
-    _subs.clear();
-  }
+  // ============= Response handlers =============
 
-  void _unpublishAll() {
-    _getSettingsPub?.unadvertise();
-    _setSettingsPub?.unadvertise();
-    _getStatePub?.unadvertise();
-    _setUpdatePub?.unadvertise();
-    _getSettingsPub = null;
-    _setSettingsPub = null;
-    _getStatePub = null;
-    _setUpdatePub = null;
-  }
-
-  // ============= Response 핸들러 =============
-
-  Future<void> handleGetAppUpdateSettingsResponse(
-      Map<String, dynamic> msg) async {
-    debugPrint('[OTA] GetAppUpdateSettingsResponse: $msg');
-
-    final id = msg['id'] as num?;
-    final appName = msg['app_name'] as String?;
-    final appSettings = msg['app_settings'] as String?;
-    final retCode = msg['ret_code'] as num?;
+  void _handleGetAppUpdateSettingsResponse(String json) {
+    debugPrint('[OTA] GetAppUpdateSettingsResponse: $json');
+    final m = _parseJson(json);
+    final appName = m['app_name'] as String?;
+    final appSettings = m['app_settings'] as String?;
+    final retCode = m['ret_code'] as int?;
 
     if (appName != null) {
       topicData['${appName}_settings'] = appSettings ?? '';
-      topicData['${appName}_settings_ret'] = ReturnValue.fromInt(retCode?.toInt());
-
-      // 앱 목록 업데이트
+      topicData['${appName}_settings_ret'] =
+          ReturnValue.fromInt(retCode);
       _updateAppList(appName, settings: appSettings);
     }
   }
 
-  Future<void> handleSetAppUpdateSettingsResponse(
-      Map<String, dynamic> msg) async {
-    debugPrint('[OTA] SetAppUpdateSettingsResponse: $msg');
-
-    final id = msg['id'] as num?;
-    final retCode = msg['ret_code'] as num?;
-
-    topicData['last_set_settings_result'] = ReturnValue.fromInt(retCode?.toInt());
+  void _handleSetAppUpdateSettingsResponse(String json) {
+    debugPrint('[OTA] SetAppUpdateSettingsResponse: $json');
+    final m = _parseJson(json);
+    final retCode = m['ret_code'] as int?;
+    topicData['last_set_settings_result'] = ReturnValue.fromInt(retCode);
   }
 
-  Future<void> handleGetAppUpdateStateResponse(Map<String, dynamic> msg) async {
-    debugPrint('[OTA] GetAppUpdateStateResponse: $msg');
-
-    final id = msg['id'] as num?;
-    final appName = msg['app_name'] as String?;
-    final appStateInfo = msg['app_state_info'] as String?;
-    final retCode = msg['ret_code'] as num?;
+  void _handleGetAppUpdateStateResponse(String json) {
+    debugPrint('[OTA] GetAppUpdateStateResponse: $json');
+    final m = _parseJson(json);
+    final appName = m['app_name'] as String?;
+    final appStateInfo = m['app_state_info'] as String?;
+    final retCode = m['ret_code'] as int?;
 
     if (appName != null) {
       topicData['${appName}_state'] = appStateInfo ?? '';
-      topicData['${appName}_state_ret'] = ReturnValue.fromInt(retCode?.toInt());
-
-      // 앱 목록 업데이트
+      topicData['${appName}_state_ret'] = ReturnValue.fromInt(retCode);
       _updateAppList(appName, state: appStateInfo);
     }
   }
 
-  Future<void> handleSetAppUpdateResponse(Map<String, dynamic> msg) async {
-    debugPrint('[OTA] SetAppUpdateResponse: $msg');
-
-    final id = msg['id'] as num?;
-    final appName = msg['app_name'] as String?;
-    final retCode = msg['ret_code'] as num?;
+  void _handleSetAppUpdateResponse(String json) {
+    debugPrint('[OTA] SetAppUpdateResponse: $json');
+    final m = _parseJson(json);
+    final appName = m['app_name'] as String?;
+    final retCode = m['ret_code'] as int?;
 
     if (appName != null) {
-      topicData['${appName}_update_result'] = ReturnValue.fromInt(retCode?.toInt());
-
-      // 업데이트 히스토리 추가
-      _addUpdateHistory(appName, 'Update requested', retCode?.toInt());
+      topicData['${appName}_update_result'] = ReturnValue.fromInt(retCode);
+      _addUpdateHistory(appName, 'Update requested', retCode);
     }
   }
 
-  Future<void> handleNotifyAppUpdateStatus(Map<String, dynamic> msg) async {
-    debugPrint('[OTA] NotifyAppUpdateStatus: $msg');
-
-    final clientId = msg['client_id'] as num?;
-    final appName = msg['app_name'] as String?;
-    final status = msg['status'] as String?;
+  void _handleNotifyAppUpdateStatus(String json) {
+    debugPrint('[OTA] NotifyAppUpdateStatus: $json');
+    final m = _parseJson(json);
+    final appName = m['app_name'] as String?;
+    final status = m['status'] as String?;
 
     if (appName != null && status != null) {
       topicData['${appName}_status'] = status;
-
-      // 앱 목록 업데이트
       _updateAppList(appName, status: status);
-
-      // 히스토리 추가
       _addUpdateHistory(appName, 'Status: $status', null);
     }
   }
 
-  // ============= 발행 메서드 =============
+  // ============= Publish helpers =============
 
   void requestAppSettings(String appName) {
     final id = _nextRequestId++;
-    final msg = {
-      'id': id,
-      'app_name': appName,
-    };
-
-    try {
-      _getSettingsPub?.publish(msg);
-      debugPrint('[OTA] Requested settings for $appName (id: $id)');
-    } catch (e) {
-      debugPrint('[OTA] Failed to request settings: $e');
-    }
+    _publish(
+      otaRequestTopics[0],
+      otaDdsRequestTypes[0],
+      {'id': id, 'app_name': appName},
+    );
+    debugPrint('[OTA] Requested settings for $appName (id: $id)');
   }
 
   void setAppSettings(String appName, String settingsJson) {
     final id = _nextRequestId++;
-    final msg = {
-      'id': id,
-      'app_name': appName,
-      'app_settings': settingsJson,
-    };
-
-    try {
-      _setSettingsPub?.publish(msg);
-      debugPrint('[OTA] Set settings for $appName (id: $id)');
-    } catch (e) {
-      debugPrint('[OTA] Failed to set settings: $e');
-    }
+    _publish(
+      otaRequestTopics[1],
+      otaDdsRequestTypes[1],
+      {'id': id, 'app_name': appName, 'app_settings': settingsJson},
+    );
+    debugPrint('[OTA] Set settings for $appName (id: $id)');
   }
 
   void requestAppState(String appName) {
     final id = _nextRequestId++;
-    final msg = {
-      'id': id,
-      'app_name': appName,
-    };
-
-    try {
-      _getStatePub?.publish(msg);
-      debugPrint('[OTA] Requested state for $appName (id: $id)');
-    } catch (e) {
-      debugPrint('[OTA] Failed to request state: $e');
-    }
+    _publish(
+      otaRequestTopics[2],
+      otaDdsRequestTypes[2],
+      {'id': id, 'app_name': appName},
+    );
+    debugPrint('[OTA] Requested state for $appName (id: $id)');
   }
 
   void requestUpdate(String appName) {
     final id = _nextRequestId++;
-    final msg = {
-      'id': id,
-      'app_name': appName,
-    };
+    _publish(
+      otaRequestTopics[3],
+      otaDdsRequestTypes[3],
+      {'id': id, 'app_name': appName},
+    );
+    debugPrint('[OTA] Requested update for $appName (id: $id)');
+  }
 
+  void _publish(String topic, String typeName, Map<String, dynamic> fields) {
     try {
-      _setUpdatePub?.publish(msg);
-      debugPrint('[OTA] Requested update for $appName (id: $id)');
+      final json = jsonEncode(fields);
+      final rc = _dds.publish(topic, typeName, json);
+      if (rc != 0) {
+        debugPrint('[OTA] publish failed ($rc): $topic');
+      }
     } catch (e) {
-      debugPrint('[OTA] Failed to request update: $e');
+      debugPrint('[OTA] publish error: $e');
     }
   }
 
-  // ============= 내부 헬퍼 메서드 =============
+  // ============= Internal helpers =============
+
+  Map<String, dynamic> _parseJson(String json) {
+    try {
+      return jsonDecode(json) as Map<String, dynamic>;
+    } catch (_) {
+      return {};
+    }
+  }
 
   void _updateAppList(String appName,
       {String? settings, String? state, String? status}) {
-    // 기존 앱 찾기
-    final existingIndex = appList.indexWhere((app) => app['name'] == appName);
-
-    if (existingIndex != -1) {
-      // 업데이트
-      final app = Map<String, dynamic>.from(appList[existingIndex]);
+    final idx = appList.indexWhere((a) => a['name'] == appName);
+    if (idx != -1) {
+      final app = Map<String, dynamic>.from(appList[idx]);
       if (settings != null) app['settings'] = settings;
       if (state != null) app['state'] = state;
       if (status != null) app['status'] = status;
-      appList[existingIndex] = app;
+      appList[idx] = app;
     } else {
-      // 새로 추가
       appList.add({
         'name': appName,
         'settings': settings ?? '',
@@ -318,8 +205,6 @@ class OtaCollector extends GetxController {
       'message': message,
       'ret_code': retCode,
     });
-
-    // 최근 20개만 유지
     if (updateHistory.length > 20) {
       updateHistory.removeRange(20, updateHistory.length);
     }

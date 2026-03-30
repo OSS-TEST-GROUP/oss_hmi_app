@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
-class KeyValueItem extends StatelessWidget{
+class KeyValueItem extends StatelessWidget {
   final String label;
   final String value;
   final String? subtitle;
-  final StatusType status;// = StatusType.good;
+  final StatusType status;
+  final VoidCallback? onSubtitleTap;
 
   const KeyValueItem({
     super.key,
@@ -12,6 +13,7 @@ class KeyValueItem extends StatelessWidget{
     required this.value,
     this.subtitle,
     this.status = StatusType.good,
+    this.onSubtitleTap,
   });
 
   @override
@@ -54,16 +56,31 @@ class KeyValueItem extends StatelessWidget{
                 if (subtitle != null && subtitle!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      subtitle!,
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF9CA3AF),
-                        height: 1.25,
-                      ),
-                      softWrap: true,
-                    ),
+                    child: onSubtitleTap != null
+                        ? GestureDetector(
+                            onTap: onSubtitleTap,
+                            child: Text(
+                              subtitle!,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF60A5FA),
+                                height: 1.25,
+                                decoration: TextDecoration.underline,
+                              ),
+                              softWrap: true,
+                            ),
+                          )
+                        : Text(
+                            subtitle!,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: Color(0xFF9CA3AF),
+                              height: 1.25,
+                            ),
+                            softWrap: true,
+                          ),
                   ),
               ],
             ),

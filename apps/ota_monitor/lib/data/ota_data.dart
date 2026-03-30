@@ -1,6 +1,9 @@
-// OTA Manager 토픽 및 메시지 타입 정의
+// OTA Manager topic and message type definitions
+// Matches actual OtaManager binary (output/x86_64/core/bin/OtaManager):
+//   - Topics: /mmf/... (leading slash, no rt/ prefix)
+//   - Types:  OtaManager:: namespace
 
-// Response 토픽 목록 (구독)
+// Response topics (subscribe)
 const List<String> otaResponseTopics = [
   '/mmf/otamanager/otaactor_service/GetAppUpdateSettingsResponse',
   '/mmf/otamanager/otaactor_service/SetAppUpdateSettingsResponse',
@@ -9,7 +12,7 @@ const List<String> otaResponseTopics = [
   '/mmf/otamanager/otaclient_service/NotifyAppUpdateStatus',
 ];
 
-// Request 토픽 목록 (발행)
+// Request topics (publish)
 const List<String> otaRequestTopics = [
   '/mmf/otamanager/otaactor_service/GetAppUpdateSettings',
   '/mmf/otamanager/otaactor_service/SetAppUpdateSettings',
@@ -17,27 +20,28 @@ const List<String> otaRequestTopics = [
   '/mmf/otamanager/otaactor_service/SetAppUpdate',
 ];
 
-// 메시지 타입 (WebSocket 브릿지에서 사용)
-const List<String> otaResponseTypes = [
-  'ota_manager/GetAppUpdateSettingsResponse',
-  'ota_manager/SetAppUpdateSettingsResponse',
-  'ota_manager/GetAppUpdateStateResponse',
-  'ota_manager/SetAppUpdateResponse',
-  'ota_manager/NotifyAppUpdateStatus',
+// DDS type names for response topics (OtaManager:: namespace)
+const List<String> otaDdsResponseTypes = [
+  'OtaManager::GetAppUpdateSettingsResponse',
+  'OtaManager::SetAppUpdateSettingsResponse',
+  'OtaManager::GetAppUpdateStateResponse',
+  'OtaManager::SetAppUpdateResponse',
+  'OtaManager::NotifyAppUpdateStatus',
 ];
 
-const List<String> otaRequestTypes = [
-  'ota_manager/GetAppUpdateSettings',
-  'ota_manager/SetAppUpdateSettings',
-  'ota_manager/GetAppUpdateState',
-  'ota_manager/SetAppUpdate',
+// DDS type names for request topics
+const List<String> otaDdsRequestTypes = [
+  'OtaManager::GetAppUpdateSettings',
+  'OtaManager::SetAppUpdateSettings',
+  'OtaManager::GetAppUpdateState',
+  'OtaManager::SetAppUpdate',
 ];
 
-// ReturnValue 열거형 (DDS IDL에서 정의)
+// ReturnValue enum (matches DDS IDL definition)
 enum ReturnValue {
-  UNKNOWN(0),
-  SUCCESS(1),
-  FAIL(2);
+  unknown(0),
+  success(1),
+  fail(2);
 
   const ReturnValue(this.value);
   final int value;
@@ -45,16 +49,16 @@ enum ReturnValue {
   static ReturnValue fromInt(int? val) {
     switch (val) {
       case 1:
-        return ReturnValue.SUCCESS;
+        return ReturnValue.success;
       case 2:
-        return ReturnValue.FAIL;
+        return ReturnValue.fail;
       default:
-        return ReturnValue.UNKNOWN;
+        return ReturnValue.unknown;
     }
   }
 }
 
-// 상태 텍스트 매핑
+// Status text mapping
 const Map<int, String> returnValueText = {
   0: 'UNKNOWN',
   1: 'SUCCESS',

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 // import 'package:get/get.dart';
-import 'package:adsw_monitor/widget/key_value_item.dart';
+import 'package:ota_monitor/widget/key_value_item.dart';
 
 class DataViewWidget extends StatelessWidget {
   final String title;
@@ -16,7 +16,7 @@ class DataViewWidget extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.iconColor,
-    required this.status,
+    this.status = StatusType.good,
     required this.isExpanded,
     required this.onTap,
     required this.children,
@@ -26,7 +26,7 @@ class DataViewWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF374151).withOpacity(0.5),
+        color: const Color(0xFF374151).withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(15),
         border: Border.all(color: const Color(0xFF374151), width: 0.5),
       ),
@@ -48,7 +48,7 @@ class DataViewWidget extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withOpacity(0.2),
+                            color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Icon(icon, color: iconColor, size: 23),
@@ -90,7 +90,7 @@ class DataViewWidget extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111827).withOpacity(0.5),
+                  color: const Color(0xFF111827).withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(

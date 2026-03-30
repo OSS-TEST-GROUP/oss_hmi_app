@@ -90,6 +90,35 @@ class _OtaViewPageState extends State<OtaViewPage> {
     }
   }
 
+  void _showFullTextDialog(String title, String content) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              content,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFFCBD5E1),
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('닫기'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _onAddTestApp() {
     showDialog(
       context: context,
@@ -153,8 +182,8 @@ class _OtaViewPageState extends State<OtaViewPage> {
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? const Color(0xFF3B82F6).withOpacity(0.2)
-                                    : const Color(0xFF374151).withOpacity(0.3),
+                                    ? const Color(0xFF3B82F6).withValues(alpha: 0.2)
+                                    : const Color(0xFF374151).withValues(alpha: 0.3),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: isSelected
@@ -202,7 +231,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                               ),
                             ),
                           );
-                        }).toList(),
+                        }),
                         const SizedBox(height: 8),
                         ElevatedButton.icon(
                           onPressed: _onAddTestApp,
@@ -224,113 +253,118 @@ class _OtaViewPageState extends State<OtaViewPage> {
             child: Column(
               children: [
                 // 앱 상세 정보
-                Obx(() {
-                  if (_selectedAppName == null) {
+                if (_selectedAppName == null)
+                  DataViewWidget(
+                    title: 'App Details',
+                    icon: Icons.info_outline,
+                    iconColor: const Color(0xFF34D399),
+                    isExpanded: _expandedSections['appDetail'] ?? true,
+                    onTap: () => _toggleSection('appDetail'),
+                    children: const [
+                      Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            '앱을 선택하세요',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Obx(() {
+                    final settings =
+                        _otaCollector.topicData['${_selectedAppName}_settings'] as String? ?? 'Loading...';
+                    final state =
+                        _otaCollector.topicData['${_selectedAppName}_state'] as String? ?? 'Loading...';
+                    final status =
+                        _otaCollector.topicData['${_selectedAppName}_status'] as String? ?? 'Unknown';
+
                     return DataViewWidget(
-                      title: 'App Details',
+                      title: 'App Details: $_selectedAppName',
                       icon: Icons.info_outline,
                       iconColor: const Color(0xFF34D399),
                       isExpanded: _expandedSections['appDetail'] ?? true,
                       onTap: () => _toggleSection('appDetail'),
-                      children: const [
-                        Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text(
-                              '앱을 선택하세요',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Color(0xFF9CA3AF),
+                      children: [
+                        KeyValueItem(
+                          label: 'App Name',
+                          value: _selectedAppName!,
+                        ),
+                        KeyValueItem(
+                          label: 'Status',
+                          value: status,
+                          status: status == 'Synced' || status.contains('complete')
+                              ? StatusType.good
+                              : status.contains('fail') || status.contains('error')
+                                  ? StatusType.error
+                                  : StatusType.warning,
+                        ),
+                        KeyValueItem(
+                          label: 'Settings',
+                          value: settings.length > 100
+                              ? '${settings.substring(0, 100)}...'
+                              : settings,
+                          subtitle: settings.length > 100 ? '전체 보기 →' : null,
+                          onSubtitleTap: settings.length > 100
+                              ? () => _showFullTextDialog('Settings - $_selectedAppName', settings)
+                              : null,
+                        ),
+                        KeyValueItem(
+                          label: 'State Info',
+                          value: state.length > 100
+                              ? '${state.substring(0, 100)}...'
+                              : state,
+                          subtitle: state.length > 100 ? '전체 보기 →' : null,
+                          onSubtitleTap: state.length > 100
+                              ? () => _showFullTextDialog('State Info - $_selectedAppName', state)
+                              : null,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _onRefreshSettings,
+                                icon: const Icon(Icons.settings, size: 18),
+                                label: const Text('Refresh Settings'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF6366F1),
+                                ),
                               ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _onRefreshState,
+                                icon: const Icon(Icons.refresh, size: 18),
+                                label: const Text('Refresh State'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF8B5CF6),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _onRequestUpdate,
+                            icon: const Icon(Icons.system_update_alt),
+                            label: const Text('Request Update'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEF4444),
                             ),
                           ),
                         ),
                       ],
                     );
-                  }
-
-                  final settings =
-                      _otaCollector.topicData['${_selectedAppName}_settings'] as String? ?? 'Loading...';
-                  final state =
-                      _otaCollector.topicData['${_selectedAppName}_state'] as String? ?? 'Loading...';
-                  final status =
-                      _otaCollector.topicData['${_selectedAppName}_status'] as String? ?? 'Unknown';
-
-                  return DataViewWidget(
-                    title: 'App Details: $_selectedAppName',
-                    icon: Icons.info_outline,
-                    iconColor: const Color(0xFF34D399),
-                    isExpanded: _expandedSections['appDetail'] ?? true,
-                    onTap: () => _toggleSection('appDetail'),
-                    children: [
-                      KeyValueItem(
-                        label: 'App Name',
-                        value: _selectedAppName!,
-                      ),
-                      KeyValueItem(
-                        label: 'Status',
-                        value: status,
-                        status: status == 'Synced' || status.contains('complete')
-                            ? StatusType.good
-                            : status.contains('fail') || status.contains('error')
-                                ? StatusType.error
-                                : StatusType.warning,
-                      ),
-                      KeyValueItem(
-                        label: 'Settings',
-                        value: settings.length > 100
-                            ? '${settings.substring(0, 100)}...'
-                            : settings,
-                        subtitle: settings.length > 100 ? 'Truncated' : null,
-                      ),
-                      KeyValueItem(
-                        label: 'State Info',
-                        value: state.length > 100
-                            ? '${state.substring(0, 100)}...'
-                            : state,
-                        subtitle: state.length > 100 ? 'Truncated' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _onRefreshSettings,
-                              icon: const Icon(Icons.settings, size: 18),
-                              label: const Text('Refresh Settings'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF6366F1),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _onRefreshState,
-                              icon: const Icon(Icons.refresh, size: 18),
-                              label: const Text('Refresh State'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF8B5CF6),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _onRequestUpdate,
-                          icon: const Icon(Icons.system_update_alt),
-                          label: const Text('Request Update'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xEF4444)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }),
+                  }),
                 const SizedBox(height: 24),
                 // 업데이트 히스토리
                 Expanded(
@@ -376,7 +410,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                                       color: retCode == 1
                                           ? const Color(0xFF34D399)
                                           : retCode == 2
-                                              ? const Color(0xEF4444)
+                                              ? const Color(0xFFEF4444)
                                               : const Color(0xFF60A5FA),
                                       size: 20,
                                     ),
@@ -406,7 +440,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                                   ],
                                 ),
                               );
-                            }).toList(),
+                            }),
                         ],
                       )),
                 ),

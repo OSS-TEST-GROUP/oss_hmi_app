@@ -1,6 +1,5 @@
 {
-  "rosbridge": {
-    "url": "ws://172.16.10.56:9090"
-  },
-  "statusTopic": "/app_status/ota_monitor"
+  "dds": {
+    "domain_id": 0
+  }
 }
