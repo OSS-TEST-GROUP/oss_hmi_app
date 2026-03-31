@@ -1,9 +1,10 @@
-// OTA Manager topic and message type definitions
-// Matches actual OtaManager binary (output/x86_64/core/bin/OtaManager):
-//   - Topics: /mmf/... (leading slash, no rt/ prefix)
-//   - Types:  OtaManager:: namespace
+// OTA Manager topic and message type definitions for rosbridge (websocket)
+// OTA Manager publishes responses and subscribes requests on rt/mmf/... DDS topics
+// which correspond to /mmf/... ROS2 topic names used by rosbridge.
 
-// Response topics (subscribe)
+const String _pkg = 'mmf_interfaces/msg';
+
+// Response topics (subscribe via rosbridge)
 const List<String> otaResponseTopics = [
   '/mmf/otamanager/otaactor_service/GetAppUpdateSettingsResponse',
   '/mmf/otamanager/otaactor_service/SetAppUpdateSettingsResponse',
@@ -12,7 +13,7 @@ const List<String> otaResponseTopics = [
   '/mmf/otamanager/otaclient_service/NotifyAppUpdateStatus',
 ];
 
-// Request topics (publish)
+// Request topics (publish via rosbridge)
 const List<String> otaRequestTopics = [
   '/mmf/otamanager/otaactor_service/GetAppUpdateSettings',
   '/mmf/otamanager/otaactor_service/SetAppUpdateSettings',
@@ -20,24 +21,23 @@ const List<String> otaRequestTopics = [
   '/mmf/otamanager/otaactor_service/SetAppUpdate',
 ];
 
-// DDS type names for response topics (OtaManager:: namespace)
-const List<String> otaDdsResponseTypes = [
-  'OtaManager::GetAppUpdateSettingsResponse',
-  'OtaManager::SetAppUpdateSettingsResponse',
-  'OtaManager::GetAppUpdateStateResponse',
-  'OtaManager::SetAppUpdateResponse',
-  'OtaManager::NotifyAppUpdateStatus',
+// ROS2 message type names (mmf_interfaces/msg/TypeName)
+const List<String> otaRosResponseTypes = [
+  '$_pkg/GetAppUpdateSettingsResponse',
+  '$_pkg/SetAppUpdateSettingsResponse',
+  '$_pkg/GetAppUpdateStateResponse',
+  '$_pkg/SetAppUpdateResponse',
+  '$_pkg/NotifyAppUpdateStatus',
 ];
 
-// DDS type names for request topics
-const List<String> otaDdsRequestTypes = [
-  'OtaManager::GetAppUpdateSettings',
-  'OtaManager::SetAppUpdateSettings',
-  'OtaManager::GetAppUpdateState',
-  'OtaManager::SetAppUpdate',
+const List<String> otaRosRequestTypes = [
+  '$_pkg/GetAppUpdateSettings',
+  '$_pkg/SetAppUpdateSettings',
+  '$_pkg/GetAppUpdateState',
+  '$_pkg/SetAppUpdate',
 ];
 
-// ReturnValue enum (matches DDS IDL definition)
+// ReturnValue enum (matches mmf_interfaces/msg/ReturnValue)
 enum ReturnValue {
   unknown(0),
   success(1),

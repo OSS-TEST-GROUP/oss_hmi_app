@@ -56,26 +56,6 @@ pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 
-# ============================================================
-# DDS OTA Bridge shared library
-# ============================================================
-add_library(dds_ota_bridge SHARED
-  "dds/dds_ota_bridge.cpp"
-)
-target_compile_features(dds_ota_bridge PUBLIC cxx_std_17)
-target_include_directories(dds_ota_bridge PRIVATE
-  "/usr/local/include"         # FastDDS / FastCDR headers
-)
-target_link_libraries(dds_ota_bridge PRIVATE
-  fastdds
-  fastcdr
-)
-target_link_directories(dds_ota_bridge PRIVATE "/usr/local/lib")
-set_target_properties(dds_ota_bridge PROPERTIES
-  OUTPUT_NAME "dds_ota_bridge"
-  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-)
-
 # Define the application target. To change its name, change BINARY_NAME above,
 # not the value here, or `flutter run` will no longer work.
 #
@@ -127,12 +107,6 @@ install(CODE "
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-
-# Install DDS bridge alongside other bundle libraries so Flutter can dlopen it.
-install(TARGETS dds_ota_bridge
-  LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-  COMPONENT Runtime
-)
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)

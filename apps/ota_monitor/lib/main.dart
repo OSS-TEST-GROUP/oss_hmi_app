@@ -3,29 +3,35 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:roslibdart/roslibdart.dart';
 
 import 'package:ota_monitor/config/config_loader.dart';
 import 'package:ota_monitor/config/app_config.dart';
-import 'package:ota_monitor/dds/dds_keeper.dart';
+import 'package:ota_monitor/ros/ros_keeper.dart';
+import 'package:ota_monitor/controller/ota_collector.dart';
 
 import 'package:ota_monitor/view/ota_view_page.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
 
 late AppConfig appConfig;
-late DdsKeeper ddsKeeper;
+late RosKeeper rosKeeper;
 
 void main(List<String> args) {
   runWithLogCapture(() async {
     appConfig = await loadConfig(args);
-    ddsKeeper = DdsKeeper(domainId: appConfig.ddsDomainId);
+    rosKeeper = RosKeeper(appConfig);
 
-    final rc = ddsKeeper.init();
-    if (rc != 0) {
-      debugPrint('[main] DDS init failed: $rc');
-    }
+    // Register OtaCollector before starting RosKeeper so the watchdog
+    // can pick up the Ros instance as soon as it becomes available.
+    Get.put<OtaCollector>(
+      OtaCollector(
+        topicFactory: (ros, name, type) =>
+            Topic(ros: ros, name: name, type: type),
+      ),
+      permanent: true,
+    );
 
-    // Expose DdsKeeper via GetX for OtaCollector injection.
-    Get.put<DdsKeeper>(ddsKeeper, permanent: true);
+    await rosKeeper.start();
 
     runApp(const OtaMonitorApp());
   });

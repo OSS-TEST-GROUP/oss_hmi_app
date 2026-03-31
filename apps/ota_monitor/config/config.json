@@ -1,5 +1,6 @@
 {
-  "dds": {
-    "domain_id": 0
-  }
+  "rosbridge": {
+    "url": "ws://localhost:9090"
+  },
+  "statusTopic": "/app_status/ota_monitor"
 }

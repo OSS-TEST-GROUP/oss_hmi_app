@@ -14,7 +14,7 @@ class LogController extends GetxController {
 
   Future<void> enableFileLogging({
     required String dirPath,
-    String fileName = 'adsw_monitor.log',
+    String fileName = 'ota_monitor.log',
     int maxBytes = 10 * 1024 * 1024,
     int maxFiles = 5,
   })async {
@@ -65,7 +65,7 @@ void runWithLogCapture(
       // }
 
       final log = Get.find<LogController>();
-      await log.enableFileLogging(dirPath: '/tmp/adsw_monitor_logs');
+      await log.enableFileLogging(dirPath: '/tmp/ota_monitor_logs');
       
       await body();
     },
