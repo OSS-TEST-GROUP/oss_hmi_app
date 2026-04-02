@@ -233,7 +233,7 @@ docker build --platform linux/arm64 \
 docker compose --profile test build adsw_monitor_arm64_test
 ```
 
-**실행 (헤드리스 — UI 창 없음):**
+**실행 (헤드리스 — 로그만 확인):**
 
 ```bash
 docker run --rm --platform linux/arm64 \
@@ -242,26 +242,38 @@ docker run --rm --platform linux/arm64 \
   adsw_monitor:arm64-test
 ```
 
-**실행 (X11 — 호스트 화면에 창 표시):**
+**실행 (VNC — UI 화면 확인):**
 
 ```bash
-xhost +local:docker
+# VNC 서버(포트 5900)로 Weston 시작, VNC 뷰어로 접속
 docker run --rm --platform linux/arm64 \
   --security-opt seccomp=unconfined \
-  -e DISPLAY=${DISPLAY} \
-  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --network host \
+  -e VNC_PORT=5900 \
   --name adsw_monitor_arm64_test \
   adsw_monitor:arm64-test
+
+# 별도 터미널에서 VNC 뷰어 실행 (TLS, 인증 없음)
+remmina -c vnc://localhost:5900
+# 또는: vncviewer -SecurityTypes=VncAuth,TLSNone localhost:5900
 ```
 
-> **참고**: `--security-opt seccomp=unconfined` 필수.
-> QEMU arm64 환경에서 Flutter Dart VM이 `clone` 계열 syscall을 사용하는데,
-> Docker 기본 seccomp 프로파일이 이를 차단하여 `thread::join failed: Resource deadlock avoided` 크래시가 발생합니다.
+> **VNC를 사용하는 이유**: arm64 QEMU 컨테이너에서 호스트 X11 SHM(MIT-SHM 확장)을 사용할 수 없어
+> X11 백엔드 렌더링이 불가합니다. VNC 백엔드(neatvnc)는 네트워크 프로토콜을 사용하므로 SHM 없이 작동합니다.
 
-또는 docker compose (헤드리스, seccomp 설정 포함):
+> **`--security-opt seccomp=unconfined` 필수**: QEMU arm64에서 Flutter Dart VM의 `clone` syscall을
+> Docker 기본 seccomp이 차단하여 `thread::join failed: Resource deadlock avoided` 크래시 발생.
+
+또는 docker compose (헤드리스):
 
 ```bash
 docker compose --profile test run --rm adsw_monitor_arm64_test
+```
+
+docker compose로 VNC:
+
+```bash
+VNC_PORT=5900 docker compose --profile test run --rm adsw_monitor_arm64_test
 ```
 
 **정상 실행 시 로그:**

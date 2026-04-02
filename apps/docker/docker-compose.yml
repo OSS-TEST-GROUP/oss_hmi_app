@@ -86,16 +86,14 @@ services:
 
     volumes:
       - ../adsw_monitor/config/config.json:/etc/adsw_monitor/config.json
-      # X11 창 표시 시 아래 두 줄 활성화
-      # - /tmp/.X11-unix:/tmp/.X11-unix
 
     environment:
       - APP_NAME=adsw_monitor
       - APP_VERSION=3.32.2
       - WAYLAND_DISPLAY=wayland-0
       - XDG_RUNTIME_DIR=/run/user/1001
-      # X11 창 표시 시 아래 줄 활성화 (예: DISPLAY=:1)
-      # - DISPLAY=${DISPLAY}
+      # VNC로 UI 확인 시: VNC_PORT=5900 설정 후 localhost:5900 으로 VNC 뷰어 접속
+      - VNC_PORT=${VNC_PORT:-0}
 
     security_opt:
       - seccomp:unconfined

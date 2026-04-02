@@ -1,6 +1,7 @@
 #!/bin/bash
 # QEMU arm64 테스트용: Weston Wayland + flutter-auto 실행
-# DISPLAY 환경변수가 있으면 X11 백엔드(창 표시), 없으면 헤드리스 백엔드 사용
+# VNC_PORT(기본 5900)가 설정되면 VNC 백엔드(포트 접속), 없으면 헤드리스 백엔드 사용
+# (X11 백엔드는 arm64 QEMU ↔ 호스트 간 MIT-SHM 불가로 사용 안 함)
 set -e
 
 APP_NAME=${APP_NAME:-adsw_monitor}
@@ -10,10 +11,6 @@ XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1001}
 WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
 
 export XDG_RUNTIME_DIR WAYLAND_DISPLAY
-
-# QEMU 환경에서 GPU 없을 때 소프트웨어 렌더링으로 폴백
-export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
-export MESA_LOADER_DRIVER_OVERRIDE=${MESA_LOADER_DRIVER_OVERRIDE:-softpipe}
 
 mkdir -p "${XDG_RUNTIME_DIR}"
 chmod 700 "${XDG_RUNTIME_DIR}"
@@ -28,15 +25,36 @@ if [ ! -d "${BUNDLE_PATH}" ]; then
     exit 1
 fi
 
-# Weston 컴포지터 시작 (DISPLAY 있으면 X11 창, 없으면 헤드리스)
-if [ -n "${DISPLAY}" ]; then
-    echo "[INFO] Weston X11 백엔드 시작 (DISPLAY=${DISPLAY})..."
-    weston --backend=x11-backend.so \
+# Weston 컴포지터 시작
+# VNC_PORT가 설정되면 VNC 백엔드(libneatvnc, SHM 불필요), 없으면 헤드리스
+VNC_PORT=${VNC_PORT:-0}
+WESTON_WIDTH=${WESTON_WIDTH:-1920}
+WESTON_HEIGHT=${WESTON_HEIGHT:-720}
+
+if [ "${VNC_PORT}" -gt 0 ] 2>/dev/null; then
+    echo "[INFO] Weston VNC 백엔드 시작 (포트 ${VNC_PORT}, ${WESTON_WIDTH}x${WESTON_HEIGHT})..."
+    # VNC 백엔드는 TLS 인증서 필수 — 자체서명 인증서 생성
+    VNC_TLS_DIR="/tmp/weston-vnc-tls"
+    mkdir -p "${VNC_TLS_DIR}"
+    openssl req -x509 -newkey rsa:2048 -days 3650 -nodes \
+        -keyout "${VNC_TLS_DIR}/key.pem" \
+        -out "${VNC_TLS_DIR}/cert.pem" \
+        -subj "/CN=weston-vnc" \
+        2>/dev/null
+    env -u LIBGL_ALWAYS_SOFTWARE -u MESA_LOADER_DRIVER_OVERRIDE \
+    weston --backend=vnc-backend.so \
+           --renderer=pixman \
+           --width="${WESTON_WIDTH}" \
+           --height="${WESTON_HEIGHT}" \
            --socket="${WAYLAND_DISPLAY}" \
            --idle-time=0 \
-           --no-config &
+           --no-config \
+           --port="${VNC_PORT}" \
+           --vnc-tls-cert="${VNC_TLS_DIR}/cert.pem" \
+           --vnc-tls-key="${VNC_TLS_DIR}/key.pem" &
 else
     echo "[INFO] Weston 헤드리스 컴포지터 시작..."
+    env -u LIBGL_ALWAYS_SOFTWARE -u MESA_LOADER_DRIVER_OVERRIDE \
     weston --backend=headless-backend.so \
            --socket="${WAYLAND_DISPLAY}" \
            --idle-time=0 \
@@ -67,7 +85,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-exec /usr/bin/flutter-auto \
+# flutter-auto: QEMU arm64 이진, GPU 없을 때 소프트웨어 렌더링 강제
+exec env LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1} \
+         MESA_LOADER_DRIVER_OVERRIDE=${MESA_LOADER_DRIVER_OVERRIDE:-softpipe} \
+    /usr/bin/flutter-auto \
     -b "${BUNDLE_PATH}" \
     --xdg-shell-app-id "${APP_NAME}" \
     "$@"
