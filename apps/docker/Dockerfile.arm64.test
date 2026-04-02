@@ -1,0 +1,95 @@
+# adsw_monitor arm64 테스트 런타임 이미지 (QEMU 에뮬레이션용)
+#
+# x86_64 호스트에서 QEMU arm64 에뮬레이션으로 앱을 실행합니다.
+# flutter-auto + libflutter_engine.so 는 output/agl-binaries/ 에서 가져옵니다.
+# (사전에 scripts/extract-agl-binaries.sh 또는 docker run --entrypoint bash 로 추출)
+# Weston 헤드리스 Wayland 컴포지터를 내장합니다.
+#
+# 사전 조건:
+#   output/agl-binaries/bin/flutter-auto
+#   output/agl-binaries/flutter/3.32.2/release/lib/libflutter_engine.so
+#   output/agl-binaries/flutter/3.32.2/release/data/icudtl.dat
+#   output/adsw_monitor-arm64-release.tar.gz
+#
+# 이미지 빌드 (apps/ 디렉토리에서 실행):
+#   docker build --platform linux/arm64 \
+#     -f docker/Dockerfile.arm64.test \
+#     -t adsw_monitor:arm64-test .
+#
+# 실행:
+#   docker run --rm --platform linux/arm64 \
+#     --name adsw_monitor_arm64_test \
+#     adsw_monitor:arm64-test
+#
+# config.json 볼륨 마운트:
+#   -v $(pwd)/adsw_monitor/config/config.json:\
+#      /usr/share/flutter/adsw_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+
+FROM --platform=linux/arm64 ubuntu:24.04
+
+ARG APP_NAME=adsw_monitor
+ARG APP_VERSION=3.32.2
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV APP_NAME=${APP_NAME}
+ENV APP_VERSION=${APP_VERSION}
+ENV BUNDLE_PATH=/usr/share/flutter/${APP_NAME}/${APP_VERSION}/release
+ENV XDG_RUNTIME_DIR=/run/user/1001
+ENV WAYLAND_DISPLAY=wayland-0
+
+# flutter-auto 런타임 의존성 + Weston 헤드리스 컴포지터
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # flutter-auto 의존성
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    libglib2.0-0 \
+    libegl1 \
+    libgles2 \
+    libwayland-client0 \
+    libwayland-egl1 \
+    libwayland-cursor0 \
+    libxkbcommon0 \
+    libsecret-1-0 \
+    libsystemd0 \
+    # 폰트
+    libfontconfig1 \
+    fonts-noto \
+    # Weston 헤드리스 Wayland 컴포지터
+    weston \
+    libgbm1 \
+    libdrm2 \
+    libinput10 \
+    # 기타
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# flutter-auto 바이너리 (AGL SDK aarch64 sysroot에서 사전 추출)
+COPY output/agl-binaries/bin/flutter-auto /usr/bin/flutter-auto
+RUN chmod +x /usr/bin/flutter-auto
+
+# AGL SDK libc++ (Ubuntu 22.04 libc++1-14 보다 최신 버전 필요)
+COPY output/agl-binaries/lib/libc++.so.1.0 /usr/lib/aarch64-linux-gnu/libc++.so.1.0
+COPY output/agl-binaries/lib/libc++abi.so.1.0 /usr/lib/aarch64-linux-gnu/libc++abi.so.1.0
+RUN ln -sf libc++.so.1.0 /usr/lib/aarch64-linux-gnu/libc++.so.1 && \
+    ln -sf libc++abi.so.1.0 /usr/lib/aarch64-linux-gnu/libc++abi.so.1
+
+# Flutter 엔진 라이브러리 (release)
+# 앱 번들 심볼릭링크가 가리키는 경로: /usr/share/flutter/3.32.2/release/
+COPY output/agl-binaries/flutter/${APP_VERSION}/release/lib/ \
+    /usr/share/flutter/${APP_VERSION}/release/lib/
+COPY output/agl-binaries/flutter/${APP_VERSION}/release/data/ \
+    /usr/share/flutter/${APP_VERSION}/release/data/
+
+# AOT 빌드 결과물 (tar.gz 자동 압축 해제)
+# 구조: usr/share/flutter/adsw_monitor/3.32.2/release/{data,lib}/
+ADD output/${APP_NAME}-arm64-release.tar.gz /
+
+# config.json (볼륨 마운트로 덮어쓸 수 있음)
+COPY adsw_monitor/config/config.json \
+    /usr/share/flutter/${APP_NAME}/${APP_VERSION}/release/data/flutter_assets/assets/config/config.json
+
+# Weston 헤드리스 + flutter-auto 실행 스크립트
+COPY docker/agl-run-test.sh /usr/local/bin/agl-run-test.sh
+RUN chmod +x /usr/local/bin/agl-run-test.sh
+
+ENTRYPOINT ["/usr/local/bin/agl-run-test.sh"]

@@ -1,0 +1,93 @@
+# adsw_monitor AGL aarch64 빌드 환경
+#
+# 이 이미지는 Flutter 앱을 AGL Yocto SDK를 사용하여
+# aarch64 AOT 바이너리로 크로스컴파일합니다.
+#
+# 빌드 (apps/ 디렉토리에서 실행):
+#   docker build \
+#     --build-arg AGL_SDK_USER=<username> \
+#     --build-arg AGL_SDK_PASSWORD=<password> \
+#     -f docker/Dockerfile.build.arm64 \
+#     -t adsw_monitor_builder:arm64 .
+#
+# 실행:
+#   docker run --rm \
+#     -v $(pwd)/adsw_monitor:/workspace/app \
+#     -v $(pwd)/output:/workspace/output \
+#     adsw_monitor_builder:arm64 \
+#     --app-path=/workspace/app \
+#     --output-dir=/workspace/output
+# 결과물: output/adsw_monitor-arm64-release.tar.gz
+
+FROM ubuntu:22.04
+
+ARG FLUTTER_VERSION=3.41.2
+ARG AGL_SDK_URL=https://repo.obigo.com/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
+ARG AGL_SDK_USER=ossdev
+ARG AGL_SDK_PASSWORD=ossdev1234
+ARG AGL_SDK_INSTALL_DIR=/opt/agl-sdk
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV FLUTTER_ROOT=/opt/flutter
+ENV PATH="${FLUTTER_ROOT}/bin:${PATH}"
+ENV AGL_SDK_INSTALL_DIR=${AGL_SDK_INSTALL_DIR}
+
+# 시스템 의존성 설치
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    file \
+    git \
+    python3 \
+    python3-pip \
+    unzip \
+    wget \
+    xz-utils \
+    zip \
+    # Flutter Linux 빌드 의존성
+    clang \
+    cmake \
+    ninja-build \
+    pkg-config \
+    libgtk-3-dev \
+    liblzma-dev \
+    libstdc++-12-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Flutter SDK 설치
+RUN git clone --depth 1 \
+      --branch ${FLUTTER_VERSION} \
+      https://github.com/flutter/flutter.git \
+      ${FLUTTER_ROOT} && \
+    flutter config --no-analytics && \
+    flutter precache --linux && \
+    flutter doctor -v
+
+# AGL SDK 다운로드 및 설치
+# 내부 Nexus 저장소 인증 필요: --build-arg AGL_SDK_USER / AGL_SDK_PASSWORD 로 전달
+RUN set -e; \
+    WGET_OPTS="-q"; \
+    if [ -n "${AGL_SDK_USER}" ]; then \
+        WGET_OPTS="${WGET_OPTS} --user=${AGL_SDK_USER}"; \
+    fi; \
+    if [ -n "${AGL_SDK_PASSWORD}" ]; then \
+        WGET_OPTS="${WGET_OPTS} --password=${AGL_SDK_PASSWORD}"; \
+    fi; \
+    wget ${WGET_OPTS} "${AGL_SDK_URL}" -O /tmp/agl-sdk-installer.sh && \
+    chmod +x /tmp/agl-sdk-installer.sh && \
+    /tmp/agl-sdk-installer.sh -d "${AGL_SDK_INSTALL_DIR}" -y && \
+    rm /tmp/agl-sdk-installer.sh
+
+# AOT 빌드 스크립트 설치
+COPY tools/create_aot_with_yocto_sdk.py /usr/local/bin/create_aot_with_yocto_sdk.py
+COPY tools/common.py /usr/local/bin/common.py
+RUN chmod +x /usr/local/bin/create_aot_with_yocto_sdk.py
+
+# 엔트리포인트 설치
+COPY docker/build-entrypoint-arm64.sh /usr/local/bin/build-entrypoint.sh
+RUN chmod +x /usr/local/bin/build-entrypoint.sh
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/usr/local/bin/build-entrypoint.sh"]
