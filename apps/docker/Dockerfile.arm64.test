@@ -54,11 +54,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # 폰트
     libfontconfig1 \
     fonts-noto \
-    # Weston 헤드리스 Wayland 컴포지터
+    # Weston Wayland 컴포지터 (헤드리스 + X11 백엔드 모두 지원)
     weston \
     libgbm1 \
     libdrm2 \
     libinput10 \
+    libx11-6 \
+    libx11-xcb1 \
     # 기타
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*

@@ -233,7 +233,7 @@ docker build --platform linux/arm64 \
 docker compose --profile test build adsw_monitor_arm64_test
 ```
 
-**실행:**
+**실행 (헤드리스 — UI 창 없음):**
 
 ```bash
 docker run --rm --platform linux/arm64 \
@@ -242,10 +242,23 @@ docker run --rm --platform linux/arm64 \
   adsw_monitor:arm64-test
 ```
 
-> `--security-opt seccomp=unconfined` 필수: QEMU arm64 환경에서 Flutter Dart VM이 `clone` 계열 syscall을 사용하는데,
+**실행 (X11 — 호스트 화면에 창 표시):**
+
+```bash
+xhost +local:docker
+docker run --rm --platform linux/arm64 \
+  --security-opt seccomp=unconfined \
+  -e DISPLAY=${DISPLAY} \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --name adsw_monitor_arm64_test \
+  adsw_monitor:arm64-test
+```
+
+> **참고**: `--security-opt seccomp=unconfined` 필수.
+> QEMU arm64 환경에서 Flutter Dart VM이 `clone` 계열 syscall을 사용하는데,
 > Docker 기본 seccomp 프로파일이 이를 차단하여 `thread::join failed: Resource deadlock avoided` 크래시가 발생합니다.
 
-또는 docker compose (seccomp 설정 포함):
+또는 docker compose (헤드리스, seccomp 설정 포함):
 
 ```bash
 docker compose --profile test run --rm adsw_monitor_arm64_test

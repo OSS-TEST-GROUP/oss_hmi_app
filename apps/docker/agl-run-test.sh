@@ -1,5 +1,6 @@
 #!/bin/bash
-# QEMU arm64 테스트용: Weston 헤드리스 Wayland + flutter-auto 실행
+# QEMU arm64 테스트용: Weston Wayland + flutter-auto 실행
+# DISPLAY 환경변수가 있으면 X11 백엔드(창 표시), 없으면 헤드리스 백엔드 사용
 set -e
 
 APP_NAME=${APP_NAME:-adsw_monitor}
@@ -27,12 +28,20 @@ if [ ! -d "${BUNDLE_PATH}" ]; then
     exit 1
 fi
 
-# Weston 헤드리스 컴포지터 시작
-echo "[INFO] Weston 헤드리스 컴포지터 시작..."
-weston --backend=headless-backend.so \
-       --socket="${WAYLAND_DISPLAY}" \
-       --idle-time=0 \
-       --no-config &
+# Weston 컴포지터 시작 (DISPLAY 있으면 X11 창, 없으면 헤드리스)
+if [ -n "${DISPLAY}" ]; then
+    echo "[INFO] Weston X11 백엔드 시작 (DISPLAY=${DISPLAY})..."
+    weston --backend=x11-backend.so \
+           --socket="${WAYLAND_DISPLAY}" \
+           --idle-time=0 \
+           --no-config &
+else
+    echo "[INFO] Weston 헤드리스 컴포지터 시작..."
+    weston --backend=headless-backend.so \
+           --socket="${WAYLAND_DISPLAY}" \
+           --idle-time=0 \
+           --no-config &
+fi
 WESTON_PID=$!
 
 # Wayland 소켓 생성 대기 (최대 5초)
