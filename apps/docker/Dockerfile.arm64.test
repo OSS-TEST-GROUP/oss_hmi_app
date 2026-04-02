@@ -84,9 +84,10 @@ COPY output/agl-binaries/flutter/${APP_VERSION}/release/data/ \
 # 구조: usr/share/flutter/adsw_monitor/3.32.2/release/{data,lib}/
 ADD output/${APP_NAME}-arm64-release.tar.gz /
 
-# config.json (볼륨 마운트로 덮어쓸 수 있음)
-COPY adsw_monitor/config/config.json \
-    /usr/share/flutter/${APP_NAME}/${APP_VERSION}/release/data/flutter_assets/assets/config/config.json
+# config.json — 앱 검색 경로: /etc/adsw_monitor/config.json
+# 볼륨 마운트로 런타임에 덮어쓸 수 있음
+RUN mkdir -p /etc/adsw_monitor
+COPY adsw_monitor/config/config.json /etc/adsw_monitor/config.json
 
 # Weston 헤드리스 + flutter-auto 실행 스크립트
 COPY docker/agl-run-test.sh /usr/local/bin/agl-run-test.sh

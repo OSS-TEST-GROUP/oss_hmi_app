@@ -15,6 +15,7 @@ export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
 export MESA_LOADER_DRIVER_OVERRIDE=${MESA_LOADER_DRIVER_OVERRIDE:-softpipe}
 
 mkdir -p "${XDG_RUNTIME_DIR}"
+chmod 700 "${XDG_RUNTIME_DIR}"
 
 echo "[INFO] flutter-auto : $(which flutter-auto)"
 echo "[INFO] bundle       : ${BUNDLE_PATH}"
