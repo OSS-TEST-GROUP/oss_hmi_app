@@ -61,9 +61,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libinput10 \
     libx11-6 \
     libx11-xcb1 \
+    # neatvnc PAM 인증
+    libpam-runtime \
     # 기타
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Weston VNC 백엔드 PAM 우회 (QEMU arm64에서 libpam hang 문제 해결)
+# Weston이 dlopen("libpam.so.0")으로 PAM을 로드하므로 libpam.so.0 자체를 bypass stub으로 교체
+# LIBPAM_1.0 버전 심볼을 내보내며 즉시 PAM_SUCCESS 반환
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpam0g-dev \
+    && printf 'LIBPAM_1.0 {\n  global:\n    pam_start; pam_authenticate;\n    pam_acct_mgmt; pam_end;\n    pam_get_item; pam_set_item;\n  local: *;\n};\n' \
+      > /tmp/pam.map \
+    && printf '#include <security/pam_appl.h>\n#include <stdio.h>\n\
+static void dbg(const char *msg) { FILE*f=fopen("/tmp/pam_debug.log","a"); if(f){fputs(msg,f);fclose(f);}}\n\
+int pam_start(const char *s, const char *u, const struct pam_conv *c, pam_handle_t **h)\n\
+  { dbg("pam_start\\n"); static int _d; *h=(pam_handle_t*)&_d; return PAM_SUCCESS; }\n\
+int pam_authenticate(pam_handle_t *h, int f) { dbg("pam_authenticate\\n"); return PAM_SUCCESS; }\n\
+int pam_acct_mgmt(pam_handle_t *h, int f)   { dbg("pam_acct_mgmt\\n"); return PAM_SUCCESS; }\n\
+int pam_end(pam_handle_t *h, int s)         { dbg("pam_end\\n"); return PAM_SUCCESS; }\n\
+int pam_get_item(const pam_handle_t *h, int t, const void **i) { if(i)*i=0; return PAM_SUCCESS; }\n\
+int pam_set_item(pam_handle_t *h, int t, const void *i) { return PAM_SUCCESS; }\n' \
+      > /tmp/pam_bypass.c \
+    && gcc -shared -fPIC -Wl,--version-script=/tmp/pam.map \
+         -o /tmp/pam_bypass.so /tmp/pam_bypass.c \
+    && rm /tmp/pam_bypass.c /tmp/pam.map \
+    && apt-get purge -y gcc libpam0g-dev && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && mv /usr/lib/aarch64-linux-gnu/libpam.so.0.85.1 /usr/lib/aarch64-linux-gnu/libpam.so.0.85.1.real \
+    && cp /tmp/pam_bypass.so /usr/lib/aarch64-linux-gnu/libpam.so.0.85.1 \
+    && rm /tmp/pam_bypass.so
 
 # flutter-auto 바이너리 (AGL SDK aarch64 sysroot에서 사전 추출)
 COPY output/agl-binaries/bin/flutter-auto /usr/bin/flutter-auto

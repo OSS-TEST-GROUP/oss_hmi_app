@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>adsw_monitor VNC 실행 구조</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background: #1e1e2e; color: #cdd6f4; margin: 40px; }
+  h2 { color: #89b4fa; margin-bottom: 24px; }
+  .diagram { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  .host-box {
+    border: 2px solid #89b4fa;
+    border-radius: 12px;
+    padding: 24px 32px;
+    background: #181825;
+    width: 720px;
+    position: relative;
+  }
+  .host-label {
+    position: absolute;
+    top: -14px; left: 20px;
+    background: #181825;
+    padding: 0 8px;
+    color: #89b4fa;
+    font-weight: bold;
+    font-size: 13px;
+  }
+
+  .container-box {
+    border: 2px solid #a6e3a1;
+    border-radius: 10px;
+    padding: 20px 24px;
+    background: #1e1e2e;
+    margin-top: 16px;
+    position: relative;
+  }
+  .container-label {
+    position: absolute;
+    top: -13px; left: 16px;
+    background: #1e1e2e;
+    padding: 0 8px;
+    color: #a6e3a1;
+    font-weight: bold;
+    font-size: 12px;
+  }
+
+  .row { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
+  .block {
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    min-width: 140px;
+  }
+  .blue   { background: #1e3a5f; border: 1.5px solid #89b4fa; color: #89b4fa; }
+  .green  { background: #1a3a2a; border: 1.5px solid #a6e3a1; color: #a6e3a1; }
+  .yellow { background: #3a3000; border: 1.5px solid #f9e2af; color: #f9e2af; }
+  .pink   { background: #3a1a2a; border: 1.5px solid #f38ba8; color: #f38ba8; }
+  .gray   { background: #2a2a3a; border: 1.5px solid #a6adc8; color: #a6adc8; }
+
+  .arrow { font-size: 18px; color: #6c7086; }
+  .arrow-right { font-size: 18px; color: #6c7086; }
+  .label { font-size: 11px; color: #6c7086; white-space: nowrap; }
+
+  .separator { border: none; border-top: 1px dashed #313244; margin: 14px 0; }
+
+  .vnc-arrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 4px 0;
+  }
+  .port-badge {
+    background: #45475a;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: #cdd6f4;
+  }
+
+  .sub-items {
+    margin-top: 8px;
+    margin-left: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sub-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #a6adc8;
+  }
+  .sub-item::before { content: '├─'; color: #45475a; }
+  .sub-item:last-child::before { content: '└─'; color: #45475a; }
+</style>
+</head>
+<body>
+
+<h2>adsw_monitor VNC 실행 구조</h2>
+
+<div class="diagram">
+  <div class="host-box">
+    <span class="host-label">x86_64 호스트</span>
+
+    <!-- vncviewer -->
+    <div class="row">
+      <div class="block blue">vncviewer</div>
+      <div class="label">username: root<br>password: 임의</div>
+    </div>
+
+    <!-- arrow down into container -->
+    <div class="row" style="margin-left:60px; flex-direction:column; align-items:flex-start; gap:2px;">
+      <span style="font-size:12px; color:#6c7086;">TCP :5900 (VeNCrypt X509Plain)</span>
+      <span style="font-size:20px; color:#6c7086; margin-left:8px;">↓</span>
+    </div>
+
+    <!-- container -->
+    <div class="container-box">
+      <span class="container-label">Docker 컨테이너 — linux/arm64 (QEMU 에뮬레이션)</span>
+
+      <!-- weston -->
+      <div class="row">
+        <div class="block green">Weston<br><span style="font-size:10px; font-weight:400;">VNC 백엔드</span></div>
+        <span class="port-badge">:5900</span>
+        <span class="label">← VNC 클라이언트 연결<br>← 화면 스트리밍</span>
+      </div>
+
+      <!-- wayland arrow -->
+      <div class="row" style="margin-left:30px; gap:6px;">
+        <span style="font-size:13px; color:#6c7086;">↑ Wayland 소켓</span>
+        <span class="label">/run/user/1001/wayland-0</span>
+      </div>
+
+      <hr class="separator">
+
+      <!-- flutter-auto -->
+      <div class="row">
+        <div class="block yellow">flutter-auto<br><span style="font-size:10px; font-weight:400;">arm64 / QEMU</span></div>
+        <div>
+          <div class="sub-items">
+            <div class="sub-item">libflutter_engine.so &nbsp;<span style="color:#585b70">(AGL SDK)</span></div>
+            <div class="sub-item">libapp.so &nbsp;<span style="color:#585b70">(AOT 빌드 결과물)</span></div>
+            <div class="sub-item">config.json &nbsp;<span style="color:#585b70">(rosbridge URL)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="separator">
+
+      <!-- entrypoint -->
+      <div class="row">
+        <span style="font-size:11px; color:#585b70;">entrypoint:</span>
+        <div class="block gray" style="min-width:unset; padding:6px 12px; font-size:11px; font-weight:400;">agl-run-test.sh</div>
+        <span class="label">Weston 시작 후<br>flutter-auto 실행</span>
+      </div>
+    </div>
+
+    <!-- commands -->
+    <div style="margin-top:18px; background:#11111b; border-radius:8px; padding:14px 18px; font-size:12px; color:#a6adc8; font-family: monospace;">
+      <div style="color:#585b70; margin-bottom:6px;"># 터미널 1</div>
+      <div style="color:#cdd6f4;">VNC_PORT=5900 docker compose --profile test run --rm adsw_monitor_arm64_test</div>
+      <div style="color:#585b70; margin-top:10px; margin-bottom:6px;"># 터미널 2</div>
+      <div style="color:#cdd6f4;">vncviewer localhost:5900</div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -179,6 +179,32 @@ docker run --rm \
 x86_64 호스트에서 QEMU arm64 에뮬레이션으로 실행하는 테스트 이미지입니다.
 flutter-auto와 AGL flutter 엔진이 이미지에 내장되며, Weston 헤드리스 Wayland 컴포지터를 자동으로 시작합니다.
 
+**실행 구조:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  x86_64 호스트                               │
+│                                                             │
+│  $ vncviewer localhost:5900  ──────────────────────────┐   │
+│    (username: root / password: 임의)                    │   │
+│                                                         │   │
+│  ┌──────────────────────────────────────────────────┐   │   │
+│  │  Docker 컨테이너 (linux/arm64, QEMU 에뮬레이션)   │   │   │
+│  │                                                  │   │   │
+│  │  agl-run-test.sh                                 │   │   │
+│  │       │                                          │   │   │
+│  │       ├─► Weston (VNC 백엔드, :5900) ────────────┼───┘   │
+│  │       │      ▲  Wayland 소켓                     │       │
+│  │       │      │  /run/user/1001/wayland-0         │       │
+│  │       └─► flutter-auto (arm64, QEMU 실행)        │       │
+│  │                │                                 │       │
+│  │                ├─ libflutter_engine.so (AGL)     │       │
+│  │                ├─ libapp.so (AOT 빌드 결과물)     │       │
+│  │                └─ config.json (rosbridge URL)    │       │
+│  └──────────────────────────────────────────────────┘       │
+└─────────────────────────────────────────────────────────────┘
+```
+
 **사전 조건:**
 - `adsw_monitor_builder:arm64` 이미지 빌드 완료
 - `output/adsw_monitor-arm64-release.tar.gz` 빌드 완료
@@ -244,25 +270,32 @@ docker run --rm --platform linux/arm64 \
 
 **실행 (VNC — UI 화면 확인):**
 
-```bash
-# VNC 서버(포트 5900)로 Weston 시작, VNC 뷰어로 접속
-docker run --rm --platform linux/arm64 \
-  --security-opt seccomp=unconfined \
-  --network host \
-  -e VNC_PORT=5900 \
-  --name adsw_monitor_arm64_test \
-  adsw_monitor:arm64-test
+터미널 1 — 컨테이너 시작:
 
-# 별도 터미널에서 VNC 뷰어 실행 (TLS, 인증 없음)
-remmina -c vnc://localhost:5900
-# 또는: vncviewer -SecurityTypes=VncAuth,TLSNone localhost:5900
+```bash
+VNC_PORT=5900 docker compose --profile test run --rm adsw_monitor_arm64_test
 ```
+
+터미널 2 — VNC 접속:
+
+```bash
+vncviewer localhost:5900
+# username: root  /  password: 아무거나 (예: 1234)
+```
+
+> **VNC 인증**: Weston VNC 백엔드는 VeNCrypt X509Plain (TLS + username/password)만 지원합니다.
+> username은 컨테이너 내 실제 시스템 사용자(`root`)를 입력해야 합니다.
+> password는 PAM bypass로 인해 **어떤 값이든 허용**됩니다.
+> VNC 뷰어에서 username=`root`, password=임의 문자열을 입력하세요.
 
 > **VNC를 사용하는 이유**: arm64 QEMU 컨테이너에서 호스트 X11 SHM(MIT-SHM 확장)을 사용할 수 없어
 > X11 백엔드 렌더링이 불가합니다. VNC 백엔드(neatvnc)는 네트워크 프로토콜을 사용하므로 SHM 없이 작동합니다.
 
 > **`--security-opt seccomp=unconfined` 필수**: QEMU arm64에서 Flutter Dart VM의 `clone` syscall을
 > Docker 기본 seccomp이 차단하여 `thread::join failed: Resource deadlock avoided` 크래시 발생.
+
+> **앱 렌더링 지연**: VNC 연결 후 앱 UI가 표시되기까지 약 10~20초가 소요됩니다 (QEMU 소프트웨어 렌더링).
+> 처음에는 Weston 배경 화면만 보이다가 잠시 후 AD SW Monitor 앱 창이 나타납니다.
 
 또는 docker compose (헤드리스):
 
