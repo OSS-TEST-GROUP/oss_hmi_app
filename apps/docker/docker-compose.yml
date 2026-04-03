@@ -51,23 +51,20 @@ services:
       - ../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge 설정 오버라이드
 
     environment:
-      # Wayland 사용 시
-      - WAYLAND_DISPLAY=wayland-0
+      - DISPLAY=:1
       - XDG_RUNTIME_DIR=/run/user/1000
-      # X11 사용 시 (fallback)
-      # - DISPLAY=:0
 
     # DDS/ROS2 통신을 위해 host network 사용
     network_mode: host
 
-    # GPU 가속 (NVIDIA 환경)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # NVIDIA GPU (X 서버가 NV-GLX 사용 시 필수)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
     restart: unless-stopped
 

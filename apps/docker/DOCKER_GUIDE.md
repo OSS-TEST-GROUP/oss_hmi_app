@@ -68,19 +68,7 @@ docker build -f docker/Dockerfile -t adsw_monitor:x86_64 .
 docker compose up adsw_monitor
 ```
 
-또는 직접 (X11 환경):
-
-```bash
-docker run --rm \
-  -e DISPLAY=:1 \
-  -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v $(pwd)/adsw_monitor/config/config.json:/app/config/config.json \
-  --network host \
-  --name adsw_monitor \
-  adsw_monitor:x86_64
-```
-
-NVIDIA GPU 사용 시:
+또는 직접 (NVIDIA GPU 환경):
 
 ```bash
 docker run --rm \
@@ -92,6 +80,9 @@ docker run --rm \
   --name adsw_monitor \
   adsw_monitor:x86_64
 ```
+
+> **NVIDIA GPU 필수**: X 서버가 NVIDIA 전용 GLX(NV-GLX)를 사용하므로 `--runtime=nvidia --gpus all` 없이는
+> GLX 오류(`BadValue, request_code 152`)로 크래시가 발생합니다.
 
 ---
 

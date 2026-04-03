@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxi6 \
     libegl1 \
     libgl1 \
+    libgl1-mesa-dri \
     libgles2 \
     libdbus-1-3 \
     fonts-noto \
