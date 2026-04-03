@@ -32,6 +32,13 @@ WESTON_WIDTH=${WESTON_WIDTH:-1920}
 WESTON_HEIGHT=${WESTON_HEIGHT:-720}
 
 if [ "${VNC_PORT}" -gt 0 ] 2>/dev/null; then
+    # 포트 사용 중 여부 확인
+    if ss -tlnp 2>/dev/null | grep -q ":${VNC_PORT} " || \
+       cat /proc/net/tcp6 /proc/net/tcp 2>/dev/null | awk '{print $2}' | grep -qi "$(printf '%04X' "${VNC_PORT}")$"; then
+        echo "[ERROR] 포트 ${VNC_PORT}이 이미 사용 중입니다. 기존 컨테이너를 먼저 중지하세요:"
+        echo "        docker stop adsw_monitor_arm64_test"
+        exit 1
+    fi
     echo "[INFO] Weston VNC 백엔드 시작 (포트 ${VNC_PORT}, ${WESTON_WIDTH}x${WESTON_HEIGHT})..."
     # VNC 백엔드는 TLS 인증서 필수 — 자체서명 인증서 생성
     VNC_TLS_DIR="/tmp/weston-vnc-tls"
