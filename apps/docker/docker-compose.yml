@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────
+  # 빌드 서비스 (소스 → 바이너리)
+  # ─────────────────────────────────────────────
+
+  # x86_64 Flutter Linux 빌드 (GTK 번들 생성)
+  # 사용: docker compose run --rm adsw_monitor_builder_x86
+  adsw_monitor_builder_x86:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build
+    image: adsw_monitor_builder:x86_64
+    volumes:
+      - ../adsw_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # arm64 AOT 빌드 (AGL Yocto SDK 사용)
+  # 사용: docker compose run --rm adsw_monitor_builder_arm64
+  adsw_monitor_builder_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build.arm64
+      args:
+        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
+        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
+    image: adsw_monitor_builder:arm64
+    volumes:
+      - ../adsw_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # ─────────────────────────────────────────────
+  # 실행 서비스 (런타임 이미지)
+  # ─────────────────────────────────────────────
+
+  # x86_64 실행 이미지 (GTK 기반, 개발/테스트용)
+  adsw_monitor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: adsw_monitor:x86_64
+    container_name: adsw_monitor
+
+    # Wayland 소켓 마운트 (AGL/Linux 환경)
+    volumes:
+      - /run/user/1000:/run/user/1000          # Wayland socket
+      - /tmp/.X11-unix:/tmp/.X11-unix          # X11 fallback
+      - ../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge 설정 오버라이드
+
+    environment:
+      - DISPLAY=:1
+      - XDG_RUNTIME_DIR=/run/user/1000
+
+    # DDS/ROS2 통신을 위해 host network 사용
+    network_mode: host
+
+    # NVIDIA GPU (X 서버가 NV-GLX 사용 시 필수)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    restart: unless-stopped
+
+  # arm64 테스트 이미지 (QEMU 에뮬레이션 + Weston 헤드리스, x86_64 호스트 테스트용)
+  # 사전 조건: adsw_monitor_builder:arm64 이미지 + output/adsw_monitor-arm64-release.tar.gz
+  # 빌드: docker compose build adsw_monitor_arm64_test
+  # 실행: docker compose run --rm adsw_monitor_arm64_test
+  adsw_monitor_arm64_test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64.test
+      platforms:
+        - linux/arm64
+    image: adsw_monitor:arm64-test
+    container_name: adsw_monitor_arm64_test
+
+    volumes:
+      - ../adsw_monitor/config/config.json:/etc/adsw_monitor/config.json
+
+    environment:
+      - APP_NAME=adsw_monitor
+      - APP_VERSION=3.32.2
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      # VNC로 UI 확인 시: VNC_PORT=5900 설정 후 localhost:5900 으로 VNC 뷰어 접속
+      - VNC_PORT=${VNC_PORT:-0}
+
+    security_opt:
+      - seccomp:unconfined
+
+    network_mode: host
+
+    profiles: [test]
+
+  # arm64 실행 이미지 (flutter-auto 기반, AGL 타겟용)
+  # 사전 조건: output/adsw_monitor-release.tar.gz 가 빌드되어 있어야 합니다.
+  # 이미지 빌드: docker compose build adsw_monitor_arm64
+  #   또는 x86_64 호스트에서: docker buildx bake adsw_monitor_arm64
+  adsw_monitor_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64
+      platforms:
+        - linux/arm64
+    image: adsw_monitor:arm64
+    container_name: adsw_monitor_arm64
+
+    volumes:
+      # flutter-auto 바이너리를 호스트에서 마운트
+      - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
+      # GPU/DRM 장치 접근
+      - /dev/dri:/dev/dri
+      # Wayland 소켓 마운트 (AGL 기본 사용자 UID=1001)
+      - /run/user/1001:/run/user/1001
+      # rosbridge URL 오버라이드
+      - ../adsw_monitor/config/config.json:/usr/share/flutter/adsw_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+
+    environment:
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - APP_NAME=adsw_monitor
+      - APP_VERSION=3.32.2
+
+    # DDS/ROS2 통신을 위해 host network 사용
+    network_mode: host
+
+    restart: unless-stopped

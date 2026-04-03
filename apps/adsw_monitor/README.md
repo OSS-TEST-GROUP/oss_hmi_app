@@ -94,18 +94,116 @@ genhtml coverage/lcov.info -o coverage/html
 ### Setting cross compile environment
 1. install agl-sdk
 ```
-wget http://172.16.10.216:8081/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
+wget --user=ossdev --password=ossdev1234 \
+  https://repo.obigo.com/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
+chmod +x oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
+./oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh -d /opt/agl-sdk -y
 ```
-2. download python script
-  
+2. The build script is included in this repository at `../tools/create_aot_with_yocto_sdk.py`
+
 3. build
 ```
 source {agl sdk path}/environment-setup-aarch64-agl-linux
-cd {python script path}
-python3 create_aot_with_yocto_sdk.py --app-path={adsw monitor app path}
+python3 ../tools/create_aot_with_yocto_sdk.py --app-path={adsw monitor app path}
 ```
+
+### How to build with Docker (recommended)
+Run the following commands from the `apps/` directory:
+
+#### Build for arm64 (AGL target)
+Uses `Dockerfile.build.arm64` — requires AGL Yocto SDK credentials.
+
+Build the Docker image:
+```
+docker build \
+  --build-arg AGL_SDK_USER=<username> \
+  --build-arg AGL_SDK_PASSWORD=<password> \
+  -f docker/Dockerfile.build.arm64 \
+  -t adsw_monitor_builder:arm64 .
+```
+Run the build (mounts app source and writes output to `./output/`):
+```
+mkdir -p output
+docker run --rm \
+  -v $(pwd)/adsw_monitor:/workspace/app \
+  -v $(pwd)/output:/workspace/output \
+  adsw_monitor_builder:arm64 \
+  --app-path=/workspace/app \
+  --output-dir=/workspace/output
+```
+The artifact `adsw_monitor-arm64-release.tar.gz` will be created in `./output/`.
+
+Or with docker compose:
+```
+docker compose --profile build run --rm adsw_monitor_builder_arm64 \
+  --app-path=/workspace/app --output-dir=/workspace/output
+```
+
+#### Build for x86_64 (Linux desktop)
+Uses `Dockerfile.build` — no AGL SDK required.
+
+Build the Docker image:
+```
+docker build \
+  -f docker/Dockerfile.build \
+  -t adsw_monitor_builder:x86_64 .
+```
+Run the build:
+```
+mkdir -p output
+docker run --rm \
+  -v $(pwd)/adsw_monitor:/workspace/app \
+  -v $(pwd)/output:/workspace/output \
+  adsw_monitor_builder:x86_64 \
+  --app-path=/workspace/app \
+  --output-dir=/workspace/output
+```
+The artifact `adsw_monitor-x86_64-release.tar.gz` will be created in `./output/`.
+
+Or with docker compose:
+```
+docker compose --profile build run --rm adsw_monitor_builder_x86 \
+  --app-path=/workspace/app --output-dir=/workspace/output
+```
+
+### How to build arm64 runtime Docker image
+After the AOT build is complete, run the following commands from the `apps/` directory:
+
+**On arm64 host (AGL target directly):**
+```
+docker build \
+  -f docker/Dockerfile.arm64 \
+  -t adsw_monitor:arm64 .
+```
+
+**On x86_64 host (cross-build, requires buildx + QEMU):**
+```
+docker buildx create --use
+docker buildx build --platform linux/arm64 \
+  -f docker/Dockerfile.arm64 \
+  -t adsw_monitor:arm64 \
+  --load .
+```
+
+**Run on AGL:**
+```
+docker run --rm \
+  -v /usr/bin/flutter-auto:/usr/bin/flutter-auto \
+  -v /run/user/1001:/run/user/1001 \
+  -v /dev/dri:/dev/dri \
+  -e WAYLAND_DISPLAY=wayland-0 \
+  -e XDG_RUNTIME_DIR=/run/user/1001 \
+  --network host \
+  adsw_monitor:arm64
+```
+
+Or with docker compose (from `apps/docker/` directory):
+```
+docker compose up adsw_monitor_arm64
+```
+
 ### How to run in agl
-Transfer the build artifact (adsw_monitor-release.tar.gz) to the AGL environment via **SCP** and extract it.
+Transfer the build artifact (adsw_monitor-arm64-release.tar.gz) to the AGL environment via **SCP** and extract it.
   
 **flutter_auto**
 ```
