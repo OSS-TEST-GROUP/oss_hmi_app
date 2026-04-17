@@ -5,7 +5,11 @@ import 'package:ota_monitor/widget/data_view_widget.dart';
 import 'package:ota_monitor/widget/key_value_item.dart';
 
 class OtaViewPage extends StatefulWidget {
-  const OtaViewPage({super.key});
+  const OtaViewPage({super.key, this.truncateLength = 100});
+
+  /// Character count at which Settings/State values are truncated to
+  /// "…" with a "전체 보기" affordance. Configurable via AppConfig (F005).
+  final int truncateLength;
 
   @override
   State<OtaViewPage> createState() => _OtaViewPageState();
@@ -14,6 +18,8 @@ class OtaViewPage extends StatefulWidget {
 class _OtaViewPageState extends State<OtaViewPage> {
   late OtaCollector _otaCollector;
   String? _selectedAppName;
+
+  int get _truncate => widget.truncateLength;
 
   final Map<String, bool> _expandedSections = {
     'appList': true,
@@ -306,22 +312,26 @@ class _OtaViewPageState extends State<OtaViewPage> {
                         ),
                         KeyValueItem(
                           label: 'Settings',
-                          value: settings.length > 100
-                              ? '${settings.substring(0, 100)}...'
+                          value: settings.length > _truncate
+                              ? '${settings.substring(0, _truncate)}...'
                               : settings,
-                          subtitle: settings.length > 100 ? '전체 보기 →' : null,
-                          onSubtitleTap: settings.length > 100
-                              ? () => _showFullTextDialog('Settings - $_selectedAppName', settings)
+                          subtitle:
+                              settings.length > _truncate ? '전체 보기 →' : null,
+                          onSubtitleTap: settings.length > _truncate
+                              ? () => _showFullTextDialog(
+                                  'Settings - $_selectedAppName', settings)
                               : null,
                         ),
                         KeyValueItem(
                           label: 'State Info',
-                          value: state.length > 100
-                              ? '${state.substring(0, 100)}...'
+                          value: state.length > _truncate
+                              ? '${state.substring(0, _truncate)}...'
                               : state,
-                          subtitle: state.length > 100 ? '전체 보기 →' : null,
-                          onSubtitleTap: state.length > 100
-                              ? () => _showFullTextDialog('State Info - $_selectedAppName', state)
+                          subtitle:
+                              state.length > _truncate ? '전체 보기 →' : null,
+                          onSubtitleTap: state.length > _truncate
+                              ? () => _showFullTextDialog(
+                                  'State Info - $_selectedAppName', state)
                               : null,
                         ),
                         const SizedBox(height: 16),

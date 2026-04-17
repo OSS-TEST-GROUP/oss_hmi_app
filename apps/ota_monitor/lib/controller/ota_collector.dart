@@ -36,10 +36,14 @@ class OtaCollector extends GetxController {
   /// Sweep interval for [pendingRequests] expiration. Exposed for testing.
   final Duration timeoutSweepInterval;
 
+  /// Maximum number of entries retained in [updateHistory] (F005).
+  final int historySize;
+
   OtaCollector({
     Topic Function(Ros ros, String name, String type)? topicFactory,
     this.requestTimeout = const Duration(seconds: 30),
     this.timeoutSweepInterval = const Duration(seconds: 5),
+    this.historySize = 20,
   }) : topicFactory = topicFactory ??
             ((ros, name, type) => Topic(ros: ros, name: name, type: type));
 
@@ -347,8 +351,8 @@ class OtaCollector extends GetxController {
       'message': message,
       'ret_code': retCode,
     });
-    if (updateHistory.length > 20) {
-      updateHistory.removeRange(20, updateHistory.length);
+    if (updateHistory.length > historySize) {
+      updateHistory.removeRange(historySize, updateHistory.length);
     }
   }
 }

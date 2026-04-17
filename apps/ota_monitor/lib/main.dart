@@ -27,18 +27,21 @@ void main(List<String> args) {
       OtaCollector(
         topicFactory: (ros, name, type) =>
             Topic(ros: ros, name: name, type: type),
+        historySize: appConfig.historySize,
       ),
       permanent: true,
     );
 
     await rosKeeper.start();
 
-    runApp(const OtaMonitorApp());
+    runApp(OtaMonitorApp(truncateLength: appConfig.truncateLength));
   });
 }
 
 class OtaMonitorApp extends StatelessWidget {
-  const OtaMonitorApp({super.key});
+  const OtaMonitorApp({super.key, this.truncateLength = 100});
+
+  final int truncateLength;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +54,10 @@ class OtaMonitorApp extends StatelessWidget {
           secondary: Color(0xFF64748B),
         ),
       ),
-      home: const OtaMonitorHomePage(title: 'OTA Monitor'),
+      home: OtaMonitorHomePage(
+        title: 'OTA Monitor',
+        truncateLength: truncateLength,
+      ),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -61,9 +67,11 @@ class OtaMonitorHomePage extends StatelessWidget {
   const OtaMonitorHomePage({
     super.key,
     required this.title,
+    this.truncateLength = 100,
   });
 
   final String title;
+  final int truncateLength;
 
   void quitApp() {
     debugPrint('[OTA] Quit button pressed');
@@ -125,7 +133,8 @@ class OtaMonitorHomePage extends StatelessWidget {
       body: Column(
         children: [
           _buildHeader(),
-          const Expanded(child: OtaViewPage()),
+          Expanded(
+              child: OtaViewPage(truncateLength: truncateLength)),
         ],
       ),
     );

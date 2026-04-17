@@ -172,15 +172,31 @@ void main() {
     });
   });
 
-  // ── updateHistory capped at 20 ───────────────────────────────────────────
+  // ── updateHistory capped at historySize (F005) ──────────────────────────
 
   group('updateHistory', () {
-    test('is capped at 20 entries', () {
+    test('defaults cap to 20 entries', () {
       for (int i = 0; i < 25; i++) {
         collector.onUpdateResponse(
             <String, dynamic>{'app_name': 'App$i', 'ret_code': 0});
       }
       expect(collector.updateHistory.length, 20);
+    });
+
+    test('respects custom historySize from constructor', () {
+      Get.reset();
+      Get.put<Ros>(mockRos);
+      final small = OtaCollector(
+        topicFactory: (ros, name, type) => MockTopic(),
+        historySize: 5,
+      );
+      for (int i = 0; i < 12; i++) {
+        small.onUpdateResponse(
+            <String, dynamic>{'app_name': 'App$i', 'ret_code': 0});
+      }
+      expect(small.updateHistory.length, 5);
+      // Most recent entry (inserted at index 0) should be App11.
+      expect(small.updateHistory.first['app_name'], 'App11');
     });
   });
 

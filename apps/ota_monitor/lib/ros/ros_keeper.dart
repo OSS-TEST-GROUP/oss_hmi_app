@@ -59,7 +59,8 @@ class RosKeeper {
     );
 
     _reconnectPoll?.cancel();
-    _reconnectPoll = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _reconnectPoll = Timer.periodic(
+        Duration(seconds: cfg.rosReconnectIntervalSec), (_) async {
       final r = _ros;
       if (_stopping || r == null) return;
       if (_reconnecting) return;
@@ -69,7 +70,8 @@ class RosKeeper {
 
     _kickReconnect();
 
-    _timer = _timerFactory(const Duration(seconds: 1), (_) async {
+    _timer = _timerFactory(
+        Duration(seconds: cfg.heartbeatIntervalSec), (_) async {
       final r = _ros;
       if (r == null) return;
       if (r.status != Status.connected) return;
