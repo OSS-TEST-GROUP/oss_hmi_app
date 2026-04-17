@@ -14,8 +14,9 @@
 
 ```
 integration_test/
-  mock_ota_manager.dart        # Mock rosbridge WebSocket 서버
-  ota_integration_test.dart    # 통합 테스트 본문
+  mock_ota_manager.dart        # Mock rosbridge WebSocket 서버 (dart:io)
+  ota_integration_test.dart    # Linux 통합 테스트 (mock ↔ roslibdart ↔ UI)
+  ota_web_test.dart            # Chrome 통합 테스트 (seed 기반 UI 검증, F011)
   INTEGRATION_TEST_GUIDE.md    # 이 문서
 ```
 
@@ -44,6 +45,46 @@ DISPLAY=:1 flutter test integration_test/ -d linux --name "sendNotifyStatus"
 - Linux desktop 타겟 빌드 환경 (flutter linux 지원)
 - Xvfb 또는 실제 디스플레이 (`DISPLAY` 환경변수)
 - `pubspec.yaml`에 `integration_test: sdk: flutter` 포함
+
+### 3.4 Web (Chrome) 실행 — F011
+
+브라우저 런타임에서는 `dart:io` HttpServer를 쓸 수 없어 MockOtaManager가 동작하지 않는다.
+`ota_web_test.dart`는 그 대신 `OtaCollector`에 seed 데이터를 미리 주입해 UI 레이어의
+웹 호환성을 확인한다.
+
+1. 사전 설치:
+   ```bash
+   # chromedriver 버전은 현재 Chrome과 일치해야 한다
+   # 예) Chrome 133 → chromedriver 133.x
+   chromedriver --port=4444 &
+   ```
+
+2. 드라이버 실행:
+   ```bash
+   cd apps/ota_monitor
+   flutter drive \
+     --driver=test_driver/integration_test.dart \
+     --target=integration_test/ota_web_test.dart \
+     -d chrome
+   ```
+
+3. CI에서는 headless 모드:
+   ```bash
+   chromedriver --port=4444 --headless &
+   flutter drive \
+     --driver=test_driver/integration_test.dart \
+     --target=integration_test/ota_web_test.dart \
+     -d web-server --browser-name=chrome
+   ```
+
+`test_driver/integration_test.dart`는 표준 부트스트랩 파일로 아래 내용이 있어야 한다:
+```dart
+import 'package:integration_test/integration_test_driver.dart';
+Future<void> main() => integrationDriver();
+```
+
+현재 리포지토리에는 chromedriver가 셋업되어 있지 않아 이 시나리오는 작성만 해두었다.
+실제 환경에서 위 명령을 실행하면 통과해야 한다.
 
 ---
 
