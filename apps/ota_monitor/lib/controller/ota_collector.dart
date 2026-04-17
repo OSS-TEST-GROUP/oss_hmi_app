@@ -5,11 +5,41 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'package:ota_monitor/data/ota_data.dart';
 
+enum OtaRequestKind {
+  getSettings,
+  setSettings,
+  getState,
+  setUpdate,
+}
+
+class PendingRequest {
+  PendingRequest({
+    required this.id,
+    required this.appName,
+    required this.kind,
+    required this.sentAt,
+  });
+
+  final int id;
+  final String appName;
+  final OtaRequestKind kind;
+  final DateTime sentAt;
+}
+
 class OtaCollector extends GetxController {
   final Topic Function(Ros ros, String name, String type) topicFactory;
 
+  /// Request expiration window. Requests older than this are removed from
+  /// [pendingRequests] with a warning log. Exposed for testing.
+  final Duration requestTimeout;
+
+  /// Sweep interval for [pendingRequests] expiration. Exposed for testing.
+  final Duration timeoutSweepInterval;
+
   OtaCollector({
     Topic Function(Ros ros, String name, String type)? topicFactory,
+    this.requestTimeout = const Duration(seconds: 30),
+    this.timeoutSweepInterval = const Duration(seconds: 5),
   }) : topicFactory = topicFactory ??
             ((ros, name, type) => Topic(ros: ros, name: name, type: type));
 
@@ -21,8 +51,15 @@ class OtaCollector extends GetxController {
   final RxList<Map<String, dynamic>> updateHistory =
       <Map<String, dynamic>>[].obs;
 
-  // Request ID counter
+  // Request ID tracking
   int _nextRequestId = 1000;
+  final Map<int, PendingRequest> _pendingRequests = <int, PendingRequest>{};
+
+  /// Read-only view of in-flight requests (kept for diagnostics & tests).
+  Map<int, PendingRequest> get pendingRequests =>
+      Map.unmodifiable(_pendingRequests);
+
+  int get pendingRequestCount => _pendingRequests.length;
 
   // Topic instances
   Topic? _settingsRespSub;
@@ -39,6 +76,7 @@ class OtaCollector extends GetxController {
   bool _setup = false;
   Ros? _boundRos;
   Timer? _watchdog;
+  Timer? _timeoutSweeper;
 
   @override
   void onInit() {
@@ -50,11 +88,17 @@ class OtaCollector extends GetxController {
       if (_boundRos == r && _setup) return;
       _start(r);
     });
+
+    // Periodic sweeper for expired pending requests.
+    _timeoutSweeper = Timer.periodic(timeoutSweepInterval, (_) {
+      sweepExpiredRequests();
+    });
   }
 
   @override
   void onClose() {
     _watchdog?.cancel();
+    _timeoutSweeper?.cancel();
     super.onClose();
   }
 
@@ -110,7 +154,8 @@ class OtaCollector extends GetxController {
 
   void onSettingsResponse(Map<String, dynamic> msg) {
     debugPrint('[OTA] GetAppUpdateSettingsResponse: $msg');
-    final appName = msg['app_name'] as String?;
+    final matched = _matchAndRemove(msg, OtaRequestKind.getSettings);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final appSettings = msg['app_settings'] as String?;
     final retCode = msg['ret_code'] as int?;
 
@@ -123,13 +168,20 @@ class OtaCollector extends GetxController {
 
   void onSetSettingsResponse(Map<String, dynamic> msg) {
     debugPrint('[OTA] SetAppUpdateSettingsResponse: $msg');
+    final matched = _matchAndRemove(msg, OtaRequestKind.setSettings);
     final retCode = msg['ret_code'] as int?;
-    topicData['last_set_settings_result'] = ReturnValue.fromInt(retCode);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
+    final result = ReturnValue.fromInt(retCode);
+    topicData['last_set_settings_result'] = result;
+    if (appName != null) {
+      topicData['${appName}_set_settings_result'] = result;
+    }
   }
 
   void onStateResponse(Map<String, dynamic> msg) {
     debugPrint('[OTA] GetAppUpdateStateResponse: $msg');
-    final appName = msg['app_name'] as String?;
+    final matched = _matchAndRemove(msg, OtaRequestKind.getState);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final appStateInfo = msg['app_state_info'] as String?;
     final retCode = msg['ret_code'] as int?;
 
@@ -142,7 +194,8 @@ class OtaCollector extends GetxController {
 
   void onUpdateResponse(Map<String, dynamic> msg) {
     debugPrint('[OTA] SetAppUpdateResponse: $msg');
-    final appName = msg['app_name'] as String?;
+    final matched = _matchAndRemove(msg, OtaRequestKind.setUpdate);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final retCode = msg['ret_code'] as int?;
 
     if (appName != null) {
@@ -156,6 +209,8 @@ class OtaCollector extends GetxController {
     final appName = msg['app_name'] as String?;
     final status = msg['status'] as String?;
 
+    // NotifyStatus is unsolicited — no pending request to match. Intentionally
+    // skip _matchAndRemove() here.
     if (appName != null && status != null) {
       topicData['${appName}_status'] = status;
       _updateAppList(appName, status: status);
@@ -166,26 +221,26 @@ class OtaCollector extends GetxController {
   // ── Publish helpers ──────────────────────────────────────────────────────
 
   void requestAppSettings(String appName) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.getSettings);
     _publish(_settingsReqPub, {'id': id, 'app_name': appName});
     debugPrint('[OTA] Requested settings for $appName (id=$id)');
   }
 
   void setAppSettings(String appName, String settingsJson) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.setSettings);
     _publish(_setSettingsReqPub,
         {'id': id, 'app_name': appName, 'app_settings': settingsJson});
     debugPrint('[OTA] Set settings for $appName (id=$id)');
   }
 
   void requestAppState(String appName) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.getState);
     _publish(_stateReqPub, {'id': id, 'app_name': appName});
     debugPrint('[OTA] Requested state for $appName (id=$id)');
   }
 
   void requestUpdate(String appName) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.setUpdate);
     _publish(_updateReqPub, {'id': id, 'app_name': appName});
     debugPrint('[OTA] Requested update for $appName (id=$id)');
   }
@@ -200,6 +255,67 @@ class OtaCollector extends GetxController {
     } catch (e) {
       debugPrint('[OTA] publish error: $e');
     }
+  }
+
+  // ── Request / response correlation ───────────────────────────────────────
+
+  int _registerRequest(String appName, OtaRequestKind kind) {
+    final id = _nextRequestId++;
+    _pendingRequests[id] = PendingRequest(
+      id: id,
+      appName: appName,
+      kind: kind,
+      sentAt: DateTime.now(),
+    );
+    return id;
+  }
+
+  /// Look up the pending request referenced by [msg]'s `id` field (if any)
+  /// and remove it when the [expectedKind] matches. Returns the matched
+  /// [PendingRequest] on success, or null otherwise.
+  PendingRequest? _matchAndRemove(
+      Map<String, dynamic> msg, OtaRequestKind expectedKind) {
+    final id = _extractInt(msg['id']);
+    if (id == null) return null;
+    final pending = _pendingRequests[id];
+    if (pending == null) {
+      debugPrint('[OTA] orphan response id=$id (no pending request)');
+      return null;
+    }
+    if (pending.kind != expectedKind) {
+      debugPrint(
+          '[OTA] id=$id kind mismatch (pending=${pending.kind} response=$expectedKind)');
+      return null;
+    }
+    _pendingRequests.remove(id);
+    return pending;
+  }
+
+  static int? _extractInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  /// Remove requests older than [requestTimeout]. Returns the number of
+  /// expired entries removed. Public for tests.
+  int sweepExpiredRequests() {
+    if (_pendingRequests.isEmpty) return 0;
+    final now = DateTime.now();
+    final expired = <int>[];
+    _pendingRequests.forEach((id, req) {
+      if (now.difference(req.sentAt) >= requestTimeout) {
+        expired.add(id);
+      }
+    });
+    for (final id in expired) {
+      final p = _pendingRequests.remove(id);
+      debugPrint(
+          '[OTA] request id=$id timed out after ${requestTimeout.inSeconds}s '
+          '(app=${p?.appName}, kind=${p?.kind})');
+    }
+    return expired.length;
   }
 
   // ── Internal helpers ─────────────────────────────────────────────────────
