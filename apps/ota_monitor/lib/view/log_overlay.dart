@@ -28,15 +28,19 @@ class LogController extends GetxController {
     await _fileLogger!.start();
   }
 
-  void add(String s) 
-  {
+  void add(String s) {
     lines.add(s);
     if (lines.length > maxLines) {
       lines.removeRange(0, lines.length - maxLines);
-
-
     }
     _fileLogger?.addLine(s);
+  }
+
+  /// F006: unified logging entry point used across the app. Includes an
+  /// optional [level] tag in the rendered line.
+  void log(String message, {String level = 'info'}) {
+    final line = level == 'info' ? message : '[$level] $message';
+    add(line);
   }
 
   void clear() => lines.clear();

@@ -7,6 +7,7 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'package:ota_monitor/config/config_loader.dart';
 import 'package:ota_monitor/config/app_config.dart';
+import 'package:ota_monitor/logging/app_log.dart';
 import 'package:ota_monitor/ros/ros_keeper.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 
@@ -75,7 +76,7 @@ class OtaMonitorHomePage extends StatelessWidget {
   final int truncateLength;
 
   void quitApp() {
-    debugPrint('[OTA] Quit button pressed');
+    appLog('[OTA] Quit button pressed');
     if (!kIsWeb && !Platform.isAndroid && !Platform.isIOS) {
       exit(0);
     }

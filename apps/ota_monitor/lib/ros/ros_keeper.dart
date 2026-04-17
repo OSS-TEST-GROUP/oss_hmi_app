@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:roslibdart/roslibdart.dart';
 import '../config/app_config.dart';
+import '../logging/app_log.dart';
 import 'package:get/get.dart';
 
 typedef RosFactory = Ros Function(String url);
@@ -47,15 +48,15 @@ class RosKeeper {
 
     _statusSub = _ros!.statusStream.listen(
       (s) async {
-        print('[ROS] status=$s');
+        appLog('[ROS] status=$s');
         if (s == Status.connected) {
           await _onConnected();
         } else {
           _restored = false;
         }
       },
-      onError: (e, st) => print('[ROS] statusStream error: $e'),
-      onDone: () => print('[ROS] statusStream done'),
+      onError: (e, st) => appLog('[ROS] statusStream error: $e', level: 'warn'),
+      onDone: () => appLog('[ROS] statusStream done'),
     );
 
     _reconnectPoll?.cancel();
@@ -102,7 +103,7 @@ class RosKeeper {
     } catch (_) {}
 
     _restored = true;
-    print('[ROS] onConnected: restored topics & DI updated');
+    appLog('[ROS] onConnected: restored topics & DI updated');
   }
 
   Future<bool> _safeCloseWithResult(Ros r) async {
@@ -110,13 +111,13 @@ class RosKeeper {
       await r.close().timeout(const Duration(seconds: 2));
       return true;
     } catch (e) {
-      print('[RECON] close timeout/failed: $e');
+      appLog('[RECON] close timeout/failed: $e', level: 'warn');
       return false;
     }
   }
 
   void _recreateRos() {
-    print('[RECON] recreate Ros');
+    appLog('[RECON] recreate Ros');
 
     _statusSub?.cancel();
     _statusSub = null;
@@ -132,15 +133,15 @@ class RosKeeper {
 
     _statusSub = _ros!.statusStream.listen(
       (s) async {
-        print('[ROS] status=$s');
+        appLog('[ROS] status=$s');
         if (s == Status.connected) {
           await _onConnected();
         } else {
           _restored = false;
         }
       },
-      onError: (e, st) => print('[ROS] statusStream error: $e'),
-      onDone: () => print('[ROS] statusStream done'),
+      onError: (e, st) => appLog('[ROS] statusStream error: $e', level: 'warn'),
+      onDone: () => appLog('[ROS] statusStream done'),
     );
   }
 
@@ -169,7 +170,7 @@ class RosKeeper {
           try {
             r.connect();
           } catch (e) {
-            print('[RECON] connect threw: $e');
+            appLog('[RECON] connect threw: $e', level: 'warn');
           }
 
           await Future<void>.delayed(const Duration(seconds: 1));

@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
 
 import 'package:ota_monitor/data/ota_data.dart';
+import 'package:ota_monitor/logging/app_log.dart';
 
 enum OtaRequestKind {
   getSettings,
@@ -161,7 +161,7 @@ class OtaCollector extends GetxController {
       await _updateReqPub?.advertise();
 
       _setup = true;
-      debugPrint('[OTA] Topics subscribed & advertised');
+      appLog('[OTA] Topics subscribed & advertised');
 
       // F004: auto-request settings/state for each initialApps entry.
       for (final name in initialApps) {
@@ -169,17 +169,17 @@ class OtaCollector extends GetxController {
         requestAppState(name);
       }
       if (initialApps.isNotEmpty) {
-        debugPrint('[OTA] Auto-requested initial apps: $initialApps');
+        appLog('[OTA] Auto-requested initial apps: $initialApps');
       }
     } catch (e) {
-      debugPrint('[OTA] _start error: $e');
+      appLog('[OTA] _start error: $e', level: 'error');
     }
   }
 
   // ── Response handlers ────────────────────────────────────────────────────
 
   void onSettingsResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] GetAppUpdateSettingsResponse: $msg');
+    appLog('[OTA] GetAppUpdateSettingsResponse: $msg');
     final matched = _matchAndRemove(msg, OtaRequestKind.getSettings);
     final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final appSettings = msg['app_settings'] as String?;
@@ -193,7 +193,7 @@ class OtaCollector extends GetxController {
   }
 
   void onSetSettingsResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] SetAppUpdateSettingsResponse: $msg');
+    appLog('[OTA] SetAppUpdateSettingsResponse: $msg');
     final matched = _matchAndRemove(msg, OtaRequestKind.setSettings);
     final retCode = msg['ret_code'] as int?;
     final appName = (msg['app_name'] as String?) ?? matched?.appName;
@@ -205,7 +205,7 @@ class OtaCollector extends GetxController {
   }
 
   void onStateResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] GetAppUpdateStateResponse: $msg');
+    appLog('[OTA] GetAppUpdateStateResponse: $msg');
     final matched = _matchAndRemove(msg, OtaRequestKind.getState);
     final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final appStateInfo = msg['app_state_info'] as String?;
@@ -219,7 +219,7 @@ class OtaCollector extends GetxController {
   }
 
   void onUpdateResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] SetAppUpdateResponse: $msg');
+    appLog('[OTA] SetAppUpdateResponse: $msg');
     final matched = _matchAndRemove(msg, OtaRequestKind.setUpdate);
     final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final retCode = msg['ret_code'] as int?;
@@ -231,7 +231,7 @@ class OtaCollector extends GetxController {
   }
 
   void onNotifyStatus(Map<String, dynamic> msg) {
-    debugPrint('[OTA] NotifyAppUpdateStatus: $msg');
+    appLog('[OTA] NotifyAppUpdateStatus: $msg');
     final appName = msg['app_name'] as String?;
     final status = msg['status'] as String?;
 
@@ -249,37 +249,37 @@ class OtaCollector extends GetxController {
   void requestAppSettings(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.getSettings);
     _publish(_settingsReqPub, {'id': id, 'app_name': appName});
-    debugPrint('[OTA] Requested settings for $appName (id=$id)');
+    appLog('[OTA] Requested settings for $appName (id=$id)');
   }
 
   void setAppSettings(String appName, String settingsJson) {
     final id = _registerRequest(appName, OtaRequestKind.setSettings);
     _publish(_setSettingsReqPub,
         {'id': id, 'app_name': appName, 'app_settings': settingsJson});
-    debugPrint('[OTA] Set settings for $appName (id=$id)');
+    appLog('[OTA] Set settings for $appName (id=$id)');
   }
 
   void requestAppState(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.getState);
     _publish(_stateReqPub, {'id': id, 'app_name': appName});
-    debugPrint('[OTA] Requested state for $appName (id=$id)');
+    appLog('[OTA] Requested state for $appName (id=$id)');
   }
 
   void requestUpdate(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.setUpdate);
     _publish(_updateReqPub, {'id': id, 'app_name': appName});
-    debugPrint('[OTA] Requested update for $appName (id=$id)');
+    appLog('[OTA] Requested update for $appName (id=$id)');
   }
 
   void _publish(Topic? topic, Map<String, dynamic> fields) {
     if (topic == null) {
-      debugPrint('[OTA] publish skipped: topic not ready');
+      appLog('[OTA] publish skipped: topic not ready', level: 'warn');
       return;
     }
     try {
       topic.publish(fields);
     } catch (e) {
-      debugPrint('[OTA] publish error: $e');
+      appLog('[OTA] publish error: $e', level: 'warn');
     }
   }
 
@@ -305,11 +305,11 @@ class OtaCollector extends GetxController {
     if (id == null) return null;
     final pending = _pendingRequests[id];
     if (pending == null) {
-      debugPrint('[OTA] orphan response id=$id (no pending request)');
+      appLog('[OTA] orphan response id=$id (no pending request)', level: 'warn');
       return null;
     }
     if (pending.kind != expectedKind) {
-      debugPrint(
+      appLog(
           '[OTA] id=$id kind mismatch (pending=${pending.kind} response=$expectedKind)');
       return null;
     }
@@ -337,7 +337,7 @@ class OtaCollector extends GetxController {
     });
     for (final id in expired) {
       final p = _pendingRequests.remove(id);
-      debugPrint(
+      appLog(
           '[OTA] request id=$id timed out after ${requestTimeout.inSeconds}s '
           '(app=${p?.appName}, kind=${p?.kind})');
     }
