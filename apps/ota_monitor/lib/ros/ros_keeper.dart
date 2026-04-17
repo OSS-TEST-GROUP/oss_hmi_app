@@ -16,6 +16,19 @@ class RosKeeper {
         _timerFactory = timerFactory ??
             ((duration, onTick) => Timer.periodic(duration, onTick));
 
+  /// F010: exponential backoff sequence used by [_kickReconnect].
+  ///
+  /// Doubles the delay up to [maxBackoff], then stays there. Exposed as a
+  /// pure function so the 1s → 2s → 4s → 8s progression can be unit tested
+  /// without simulating wall-clock time.
+  static const Duration initialBackoff = Duration(seconds: 1);
+  static const Duration maxBackoff = Duration(seconds: 8);
+
+  static Duration nextBackoff(Duration current) {
+    final next = current * 2;
+    return next > maxBackoff ? maxBackoff : next;
+  }
+
   final AppConfig cfg;
   final RosFactory _rosFactory;
   final TimerFactory _timerFactory;
@@ -155,8 +168,7 @@ class RosKeeper {
 
     unawaited(() async {
       try {
-        var delay = const Duration(seconds: 1);
-        const maxDelay = Duration(seconds: 8);
+        var delay = initialBackoff;
 
         while (!_stopping) {
           final r = _ros;
@@ -185,8 +197,7 @@ class RosKeeper {
           }
 
           await Future<void>.delayed(delay);
-          delay = delay * 2;
-          if (delay > maxDelay) delay = maxDelay;
+          delay = nextBackoff(delay);
         }
       } finally {
         _reconnecting = false;
