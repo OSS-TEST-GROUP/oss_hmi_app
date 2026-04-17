@@ -44,12 +44,22 @@ class OtaCollector extends GetxController {
   /// advertised.
   final List<String> initialApps;
 
+  /// Poll interval used to detect changes to the GetX-registered Ros.
+  /// Exposed primarily so widget tests can disable the ticker.
+  final Duration watchdogInterval;
+
+  /// When false, onInit() skips the watchdog and timeout sweeper timers.
+  /// Widget tests flip this off to avoid 'Timer is still pending' failures.
+  final bool autoStartTimers;
+
   OtaCollector({
     Topic Function(Ros ros, String name, String type)? topicFactory,
     this.requestTimeout = const Duration(seconds: 30),
     this.timeoutSweepInterval = const Duration(seconds: 5),
+    this.watchdogInterval = const Duration(seconds: 1),
     this.historySize = 20,
     this.initialApps = const [],
+    this.autoStartTimers = true,
   }) : topicFactory = topicFactory ??
             ((ros, name, type) => Topic(ros: ros, name: name, type: type)) {
     // Seed the app list immediately so the UI has something to show while
@@ -105,8 +115,9 @@ class OtaCollector extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    if (!autoStartTimers) return;
     // Poll until Ros instance is available in GetX (set by RosKeeper on connect)
-    _watchdog = Timer.periodic(const Duration(seconds: 1), (_) {
+    _watchdog = Timer.periodic(watchdogInterval, (_) {
       if (!Get.isRegistered<Ros>()) return;
       final r = _ros;
       if (_boundRos == r && _setup) return;
