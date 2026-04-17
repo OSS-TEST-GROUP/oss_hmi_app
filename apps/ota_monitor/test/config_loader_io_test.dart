@@ -51,6 +51,39 @@ void main() {
 
       await tempDir.delete(recursive: true);
     });
+
+    // F007: parse failure surfaces a user-facing warning.
+    test('sets lastConfigLoadWarning when parsing fails', () async {
+      final tempDir =
+          await Directory.systemTemp.createTemp('ota_config_test_warn_');
+      final file = File('${tempDir.path}/config_bad.json');
+      await file.writeAsString('definitely not json');
+      Future<File?> fakeFinder(List<String> args) async => file;
+
+      lastConfigLoadWarning = null;
+      await loadConfig(const [], finder: fakeFinder);
+
+      expect(lastConfigLoadWarning, isNotNull);
+      expect(lastConfigLoadWarning, contains('파싱에 실패'));
+
+      await tempDir.delete(recursive: true);
+    });
+
+    test('clears lastConfigLoadWarning on a successful load', () async {
+      final tempDir =
+          await Directory.systemTemp.createTemp('ota_config_test_ok2_');
+      final file = File('${tempDir.path}/config.json');
+      await file.writeAsString('{"rosbridge":{"url":"ws://h:1"}}');
+      Future<File?> fakeFinder(List<String> args) async => file;
+
+      lastConfigLoadWarning = 'stale-value';
+      final cfg = await loadConfig(const [], finder: fakeFinder);
+
+      expect(cfg.rosUrl.toString(), 'ws://h:1');
+      expect(lastConfigLoadWarning, isNull);
+
+      await tempDir.delete(recursive: true);
+    });
   });
 
   group('loadConfig with real _findConfigFile', () {

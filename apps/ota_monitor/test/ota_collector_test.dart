@@ -258,6 +258,40 @@ void main() {
     test('99 → unknown',   () => expect(ReturnValue.fromInt(99), ReturnValue.unknown));
   });
 
+  // ── F007: error stream surfaces publish failures ────────────────────────
+
+  group('error stream (F007)', () {
+    test('_publish emits error when topic is not ready', () async {
+      // Build a collector that never calls startTopics, so publishers stay null.
+      Get.reset();
+      Get.put<Ros>(mockRos);
+      final solo = OtaCollector(
+        topicFactory: (ros, name, type) => MockTopic(),
+      );
+
+      final events = <String>[];
+      final sub = solo.errors.listen(events.add);
+      solo.requestAppSettings('AppX');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(events.length, 1);
+      expect(events.first, contains('연결되지 않음'));
+
+      await sub.cancel();
+    });
+
+    test('_publish does not emit when the topic is ready', () async {
+      await initTopics();
+      final events = <String>[];
+      final sub = collector.errors.listen(events.add);
+      collector.requestAppSettings('AppX');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(events, isEmpty);
+      await sub.cancel();
+    });
+  });
+
   // ── F004: initial apps auto-load ───────────────────────────────────────
 
   group('initialApps', () {

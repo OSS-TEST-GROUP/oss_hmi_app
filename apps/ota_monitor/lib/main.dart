@@ -16,10 +16,13 @@ import 'package:ota_monitor/view/log_overlay.dart';
 
 late AppConfig appConfig;
 late RosKeeper rosKeeper;
+String? startupConfigWarning;
 
 void main(List<String> args) {
   runWithLogCapture(() async {
     appConfig = await loadConfig(args);
+    // F007: surface any config-parse failure so the UI can warn the user.
+    startupConfigWarning = lastConfigLoadWarning;
     rosKeeper = RosKeeper(appConfig);
 
     // Register OtaCollector before starting RosKeeper so the watchdog
@@ -36,14 +39,25 @@ void main(List<String> args) {
 
     await rosKeeper.start();
 
-    runApp(OtaMonitorApp(truncateLength: appConfig.truncateLength));
+    runApp(OtaMonitorApp(
+      truncateLength: appConfig.truncateLength,
+      configWarning: startupConfigWarning,
+      keeper: rosKeeper,
+    ));
   });
 }
 
 class OtaMonitorApp extends StatelessWidget {
-  const OtaMonitorApp({super.key, this.truncateLength = 100});
+  const OtaMonitorApp({
+    super.key,
+    this.truncateLength = 100,
+    this.configWarning,
+    this.keeper,
+  });
 
   final int truncateLength;
+  final String? configWarning;
+  final RosKeeper? keeper;
 
   @override
   Widget build(BuildContext context) {
@@ -59,21 +73,58 @@ class OtaMonitorApp extends StatelessWidget {
       home: OtaMonitorHomePage(
         title: 'OTA Monitor',
         truncateLength: truncateLength,
+        configWarning: configWarning,
+        keeper: keeper,
       ),
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class OtaMonitorHomePage extends StatelessWidget {
+class OtaMonitorHomePage extends StatefulWidget {
   const OtaMonitorHomePage({
     super.key,
     required this.title,
     this.truncateLength = 100,
+    this.configWarning,
+    this.keeper,
   });
 
   final String title;
   final int truncateLength;
+  final String? configWarning;
+  final RosKeeper? keeper;
+
+  @override
+  State<OtaMonitorHomePage> createState() => _OtaMonitorHomePageState();
+}
+
+class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
+  static const int _failureThreshold = 3;
+
+  @override
+  void initState() {
+    super.initState();
+    // F007: show a one-shot dialog if config.json failed to parse at startup.
+    if (widget.configWarning != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('설정 파일 경고'),
+            content: Text(widget.configWarning!),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('확인'),
+              ),
+            ],
+          ),
+        );
+      });
+    }
+  }
 
   void quitApp() {
     appLog('[OTA] Quit button pressed');
@@ -113,6 +164,22 @@ class OtaMonitorHomePage extends StatelessWidget {
               color: Colors.white,
             ),
           ),
+          const Spacer(),
+          if (widget.keeper != null)
+            ValueListenableBuilder<int>(
+              valueListenable: widget.keeper!.consecutiveFailures,
+              builder: (_, failures, __) {
+                if (failures < _failureThreshold) return const SizedBox();
+                return Tooltip(
+                  message: 'ROS 재연결 $failures회 실패',
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Color(0xFFF59E0B),
+                    size: 28,
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -136,7 +203,7 @@ class OtaMonitorHomePage extends StatelessWidget {
         children: [
           _buildHeader(),
           Expanded(
-              child: OtaViewPage(truncateLength: truncateLength)),
+              child: OtaViewPage(truncateLength: widget.truncateLength)),
         ],
       ),
     );

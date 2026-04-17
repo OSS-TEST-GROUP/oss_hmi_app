@@ -95,6 +95,13 @@ class OtaCollector extends GetxController {
   Timer? _watchdog;
   Timer? _timeoutSweeper;
 
+  // F007: surface user-facing error events to the UI via a broadcast stream.
+  final StreamController<String> _errorCtrl =
+      StreamController<String>.broadcast();
+
+  /// Emits short, user-facing error messages (displayed as SnackBars).
+  Stream<String> get errors => _errorCtrl.stream;
+
   @override
   void onInit() {
     super.onInit();
@@ -116,6 +123,7 @@ class OtaCollector extends GetxController {
   void onClose() {
     _watchdog?.cancel();
     _timeoutSweeper?.cancel();
+    _errorCtrl.close();
     super.onClose();
   }
 
@@ -274,12 +282,18 @@ class OtaCollector extends GetxController {
   void _publish(Topic? topic, Map<String, dynamic> fields) {
     if (topic == null) {
       appLog('[OTA] publish skipped: topic not ready', level: 'warn');
+      if (!_errorCtrl.isClosed) {
+        _errorCtrl.add('ROS에 연결되지 않음 — 잠시 후 다시 시도하세요');
+      }
       return;
     }
     try {
       topic.publish(fields);
     } catch (e) {
       appLog('[OTA] publish error: $e', level: 'warn');
+      if (!_errorCtrl.isClosed) {
+        _errorCtrl.add('요청 전송 실패: $e');
+      }
     }
   }
 

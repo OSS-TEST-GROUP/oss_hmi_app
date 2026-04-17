@@ -4,10 +4,17 @@ import 'app_config.dart';
 
 typedef ConfigFileFinder = Future<File?> Function(List<String> args);
 
+/// F007: surfaced to the UI so a dialog can warn the user that defaults
+/// are being used because the on-disk config.json could not be parsed.
+/// Set during [loadConfig]; null when the load path succeeded or no file
+/// was found at all (silent default).
+String? lastConfigLoadWarning;
+
 Future<AppConfig> loadConfig(
   List<String> args, {
   ConfigFileFinder? finder,
 }) async {
+  lastConfigLoadWarning = null;
   final file = await (finder ?? _findConfigFile)(args);
 
   if (file == null) {
@@ -22,7 +29,10 @@ Future<AppConfig> loadConfig(
     stdout.writeln('[config] loaded: ${file.path} (ros=${cfg.rosUrl})');
     return cfg;
   } catch (e) {
-    stderr.writeln('[config] failed to parse ${file.path}: $e (use defaults)');
+    final msg =
+        '설정 파일(${file.path}) 파싱에 실패하여 기본값을 사용합니다.\n원인: $e';
+    stderr.writeln('[config] $msg');
+    lastConfigLoadWarning = msg;
     return AppConfig.defaults();
   }
 }

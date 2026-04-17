@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
@@ -27,10 +29,31 @@ class _OtaViewPageState extends State<OtaViewPage> {
     'updateHistory': true,
   };
 
+  StreamSubscription<String>? _errorSub;
+
   @override
   void initState() {
     super.initState();
     _startConnect();
+    // F007: surface publish errors as SnackBars.
+    _errorSub = _otaCollector.errors.listen(_showErrorSnack);
+  }
+
+  @override
+  void dispose() {
+    _errorSub?.cancel();
+    super.dispose();
+  }
+
+  void _showErrorSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: const Color(0xFFB45309),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _startConnect() {

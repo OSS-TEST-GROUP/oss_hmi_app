@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:roslibdart/roslibdart.dart';
 import '../config/app_config.dart';
 import '../logging/app_log.dart';
@@ -45,6 +46,11 @@ class RosKeeper {
   bool _reconnecting = false;
 
   bool _restored = false;
+
+  // F007: number of consecutive reconnect iterations that did not yield a
+  // connected state. Exposed as a listenable notifier so the UI can show
+  // a warning badge after repeated failures.
+  final ValueNotifier<int> consecutiveFailures = ValueNotifier<int>(0);
 
   Future<void> start() async {
     await stop();
@@ -116,6 +122,8 @@ class RosKeeper {
     } catch (_) {}
 
     _restored = true;
+    // F007: fresh connection resets the failure streak.
+    consecutiveFailures.value = 0;
     appLog('[ROS] onConnected: restored topics & DI updated');
   }
 
@@ -195,6 +203,9 @@ class RosKeeper {
           if (!ok) {
             _recreateRos();
           }
+
+          // F007: one more iteration without a connection.
+          consecutiveFailures.value = consecutiveFailures.value + 1;
 
           await Future<void>.delayed(delay);
           delay = nextBackoff(delay);
