@@ -28,6 +28,7 @@ void main(List<String> args) {
         topicFactory: (ros, name, type) =>
             Topic(ros: ros, name: name, type: type),
         historySize: appConfig.historySize,
+        initialApps: appConfig.initialApps,
       ),
       permanent: true,
     );

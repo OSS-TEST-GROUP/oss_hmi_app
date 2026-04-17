@@ -39,13 +39,26 @@ class OtaCollector extends GetxController {
   /// Maximum number of entries retained in [updateHistory] (F005).
   final int historySize;
 
+  /// App names to seed the UI with at startup (F004). Settings and state
+  /// requests are issued automatically for each entry once topics are
+  /// advertised.
+  final List<String> initialApps;
+
   OtaCollector({
     Topic Function(Ros ros, String name, String type)? topicFactory,
     this.requestTimeout = const Duration(seconds: 30),
     this.timeoutSweepInterval = const Duration(seconds: 5),
     this.historySize = 20,
+    this.initialApps = const [],
   }) : topicFactory = topicFactory ??
-            ((ros, name, type) => Topic(ros: ros, name: name, type: type));
+            ((ros, name, type) => Topic(ros: ros, name: name, type: type)) {
+    // Seed the app list immediately so the UI has something to show while
+    // responses are still in flight. The entries' status stays 'Unknown'
+    // until the first GetAppUpdateStateResponse / NotifyAppUpdateStatus.
+    for (final name in initialApps) {
+      _updateAppList(name);
+    }
+  }
 
   Ros get _ros => Get.find<Ros>();
 
@@ -149,6 +162,15 @@ class OtaCollector extends GetxController {
 
       _setup = true;
       debugPrint('[OTA] Topics subscribed & advertised');
+
+      // F004: auto-request settings/state for each initialApps entry.
+      for (final name in initialApps) {
+        requestAppSettings(name);
+        requestAppState(name);
+      }
+      if (initialApps.isNotEmpty) {
+        debugPrint('[OTA] Auto-requested initial apps: $initialApps');
+      }
     } catch (e) {
       debugPrint('[OTA] _start error: $e');
     }

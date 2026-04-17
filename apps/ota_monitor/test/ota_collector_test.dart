@@ -258,6 +258,93 @@ void main() {
     test('99 → unknown',   () => expect(ReturnValue.fromInt(99), ReturnValue.unknown));
   });
 
+  // ── F004: initial apps auto-load ───────────────────────────────────────
+
+  group('initialApps', () {
+    test('seeds appList with Unknown status at construction', () {
+      Get.reset();
+      Get.put<Ros>(mockRos);
+      final c = OtaCollector(
+        topicFactory: (ros, name, type) => MockTopic(),
+        initialApps: const ['AppA', 'AppB'],
+      );
+      expect(c.appList.length, 2);
+      expect(c.appList[0]['name'], 'AppA');
+      expect(c.appList[0]['status'], 'Unknown');
+      expect(c.appList[1]['name'], 'AppB');
+    });
+
+    test('issues settings + state requests for each app after startTopics',
+        () async {
+      Get.reset();
+      Get.put<Ros>(mockRos);
+      final respTopics2 = List.generate(5, (_) => MockTopic());
+      final reqTopics2 = List.generate(4, (_) => MockTopic());
+      for (final t in [...respTopics2, ...reqTopics2]) {
+        when(() => t.subscribe(any())).thenAnswer((_) async {});
+        when(() => t.advertise()).thenAnswer((_) async {});
+        when(() => t.publish(any())).thenAnswer((_) async {});
+      }
+      int ri = 0, qi = 0;
+      final c = OtaCollector(
+        topicFactory: (ros, name, type) {
+          if (otaResponseTopics.contains(name)) return respTopics2[ri++];
+          return reqTopics2[qi++];
+        },
+        initialApps: const ['NavigationApp', 'MapUpdater'],
+      );
+      await c.startTopics(mockRos);
+      await Future<void>.delayed(Duration.zero);
+
+      // settings requests — reqTopics[0]
+      verify(() => reqTopics2[0].publish(any(
+            that: predicate<Map<String, dynamic>>(
+                (m) => m['app_name'] == 'NavigationApp'),
+          ))).called(1);
+      verify(() => reqTopics2[0].publish(any(
+            that: predicate<Map<String, dynamic>>(
+                (m) => m['app_name'] == 'MapUpdater'),
+          ))).called(1);
+
+      // state requests — reqTopics[2]
+      verify(() => reqTopics2[2].publish(any(
+            that: predicate<Map<String, dynamic>>(
+                (m) => m['app_name'] == 'NavigationApp'),
+          ))).called(1);
+      verify(() => reqTopics2[2].publish(any(
+            that: predicate<Map<String, dynamic>>(
+                (m) => m['app_name'] == 'MapUpdater'),
+          ))).called(1);
+
+      // 2 apps × (settings + state) = 4 pending requests recorded
+      expect(c.pendingRequestCount, 4);
+    });
+
+    test('empty initialApps results in no appList entries or pending requests',
+        () async {
+      Get.reset();
+      Get.put<Ros>(mockRos);
+      final respTopics2 = List.generate(5, (_) => MockTopic());
+      final reqTopics2 = List.generate(4, (_) => MockTopic());
+      for (final t in [...respTopics2, ...reqTopics2]) {
+        when(() => t.subscribe(any())).thenAnswer((_) async {});
+        when(() => t.advertise()).thenAnswer((_) async {});
+        when(() => t.publish(any())).thenAnswer((_) async {});
+      }
+      int ri = 0, qi = 0;
+      final c = OtaCollector(
+        topicFactory: (ros, name, type) {
+          if (otaResponseTopics.contains(name)) return respTopics2[ri++];
+          return reqTopics2[qi++];
+        },
+      );
+      await c.startTopics(mockRos);
+
+      expect(c.appList, isEmpty);
+      expect(c.pendingRequestCount, 0);
+    });
+  });
+
   // ── F003: requestId tracking & matching ─────────────────────────────────
 
   group('requestId tracking', () {
