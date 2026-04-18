@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ─────────────────────────────────────────────
   # 빌드 서비스 (소스 → 바이너리)
@@ -41,6 +39,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: adsw_monitor
     image: adsw_monitor:x86_64
     container_name: adsw_monitor
 
@@ -129,6 +129,134 @@ services:
       - APP_VERSION=3.32.2
 
     # DDS/ROS2 통신을 위해 host network 사용
+    network_mode: host
+
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # ota_monitor — adsw_monitor 와 동일 파이프라인을 APP_NAME 만 바꿔 재사용
+  # (Dockerfile 들은 ARG APP_NAME 을 받는다.)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── 빌드 서비스 ─────────────────────────────────────────────────────────
+
+  # x86_64 Flutter Linux 빌드 (GTK 번들 생성)
+  # 사용: docker compose --profile build run --rm ota_monitor_builder_x86
+  ota_monitor_builder_x86:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build
+    image: ota_monitor_builder:x86_64
+    volumes:
+      - ../ota_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # arm64 AOT 빌드 (AGL Yocto SDK 사용)
+  # 사용: docker compose --profile build run --rm ota_monitor_builder_arm64
+  ota_monitor_builder_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build.arm64
+      args:
+        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
+        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
+    image: ota_monitor_builder:arm64
+    volumes:
+      - ../ota_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # ── 실행 서비스 ─────────────────────────────────────────────────────────
+
+  # x86_64 실행 이미지 (GTK 기반, 개발/테스트용)
+  ota_monitor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: ota_monitor
+    image: ota_monitor:x86_64
+    container_name: ota_monitor
+
+    # Wayland 소켓 마운트 (AGL/Linux 환경)
+    volumes:
+      - /run/user/1000:/run/user/1000
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ../ota_monitor/config/config.json:/app/config/config.json
+
+    environment:
+      - DISPLAY=:1
+      - XDG_RUNTIME_DIR=/run/user/1000
+
+    network_mode: host
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    restart: unless-stopped
+
+  # arm64 테스트 이미지 (QEMU 에뮬레이션 + Weston 헤드리스)
+  # 사전 조건: output/ota_monitor-arm64-release.tar.gz + output/agl-binaries/
+  ota_monitor_arm64_test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64.test
+      args:
+        APP_NAME: ota_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: ota_monitor:arm64-test
+    container_name: ota_monitor_arm64_test
+
+    volumes:
+      - ../ota_monitor/config/config.json:/etc/ota_monitor/config.json
+
+    environment:
+      - APP_NAME=ota_monitor
+      - APP_VERSION=3.32.2
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - VNC_PORT=${VNC_PORT:-0}
+
+    security_opt:
+      - seccomp:unconfined
+
+    network_mode: host
+
+    profiles: [test]
+
+  # arm64 실행 이미지 (flutter-auto 기반, AGL 타겟용)
+  ota_monitor_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64
+      args:
+        APP_NAME: ota_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: ota_monitor:arm64
+    container_name: ota_monitor_arm64
+
+    volumes:
+      - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
+      - /dev/dri:/dev/dri
+      - /run/user/1001:/run/user/1001
+      - ../ota_monitor/config/config.json:/usr/share/flutter/ota_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+
+    environment:
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - APP_NAME=ota_monitor
+      - APP_VERSION=3.32.2
+
     network_mode: host
 
     restart: unless-stopped
