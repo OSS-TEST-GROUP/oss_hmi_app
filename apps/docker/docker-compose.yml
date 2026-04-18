@@ -260,3 +260,61 @@ services:
     network_mode: host
 
     restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # F013: OTA real-stack integration test infrastructure
+  #
+  # Flutter 통합 테스트를 MockOtaManager(Dart 로컬 WebSocket) 대신
+  # 실제 rosbridge_server + rclpy OtaManager mock 으로 돌리기 위한 두 컨테이너.
+  #
+  # 사전 조건:
+  #   MMF_WS 환경변수에 mmf_interfaces 가 포함된 ROS2 워크스페이스 build 경로
+  #   (install/setup.bash 가 존재하는 디렉토리의 부모) 가 지정되어야 한다.
+  #
+  # 기동:
+  #   MMF_WS=/path/to/mmf_ws docker compose \
+  #       --profile ota-real-stack up -d rosbridge ota_manager_mock
+  #   docker compose --profile ota-real-stack logs -f ota_manager_mock
+  #     # → "ota_manager_mock ready — 3 seeded apps"
+  #
+  # Flutter 테스트 (별도 셸):
+  #   cd apps/ota_monitor
+  #   DISPLAY=:99 flutter test integration_test/ota_integration_test.dart \
+  #       -d linux --dart-define=OTA_ROS_URL=ws://localhost:9090
+  #
+  # 정리:
+  #   docker compose --profile ota-real-stack down
+  # ═══════════════════════════════════════════════════════════════════════
+
+  rosbridge:
+    image: ros:humble-ros-base
+    network_mode: host
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y --no-install-recommends ros-humble-rosbridge-suite &&
+               source /opt/ros/humble/setup.bash &&
+               ros2 run rosbridge_server rosbridge_websocket"
+    profiles: [ota-real-stack]
+    restart: unless-stopped
+
+  ota_manager_mock:
+    image: ros:humble-ros-base
+    network_mode: host
+    volumes:
+      - ../ota_monitor/integration_test:/mock:ro
+      # MMF_WS 미설정 시 placeholder 경로 — ota_manager_mock.py 가 친절한
+      # import 에러로 종료되도록 유도.
+      - ${MMF_WS:-./.placeholder-mmf-ws}/install:/mmf_install:ro
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y --no-install-recommends python3 &&
+               source /opt/ros/humble/setup.bash &&
+               if [ -f /mmf_install/setup.bash ]; then
+                 source /mmf_install/setup.bash;
+               else
+                 echo '[WARN] /mmf_install/setup.bash 없음 — MMF_WS 지정 필요 (docker compose 기동 전 export MMF_WS=/path/to/ws)' >&2;
+               fi &&
+               python3 /mock/ota_manager_mock.py"
+    depends_on: [rosbridge]
+    profiles: [ota-real-stack]
+    restart: unless-stopped

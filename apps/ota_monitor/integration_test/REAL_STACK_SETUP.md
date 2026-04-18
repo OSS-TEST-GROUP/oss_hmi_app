@@ -54,84 +54,128 @@ python3 integration_test/ota_manager_mock.py
 # 출력 예: "ota_manager_mock ready — 3 seeded apps"
 ```
 
-### 3.2 Flutter 통합 테스트 실행
+### 3.2 Flutter 통합 테스트 실행 — dart-define 사용 (✅ 구현 완료)
 
-현재 `ota_integration_test.dart` 는 `MockOtaManager` 를 내부적으로 기동해서
-그 포트에 접속한다. 실제 rosbridge 를 쓰려면 호출 지점을 다음 중 하나로 바꾼다.
+`ota_integration_test.dart` 상단에 이미 스위치가 들어가 있다:
 
-**A) 임시 포크 (권장 — 스코프 유지)**
-`ota_integration_test.dart` 를 복사해 `ota_real_stack_test.dart` 를 새로 만들고
-MockOtaManager 관련 setup/teardown 을 제거한 뒤 `AppConfig` 의 `rosUrl` 을
-`ws://localhost:9090` 고정으로 둔다.
-
-**B) dart-define 환경변수 지원 추가**
-기존 테스트 파일에서 `String.fromEnvironment('OTA_ROS_URL', defaultValue: '')`
-를 읽어 비어있지 않으면 mock 대신 실제 URL 을 쓴다. 이 경우 한 파일을 공유 가능.
 ```dart
-const overrideUrl = String.fromEnvironment('OTA_ROS_URL');
-final useReal = overrideUrl.isNotEmpty;
+const String _otaRosUrlOverride =
+    String.fromEnvironment('OTA_ROS_URL', defaultValue: '');
+final bool _useRealStack = _otaRosUrlOverride.isNotEmpty;
 ```
-호출:
+
+- `_useRealStack == false` (기본) → 기존 `MockOtaManager` 경로 그대로 사용.
+- `_useRealStack == true` → `MockOtaManager` setUp/tearDown 전부 스킵하고
+  `AppConfig.rosUrl = Uri.parse(_otaRosUrlOverride)` 로 실제 rosbridge 에 접속.
+
+실행:
 ```bash
-DISPLAY=:99 flutter test \
-    integration_test/ota_integration_test.dart \
-    -d linux \
+# Mock 모드 (기존, 17/17 PASS)
+DISPLAY=:99 flutter test integration_test/ota_integration_test.dart -d linux
+
+# Real-stack 모드 (F013)
+DISPLAY=:99 flutter test integration_test/ota_integration_test.dart -d linux \
     --dart-define=OTA_ROS_URL=ws://localhost:9090
 ```
 
-### 3.3 결과 확인
+### 3.3 Mock-전용 어서션 (real 모드에서 자동 skip)
 
-정상 시나리오라면 기존 17개 어서션이 그대로 통과해야 한다.
-한 가지 차이: 실제 DDS 는 discovery 지연이 있어 처음 `NotifyAppUpdateStatus` 가
-들어올 때까지 수백 ms 가 더 걸릴 수 있다. `waitUntil` 기반의 어서션(기존 파일에
-이미 존재)이 있으면 대부분 그대로 통과한다.
+`mock.receivedRequests` 또는 `mock.sendNotifyStatus` 를 직접 참조하는 어서션은
+real 모드에서 의미가 없으므로 **각 testWidgets 상단에 `if (_useRealStack) return;`**
+으로 분기해 스킵된다. 현재 skip 대상:
+
+| group | title | 라인 | 이유 |
+|---|---|---|---|
+| App Details | 앱 선택 시 GetAppUpdateSettings/State 요청 전송 | 227 | `mock.receivedRequests` |
+| App Details | Refresh Settings 버튼 재요청 | 246 | `mock.receivedRequests` |
+| App Details | Refresh State 버튼 재요청 | 277 | `mock.receivedRequests` |
+| 수동 상태 주입 | sendNotifyStatus 로 임의 앱 추가 | 453 | `mock.sendNotifyStatus` |
+| 수동 상태 주입 | sendNotifyStatus 로 상태 변경 | 470 | `mock.sendNotifyStatus` |
+
+→ real 모드에서는 **17 중 12개 어서션이 실행**된다 (App List 3개, App Details 3개,
+Update History 3개, 기본 연결·초기화 등).
+
+### 3.4 결과 확인 & 실제 DDS 특이사항
+
+- `NotifyAppUpdateStatus` 수신까지 DDS discovery 지연이 있어 처음 수 백 ms 가
+  더 걸릴 수 있다. `waitUntil(maxAttempts: 60)` (6초) 로 충분했다면 그대로
+  통과한다. 만약 1-2개 어서션만 간헐적으로 실패하면 `maxAttempts` 를 90 으로
+  상향하거나 rosbridge 와 ota_manager_mock 기동 후 **5초 대기** 뒤 flutter test
+  를 돌리는 편이 안전하다.
+- `ros2 topic echo <응답토픽>` 으로 mock 이 실제 DDS 메시지를 내보내는지를
+  직접 확인할 수 있다.
 
 ---
 
-## 4. Docker Compose 로 묶기 (나중에 옵션)
+## 4. Docker Compose 로 묶어 실행 (✅ 구현 완료)
 
-`apps/docker/docker-compose.yml` 에 adsw_monitor 의 arm64 빌드 서비스들이 있다. F013
-완전 구현 시 아래 서비스를 추가하면 CI 상에서도 원클릭으로 돌릴 수 있다.
+`apps/docker/docker-compose.yml` 에 **`ota-real-stack`** 프로필로 두 서비스가
+추가되어 있다. `build`/`test` 프로필과 분리되어 실수로 함께 뜨지 않는다.
 
-```yaml
-  ota_rosbridge:
-    image: ros:humble-ros-base
-    command: >
-      bash -c "source /opt/ros/humble/setup.bash &&
-               apt-get install -y ros-humble-rosbridge-server &&
-               ros2 run rosbridge_server rosbridge_websocket"
-    ports: ["9090:9090"]
-    network_mode: host
+### 4.1 서비스 구성
 
-  ota_manager_mock:
-    image: ros:humble-ros-base
-    volumes:
-      - ../ota_monitor/integration_test:/mock
-      - <mmf_interfaces workspace>:/mmf_ws
-    command: >
-      bash -c "source /opt/ros/humble/setup.bash &&
-               source /mmf_ws/install/setup.bash &&
-               python3 /mock/ota_manager_mock.py"
-    network_mode: host
-    depends_on: [ota_rosbridge]
+| 서비스 | 이미지 | 역할 |
+|---|---|---|
+| `rosbridge` | `ros:humble-ros-base` | 기동 시 `ros-humble-rosbridge-suite` 설치 후 `rosbridge_websocket` 실행 (ws://localhost:9090) |
+| `ota_manager_mock` | `ros:humble-ros-base` | `/opt/ros/humble`, `${MMF_WS}/install` source 후 `/mock/ota_manager_mock.py` 실행 |
+
+### 4.2 기동
+
+```bash
+# mmf_interfaces 가 빌드된 ROS2 워크스페이스 경로를 export
+export MMF_WS=/absolute/path/to/mmf_ws   # 예: ~/ros2_ws
+
+cd hmi/oss_hmi_app/apps/docker
+docker compose --profile ota-real-stack up -d rosbridge ota_manager_mock
+
+# 초기 40여 초는 apt-get install 이 걸린다. 준비 완료 확인:
+docker compose --profile ota-real-stack logs -f ota_manager_mock
+# → "ota_manager_mock ready — 3 seeded apps" 가 찍히면 OK
 ```
 
-두 컨테이너가 올라온 뒤 로컬에서 `flutter test --dart-define=OTA_ROS_URL=ws://localhost:9090`
-로 호출하면 된다.
+### 4.3 Flutter 테스트 호출 (별도 셸)
+
+```bash
+cd hmi/oss_hmi_app/apps/ota_monitor
+Xvfb :99 -screen 0 1920x1200x24 &
+DISPLAY=:99 flutter test integration_test/ota_integration_test.dart -d linux \
+    --dart-define=OTA_ROS_URL=ws://localhost:9090
+kill %1
+```
+
+### 4.4 정리
+
+```bash
+cd hmi/oss_hmi_app/apps/docker
+docker compose --profile ota-real-stack down
+```
+
+### 4.5 MMF_WS 가 없을 때
+
+`MMF_WS` 를 export 하지 않으면 placeholder 경로(`./.placeholder-mmf-ws/install`)
+가 마운트되어 `ota_manager_mock` 컨테이너가 **"/mmf_install/setup.bash 없음"**
+경고와 함께 친절히 실패한다. 이 경우 rosbridge 는 정상 기동하므로 Flutter 가
+접속은 되지만 어떤 응답도 없다 (DDS 피어 부재). 증상을 보면 workspace 빌드와
+`MMF_WS` export 를 먼저 확인한다.
 
 ---
 
-## 5. 파일 체크리스트 (현재 세션 기준)
+## 5. 파일 체크리스트
 
-- [x] `integration_test/ota_manager_mock.py` — rclpy 노드 스켈레톤. 문법 검증
-      완료(py_compile). rclpy + mmf_interfaces 가 없으면 import 단계에서 친절히
-      실패하도록 `try/except` 처리.
-- [x] 본 문서 (`REAL_STACK_SETUP.md`) — 실행 절차.
+- [x] `integration_test/ota_manager_mock.py` — rclpy 노드 스켈레톤 (py_compile 통과)
+- [x] 본 문서 (`REAL_STACK_SETUP.md`) — 실행 절차 최종판
+- [x] `ota_integration_test.dart` 에 dart-define `OTA_ROS_URL` 스위치 추가
+      (2026-04-18, mock 모드 17/17 PASS 회귀 확인)
+- [x] `apps/docker/docker-compose.yml` 에 `rosbridge` + `ota_manager_mock`
+      서비스 추가 (`ota-real-stack` 프로필, 2026-04-18)
 - [ ] `ota_manager_mock.py` 의 메시지 필드명이 실제 `mmf_interfaces/msg/*.msg`
-      정의와 일치하는지 검증 — **다음 세션에서 해야 함**.
-- [ ] `ota_real_stack_test.dart` 또는 dart-define 플래그 지원 — **다음 세션**.
-- [ ] `apps/docker/docker-compose.yml` 에 rosbridge + ota_manager_mock 서비스
-      추가 — **다음 세션**.
+      정의와 일치하는지 검증 — **ROS2 환경 준비 후 수행** (ros2 interface show
+      명령으로 9개 IDL 확인 후 핸들러 필드명만 조정)
+- [ ] `ros2 run rosbridge_server rosbridge_websocket` + mock 기동 후 실제로
+      `flutter test --dart-define=OTA_ROS_URL=...` 를 돌려 12+ 어서션 통과
+      확인 — **ROS2 환경 준비 후 수행**
+- [ ] (optional) `docker/Dockerfile.rosbridge` 를 별도로 만들어 매 기동 시의
+      apt-get install 40초 제거
 
 ---
 
