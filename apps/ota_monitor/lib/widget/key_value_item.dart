@@ -35,13 +35,13 @@ class KeyValueItem extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          // 오른쪽 값 + (옵션) 서브타이틀
+          // Right-side value + (optional) subtitle
           Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1) 메인 값 (한 줄)
+                // 1) main value (single line)
                 Text(
                   value,
                   textAlign: TextAlign.right,
@@ -52,7 +52,7 @@ class KeyValueItem extends StatelessWidget {
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
-                // 2) (옵션) 서브타이틀: 작은 글씨, 여러 줄 허용
+                // 2) optional subtitle: smaller font, multi-line allowed
                 if (subtitle != null && subtitle!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),

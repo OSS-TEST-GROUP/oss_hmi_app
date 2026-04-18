@@ -1,23 +1,23 @@
 // OTA Monitor — Integration Tests
 //
-// 기본: MockOtaManager(로컬 WebSocket 서버)를 통해 roslibdart ↔ OtaCollector
-// ↔ UI 전체 파이프라인을 검증한다.
+// Default: drive the full roslibdart ↔ OtaCollector ↔ UI pipeline through
+// MockOtaManager (a local WebSocket server).
 //
-// F013 실제 rosbridge 모드:
-//   --dart-define=OTA_ROS_URL=ws://localhost:9090 을 넘기면 MockOtaManager 를
-//   건너뛰고 해당 URL 의 실제 rosbridge_server 에 접속한다. 사전에 ROS2
-//   rosbridge_server + ota_manager_mock.py(또는 실제 OtaManager)가 기동되어
-//   있어야 한다. 자세한 절차는 integration_test/REAL_STACK_SETUP.md 참고.
+// F013 real rosbridge mode:
+//   Passing --dart-define=OTA_ROS_URL=ws://localhost:9090 skips MockOtaManager
+//   and connects to the real rosbridge_server at that URL. A ROS2
+//   rosbridge_server + ota_manager_mock.py (or the real OtaManager) must
+//   already be running. See integration_test/REAL_STACK_SETUP.md for details.
 //
-// 실행:
+// Run:
 //   flutter test integration_test/ -d linux                                     # mock
 //   flutter test integration_test/ -d linux --dart-define=OTA_ROS_URL=ws://...  # real
 //
-// 테스트 시나리오:
-//   1. App List   — 연결 후 초기 앱 목록이 UI에 표시됨
-//   2. App Details — 앱 선택 시 settings / state 가 UI에 표시됨
-//   3. Update History — 업데이트 요청 후 히스토리에 기록됨
-//   4. 수동 상태 주입 — Mock 전용(sendNotifyStatus): real 모드에서는 skip
+// Test scenarios:
+//   1. App List        — initial app list is displayed in the UI after connect
+//   2. App Details     — selecting an app renders its settings / state
+//   3. Update History  — requesting an update records an entry
+//   4. Manual status injection — Mock-only (sendNotifyStatus); skipped in real mode
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,8 +32,8 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'mock_ota_manager.dart';
 
-// F013: --dart-define=OTA_ROS_URL=ws://... 지정 시 실제 rosbridge 모드.
-// 빈 문자열이면 기존 MockOtaManager 경로를 그대로 사용한다.
+// F013: real rosbridge mode when --dart-define=OTA_ROS_URL=ws://... is set.
+// An empty value keeps the existing MockOtaManager path.
 const String _otaRosUrlOverride =
     String.fromEnvironment('OTA_ROS_URL', defaultValue: '');
 final bool _useRealStack = _otaRosUrlOverride.isNotEmpty;
@@ -45,7 +45,7 @@ void main() {
   late RosKeeper rosKeeper;
   late OtaCollector collector;
 
-  // ── 전체 테스트 생애주기 ──────────────────────────────────────────────────
+  // ── Test lifecycle ──────────────────────────────────────────────────────
 
   setUpAll(() async {
     if (!_useRealStack) {
@@ -66,13 +66,13 @@ void main() {
       mock!.receivedRequests.clear();
     }
 
-    // OtaCollector — 실제 roslibdart Topic 팩토리 사용
+    // OtaCollector — real roslibdart Topic factory
     collector = OtaCollector(
       topicFactory: (ros, name, type) => Topic(ros: ros, name: name, type: type),
     );
     Get.put<OtaCollector>(collector, permanent: true);
 
-    // RosKeeper — real 모드면 override URL, 아니면 mock 서버 포트
+    // RosKeeper — override URL in real mode, otherwise the mock server port
     final rosUrl = _useRealStack
         ? Uri.parse(_otaRosUrlOverride)
         : Uri.parse('ws://localhost:${mock!.port}');
@@ -89,10 +89,10 @@ void main() {
     Get.reset();
   });
 
-  // ── 공통 헬퍼 ────────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────────
 
-  // 조건이 참이 될 때까지 최대 [maxAttempts] × 100ms 대기.
-  // Future.delayed로 실제 시간을 소비하고, pump()로 프레임을 처리한다.
+  // Wait until [condition] becomes true, up to [maxAttempts] × 100ms.
+  // Uses Future.delayed to consume real time and pump() to process frames.
   Future<void> waitUntil(
     WidgetTester tester,
     bool Function() condition, {
@@ -105,9 +105,9 @@ void main() {
     }
   }
 
-  // integration_test 환경(Xvfb 등)에서 실제 화면이 작아 RenderFlex overflow가
-  // 발생할 수 있다. 이는 앱 로직 버그가 아닌 테스트 환경 제약이므로 suppression.
-  // addTearDown으로 테스트 종료 시 원래 핸들러를 복원한다.
+  // In integration_test environments (e.g. Xvfb) the actual surface can be
+  // small, causing RenderFlex overflow. This is an env constraint, not a bug,
+  // so we suppress it. addTearDown restores the original handler.
   void suppressOverflowErrors() {
     final original = FlutterError.onError;
     FlutterError.onError = (details) {
@@ -117,7 +117,7 @@ void main() {
     addTearDown(() => FlutterError.onError = original);
   }
 
-  // integration_test에서 렌더링 표면을 충분히 넓게 설정한다.
+  // Set a sufficiently wide rendering surface for integration_test.
   void setTestSurface(WidgetTester tester) {
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
@@ -135,7 +135,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(const OtaMonitorApp());
 
-        // mock 서버에서 NotifyAppUpdateStatus × 3을 받을 때까지 대기
+        // Wait until 3 NotifyAppUpdateStatus events arrive from the mock.
         await waitUntil(tester, () => collector.appList.length >= 3);
 
         expect(find.text('NavigationApp'), findsOneWidget);
@@ -150,7 +150,7 @@ void main() {
         await tester.pumpWidget(const OtaMonitorApp());
         await waitUntil(tester, () => collector.appList.length >= 3);
 
-        // status 텍스트 확인 (앱 카드 하단 표시)
+        // Check status text (shown at the bottom of each app card).
         expect(find.text('Synced'), findsOneWidget);   // NavigationApp
         expect(find.text('idle'), findsAtLeastNWidgets(1)); // MapUpdater
       },
@@ -162,7 +162,7 @@ void main() {
         await tester.pumpWidget(const OtaMonitorApp());
         await waitUntil(tester, () => collector.appList.length >= 3);
 
-        // DataViewWidget 타이틀: 'App List (3)'
+        // DataViewWidget title: 'App List (3)'
         expect(find.text('App List (3)'), findsOneWidget);
       },
     );
@@ -181,7 +181,7 @@ void main() {
         await tester.pumpWidget(const OtaMonitorApp());
         await waitUntil(tester, () => collector.appList.length >= 3);
 
-        // NavigationApp 탭
+        // Tap NavigationApp.
         await tester.tap(find.text('NavigationApp'));
         await tester.pump();
 
@@ -200,16 +200,16 @@ void main() {
 
         await tester.tap(find.text('NavigationApp'));
 
-        // collector에 settings 데이터가 수신되었는지 확인
+        // Check that settings data arrived at the collector.
         await waitUntil(
             tester, () => collector.topicData['NavigationApp_settings'] != null);
 
-        // settings JSON 값이 collector에 저장됨
+        // Settings JSON is stored on the collector.
         final settings =
             collector.topicData['NavigationApp_settings'] as String;
         expect(settings, contains('auto_update'));
 
-        // settings 값이 UI에도 표시됨 (overflow가 없는 경우)
+        // Settings value is also rendered in the UI (when no overflow).
         expect(find.textContaining('auto_update'), findsOneWidget);
       },
     );
@@ -225,14 +225,14 @@ void main() {
 
         await tester.tap(find.text('NavigationApp'));
 
-        // state 응답 수신 대기
+        // Wait for state response.
         await waitUntil(
             tester, () => collector.topicData['NavigationApp_state'] != null);
 
-        // collector에 state 데이터가 저장됨
+        // State data is stored on the collector.
         expect(collector.topicData['NavigationApp_state'], 'idle');
 
-        // state 값 'idle'이 UI에도 표시됨
+        // The 'idle' state value is also rendered in the UI.
         expect(find.text('idle'), findsAtLeastNWidgets(1));
       },
     );
@@ -328,7 +328,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('Update History', () {
-    // 공통 셋업: 연결 → 앱 선택 → details 로드 완료 대기
+    // Common setup: connect → select app → wait for details to load.
     Future<void> selectApp(WidgetTester tester, String appName) async {
       setTestSurface(tester);
       suppressOverflowErrors();
@@ -348,11 +348,11 @@ void main() {
         await tester.tap(find.text('Request Update'));
         await tester.pump();
 
-        // 확인 다이얼로그 확인
+        // Verify the confirm dialog.
         expect(find.text('확인'), findsAtLeastNWidgets(1));
         expect(find.textContaining('NavigationApp'), findsAtLeastNWidgets(1));
 
-        // 취소
+        // Cancel.
         await tester.tap(find.text('취소'));
         await tester.pump();
       },
@@ -365,9 +365,9 @@ void main() {
 
         await tester.tap(find.text('Request Update'));
         await tester.pump();
-        await tester.tap(find.text('확인').last); // 다이얼로그 확인
+        await tester.tap(find.text('확인').last); // confirm the dialog
 
-        // SetAppUpdateResponse 수신 대기 ('Update requested' 항목이 생길 때까지)
+        // Wait for SetAppUpdateResponse (until an 'Update requested' entry appears).
         await waitUntil(tester, () => collector.updateHistory
             .any((e) => e['message'] == 'Update requested'));
 
@@ -388,7 +388,7 @@ void main() {
         await tester.pump();
         await tester.tap(find.text('확인').last);
 
-        // updating + complete NotifyAppUpdateStatus 수신 대기
+        // Wait for updating + complete NotifyAppUpdateStatus.
         await waitUntil(tester, () => collector.updateHistory
             .any((e) => e['message'] == 'Status: complete'));
 
@@ -409,13 +409,13 @@ void main() {
         await tester.pump();
         await tester.tap(find.text('확인').last);
 
-        // complete 상태 수신 대기
+        // Wait for the complete status.
         await waitUntil(tester,
             () => collector.topicData['NavigationApp_status'] == 'complete');
 
         expect(collector.topicData['NavigationApp_status'], 'complete');
 
-        // appList의 status도 업데이트됨
+        // status on appList is also updated.
         final app = collector.appList
             .firstWhere((a) => a['name'] == 'NavigationApp', orElse: () => {});
         expect(app['status'], 'complete');
@@ -433,10 +433,10 @@ void main() {
 
         await waitUntil(tester, () => collector.updateHistory
             .any((e) => e['message'] == 'Update requested'));
-        await tester.pump(); // UI 재빌드
+        await tester.pump(); // rebuild UI
 
-        // Update History 패널에 NavigationApp 텍스트가 보여야 함
-        // (appName - message 형식으로 표시)
+        // NavigationApp text must appear in the Update History panel
+        // (rendered as "appName - message").
         expect(
           find.textContaining('NavigationApp'),
           findsAtLeastNWidgets(1),
@@ -465,10 +465,10 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 4. 수동 상태 주입 (mock.sendNotifyStatus 활용)
+  // 4. Manual status injection (uses mock.sendNotifyStatus)
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('수동 상태 주입', () {
+  group('Manual status injection', () {
     testWidgets(
       'sendNotifyStatus로 임의 앱을 목록에 추가할 수 있다',
       (tester) async {
@@ -478,7 +478,7 @@ void main() {
         await tester.pumpWidget(const OtaMonitorApp());
         await waitUntil(tester, () => collector.appList.length >= 3);
 
-        // 테스트에서 새 앱 상태를 직접 주입
+        // Inject a new app status directly from the test.
         mock!.sendNotifyStatus('TestInjectedApp', 'testing');
         await waitUntil(tester,
             () => collector.appList.any((a) => a['name'] == 'TestInjectedApp'));
@@ -496,7 +496,7 @@ void main() {
         await tester.pumpWidget(const OtaMonitorApp());
         await waitUntil(tester, () => collector.appList.length >= 3);
 
-        // 연결 불안정 시 재전송 — 수신 확인될 때까지 반복 송신
+        // Retransmit on flaky connections until reception is confirmed.
         await waitUntil(tester, () {
           if (collector.topicData['NavigationApp_status'] == 'error') return true;
           mock!.sendNotifyStatus('NavigationApp', 'error');

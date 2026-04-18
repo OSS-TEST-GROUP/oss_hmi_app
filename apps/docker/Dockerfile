@@ -1,15 +1,15 @@
 FROM ubuntu:22.04
 
-# 재사용 가능한 런타임 이미지. 다른 Flutter 앱에도 같은 Dockerfile 을
-# 사용하려면 --build-arg APP_NAME=<pubspec name> 으로 호출한다.
+# Reusable runtime image. To use this Dockerfile for another Flutter app,
+# invoke it with --build-arg APP_NAME=<pubspec name>.
 #
-# 예)
+# Example:
 #   docker build -f docker/Dockerfile --build-arg APP_NAME=ota_monitor \
 #                -t ota_monitor:x86_64 .
 ARG APP_NAME=adsw_monitor
 ENV APP_NAME=${APP_NAME}
 
-# GTK, Wayland, OpenGL 관련 런타임 라이브러리 설치
+# Install GTK, Wayland, OpenGL runtime libraries.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-3-0 \
     libglib2.0-0 \
@@ -39,18 +39,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 앱 번들 추출 (tar.gz → /app/)
+# Extract the app bundle (tar.gz → /app/).
 WORKDIR /app
 ADD output/${APP_NAME}-x86_64-release.tar.gz /app/
 
-# config.json 복사 (실행파일 옆 config/ 경로로 — config_loader_io.dart 5번 경로)
+# Copy config.json next to the binary (config/ — path #5 in config_loader_io.dart).
 COPY ${APP_NAME}/config/config.json /app/config/config.json
 
-# 실행 권한 설정 + 고정 엔트리포인트 이름(ENTRYPOINT exec form 은
-# 변수 확장을 지원하지 않으므로 심볼릭 링크로 우회한다).
+# Set executable bit + stable entrypoint name (the exec-form ENTRYPOINT
+# does not expand variables, so use a symlink).
 RUN chmod +x /app/${APP_NAME} && ln -sf /app/${APP_NAME} /app/entrypoint
 
-# Wayland 또는 X11 환경 변수 (런타임에서 주입)
+# Wayland / X11 environment variables (injected at runtime).
 ENV XDG_RUNTIME_DIR=/tmp/runtime
 ENV DISPLAY=:0
 

@@ -45,7 +45,7 @@ Future<File?> _findConfigFile(List<String> args) async {
     if (await f.exists()) return f;
   }
 
-  // 2) 사용자 경로
+  // 2) user path
   final xdg = Platform.environment['XDG_CONFIG_HOME'];
   final home = Platform.environment['HOME'];
   if (xdg != null && xdg.isNotEmpty) {
@@ -56,18 +56,18 @@ Future<File?> _findConfigFile(List<String> args) async {
     if (await f.exists()) return f;
   }
 
-  // 3) 시스템 전역
+  // 3) system-wide
   final sys = File('/etc/ota_monitor/config.json');
   if (await sys.exists()) return sys;
 
-  // 4) 번들 옆
+  // 4) next to bundle
   try {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final bundleCfg = File('$exeDir/config/config.json');
     if (await bundleCfg.exists()) return bundleCfg;
   } catch (_) {}
 
-  // 5) 안드로이드 보조
+  // 5) Android fallback
   if (Platform.isAndroid) {
     final sd = File('/sdcard/ota_monitor/config.json');
     if (await sd.exists()) return sd;

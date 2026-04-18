@@ -1,22 +1,22 @@
-# adsw_monitor AGL aarch64 런타임 이미지
+# AGL aarch64 runtime image (adsw_monitor by default).
 #
-# AGL 환경에서 flutter-auto 로 앱을 실행하는 arm64 컨테이너입니다.
-# x86_64 호스트에서 buildx 로 빌드하거나, arm64 호스트에서 직접 빌드합니다.
+# An arm64 container that runs the app via flutter-auto on AGL.
+# Build with buildx on x86_64, or natively on an arm64 host.
 #
-# 사전 조건:
-#   AOT 빌드 결과물이 output/ 디렉토리에 있어야 합니다.
+# Prereq:
+#   The AOT build artifact must already exist under output/.
 #   docker run adsw_monitor_builder ... --output-dir ./output
 #
-# 이미지 빌드 (apps/ 디렉토리에서 실행):
-#   # x86_64 호스트에서 크로스빌드 (buildx 필요)
+# Image build (run from the apps/ directory):
+#   # Cross-build from x86_64 (buildx required)
 #   docker buildx build --platform linux/arm64 \
 #     -f docker/Dockerfile.arm64 \
 #     -t adsw_monitor:arm64 .
 #
-#   # arm64 호스트에서 직접 빌드
+#   # Native build on an arm64 host
 #   docker build -f docker/Dockerfile.arm64 -t adsw_monitor:arm64 .
 #
-# 실행 (AGL 타겟):
+# Run (AGL target):
 #   docker run --rm \
 #     -v /run/user/1001:/run/user/1001 \
 #     -v /usr/bin/flutter-auto:/usr/bin/flutter-auto \
@@ -37,8 +37,8 @@ ENV APP_VERSION=${APP_VERSION}
 ENV BUNDLE_PATH=/usr/share/flutter/${APP_NAME}/${APP_VERSION}/release
 ENV XDG_RUNTIME_DIR=/run/user/1001
 
-# AGL flutter-auto 런타임 의존성 설치
-# (GTK 불필요 — flutter-auto 는 Wayland/EGL 기반)
+# Install AGL flutter-auto runtime dependencies.
+# (GTK not needed — flutter-auto is Wayland/EGL based.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libwayland-client0 \
     libwayland-egl1 \
@@ -60,20 +60,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# AOT 빌드 결과물 추가 (tar.gz 자동 압축 해제)
-# output/adsw_monitor-release.tar.gz 구조:
+# Add the AOT artifact (tar.gz is auto-extracted).
+# output/<APP_NAME>-release.tar.gz layout:
 #   usr/share/flutter/{app_name}/{version}/release/
 #     data/flutter_assets/
 #     lib/libapp.so
 #     lib/libflutter_engine.so
 ADD output/${APP_NAME}-arm64-release.tar.gz /
 
-# config.json 오버라이드 (빌드 시 포함, 런타임에서 볼륨으로 덮어쓸 수 있음)
+# Bake config.json into the image (can be overridden at runtime via volume).
 COPY ${APP_NAME}/config/config.json ${BUNDLE_PATH}/data/flutter_assets/assets/config/config.json
 
-# flutter-auto 엔트리포인트 스크립트
-# flutter-auto 바이너리는 호스트에서 볼륨 마운트하거나
-# 이미지 빌드 시 COPY로 포함할 수 있습니다.
+# flutter-auto entrypoint script.
+# The flutter-auto binary is expected to be mounted from the host, or it
+# can be COPYed at image build time.
 COPY docker/agl-run.sh /usr/local/bin/agl-run.sh
 RUN chmod +x /usr/local/bin/agl-run.sh
 

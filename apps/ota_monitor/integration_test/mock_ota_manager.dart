@@ -1,12 +1,12 @@
 // Mock OTA Manager — rosbridge WebSocket server
 //
-// OTA Manager 역할을 하는 mock 서버.
-// 실제 rosbridge 프로토콜(JSON over WebSocket)로 통신하며,
-// GetAppUpdateSettings / GetAppUpdateState / SetAppUpdate 요청에 응답한다.
+// A mock server that plays the OTA Manager role.
+// It speaks the real rosbridge protocol (JSON over WebSocket) and responds to
+// GetAppUpdateSettings / GetAppUpdateState / SetAppUpdate requests.
 //
-// 사용 예:
+// Usage example:
 //   final mock = MockOtaManager();
-//   await mock.start();                          // OS가 포트 자동 배정
+//   await mock.start();                          // OS picks a free port
 //   final cfg = AppConfig(rosUrl: Uri.parse('ws://localhost:${mock.port}'), ...);
 //   ...
 //   await mock.stop();
@@ -17,7 +17,7 @@ import 'dart:io';
 
 import 'package:ota_monitor/data/ota_data.dart';
 
-// ── 앱 레코드 ──────────────────────────────────────────────────────────────
+// ── App record ───────────────────────────────────────────────────────────
 
 class AppRecord {
   const AppRecord({
@@ -36,7 +36,7 @@ class AppRecord {
 // ── MockOtaManager ──────────────────────────────────────────────────────────
 
 class MockOtaManager {
-  /// 테스트에서 사용할 초기 앱 목록.
+  /// Initial app list used by tests.
   static const List<AppRecord> initialApps = [
     AppRecord(
       name: 'NavigationApp',
@@ -61,13 +61,13 @@ class MockOtaManager {
   HttpServer? _server;
   final List<WebSocket> _clients = [];
 
-  /// 서버가 바인딩된 실제 포트 (start() 호출 후 유효).
+  /// Actual port the server bound to (valid after start()).
   int get port => _server!.port;
 
-  // ── 수신된 요청 로그 (테스트 어서션용) ──────────────────────────────────
+  // ── Received-request log (for test assertions) ───────────────────────
   final List<Map<String, dynamic>> receivedRequests = [];
 
-  // ── 서버 시작/중지 ────────────────────────────────────────────────────────
+  // ── Server start / stop ──────────────────────────────────────────────
 
   Future<void> start() async {
     _server = await HttpServer.bind('localhost', 0);
@@ -100,7 +100,7 @@ class MockOtaManager {
     _server = null;
   }
 
-  // ── rosbridge 프로토콜 처리 ───────────────────────────────────────────────
+  // ── rosbridge protocol handling ──────────────────────────────────────
 
   void _handleMessage(WebSocket ws, String data) {
     final Map<String, dynamic> msg;
@@ -116,7 +116,7 @@ class MockOtaManager {
         _onSubscribe(msg['topic'] as String? ?? '');
         break;
       case 'advertise':
-        // advertise는 별도 처리 불필요 — 무시
+        // advertise needs no special handling — ignore
         break;
       case 'publish':
         final topic = msg['topic'] as String? ?? '';
@@ -125,16 +125,16 @@ class MockOtaManager {
         _onPublish(topic, payload);
         break;
       default:
-        // 알 수 없는 op — 무시
+        // unknown op — ignore
         break;
     }
   }
 
-  /// 클라이언트가 특정 토픽을 subscribe할 때 호출.
-  /// NotifyAppUpdateStatus 구독이 확인되면 초기 앱 목록을 전송한다.
+  /// Called when a client subscribes to a topic.
+  /// When NotifyAppUpdateStatus is subscribed, seed the initial app list.
   void _onSubscribe(String topic) {
     if (topic == otaResponseTopics[4]) {
-      // NotifyAppUpdateStatus — 초기 앱 상태를 짧은 지연 후 전송
+      // NotifyAppUpdateStatus — seed initial statuses after a short delay
       Future<void>.delayed(const Duration(milliseconds: 80), () {
         for (final app in initialApps) {
           _broadcast(otaResponseTopics[4], {
@@ -146,7 +146,7 @@ class MockOtaManager {
     }
   }
 
-  /// 클라이언트가 요청 토픽에 publish할 때 호출.
+  /// Called when a client publishes to a request topic.
   void _onPublish(String topic, Map<String, dynamic> msg) {
     if (topic == otaRequestTopics[0]) {
       // GetAppUpdateSettings
@@ -158,10 +158,10 @@ class MockOtaManager {
       // GetAppUpdateState
       _handleGetState(msg);
     } else if (topic == otaRequestTopics[3]) {
-      // SetAppUpdate (update 요청)
+      // SetAppUpdate (update request)
       _handleSetUpdate(msg);
     }
-    // 그 외 토픽(status heartbeat 등)은 무시
+    // Ignore other topics (e.g. status heartbeat).
   }
 
   void _handleGetSettings(Map<String, dynamic> msg) {
@@ -202,14 +202,14 @@ class MockOtaManager {
     final appName = msg['app_name'] as String? ?? '';
     final id = msg['id'];
 
-    // 1) 즉시: update 요청 수락 응답
+    // 1) Immediate: acceptance response for the update request.
     _broadcast(otaResponseTopics[3], {
       if (id != null) 'id': id,
       'app_name': appName,
       'ret_code': 1,
     });
 
-    // 2) 잠시 후: 업데이트 진행 상태 통보
+    // 2) Shortly after: notify update progress.
     Future<void>.delayed(const Duration(milliseconds: 150), () {
       _broadcast(otaResponseTopics[4], {
         'app_name': appName,
@@ -217,7 +217,7 @@ class MockOtaManager {
       });
     });
 
-    // 3) 업데이트 완료 통보
+    // 3) Notify completion.
     Future<void>.delayed(const Duration(milliseconds: 350), () {
       _broadcast(otaResponseTopics[4], {
         'app_name': appName,
@@ -226,9 +226,9 @@ class MockOtaManager {
     });
   }
 
-  // ── 편의 메서드 ────────────────────────────────────────────────────────────
+  // ── Convenience methods ──────────────────────────────────────────────
 
-  /// 직접 NotifyAppUpdateStatus 메시지를 보낸다 (테스트에서 수동 제어 시 사용).
+  /// Send a NotifyAppUpdateStatus message directly (used for manual control in tests).
   void sendNotifyStatus(String appName, String status) {
     _broadcast(otaResponseTopics[4], {
       'app_name': appName,
@@ -236,7 +236,7 @@ class MockOtaManager {
     });
   }
 
-  // ── 내부 헬퍼 ──────────────────────────────────────────────────────────────
+  // ── Internal helpers ─────────────────────────────────────────────────
 
   AppRecord? _findApp(String name) {
     try {
@@ -246,7 +246,7 @@ class MockOtaManager {
     }
   }
 
-  /// rosbridge publish 메시지를 모든 연결된 클라이언트에 전송.
+  /// Broadcast a rosbridge publish message to all connected clients.
   void _broadcast(String topic, Map<String, dynamic> msgPayload) {
     final frame = jsonEncode({'op': 'publish', 'topic': topic, 'msg': msgPayload});
     for (final ws in List.of(_clients)) {

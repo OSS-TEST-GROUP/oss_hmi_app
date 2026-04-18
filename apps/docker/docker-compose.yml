@@ -1,10 +1,10 @@
 services:
   # ─────────────────────────────────────────────
-  # 빌드 서비스 (소스 → 바이너리)
+  # Build services (source → binary)
   # ─────────────────────────────────────────────
 
-  # x86_64 Flutter Linux 빌드 (GTK 번들 생성)
-  # 사용: docker compose run --rm adsw_monitor_builder_x86
+  # x86_64 Flutter Linux build (GTK bundle)
+  # Run: docker compose run --rm adsw_monitor_builder_x86
   adsw_monitor_builder_x86:
     build:
       context: ..
@@ -15,8 +15,8 @@ services:
       - ../output:/workspace/output
     profiles: [build]
 
-  # arm64 AOT 빌드 (AGL Yocto SDK 사용)
-  # 사용: docker compose run --rm adsw_monitor_builder_arm64
+  # arm64 AOT build (AGL Yocto SDK)
+  # Run: docker compose run --rm adsw_monitor_builder_arm64
   adsw_monitor_builder_arm64:
     build:
       context: ..
@@ -31,10 +31,10 @@ services:
     profiles: [build]
 
   # ─────────────────────────────────────────────
-  # 실행 서비스 (런타임 이미지)
+  # Runtime services (runtime images)
   # ─────────────────────────────────────────────
 
-  # x86_64 실행 이미지 (GTK 기반, 개발/테스트용)
+  # x86_64 runtime image (GTK-based, for development/testing)
   adsw_monitor:
     build:
       context: ..
@@ -44,20 +44,20 @@ services:
     image: adsw_monitor:x86_64
     container_name: adsw_monitor
 
-    # Wayland 소켓 마운트 (AGL/Linux 환경)
+    # Wayland socket mount (AGL/Linux environment)
     volumes:
       - /run/user/1000:/run/user/1000          # Wayland socket
       - /tmp/.X11-unix:/tmp/.X11-unix          # X11 fallback
-      - ../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge 설정 오버라이드
+      - ../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge config override
 
     environment:
       - DISPLAY=:1
       - XDG_RUNTIME_DIR=/run/user/1000
 
-    # DDS/ROS2 통신을 위해 host network 사용
+    # host network for DDS/ROS2 communication
     network_mode: host
 
-    # NVIDIA GPU (X 서버가 NV-GLX 사용 시 필수)
+    # NVIDIA GPU (required when the X server uses NV-GLX)
     deploy:
       resources:
         reservations:
@@ -68,10 +68,10 @@ services:
 
     restart: unless-stopped
 
-  # arm64 테스트 이미지 (QEMU 에뮬레이션 + Weston 헤드리스, x86_64 호스트 테스트용)
-  # 사전 조건: adsw_monitor_builder:arm64 이미지 + output/adsw_monitor-arm64-release.tar.gz
-  # 빌드: docker compose build adsw_monitor_arm64_test
-  # 실행: docker compose run --rm adsw_monitor_arm64_test
+  # arm64 test image (QEMU emulation + headless Weston, for x86_64 hosts)
+  # Prereq: adsw_monitor_builder:arm64 image + output/adsw_monitor-arm64-release.tar.gz
+  # Build: docker compose build adsw_monitor_arm64_test
+  # Run: docker compose run --rm adsw_monitor_arm64_test
   adsw_monitor_arm64_test:
     build:
       context: ..
@@ -89,7 +89,7 @@ services:
       - APP_VERSION=3.32.2
       - WAYLAND_DISPLAY=wayland-0
       - XDG_RUNTIME_DIR=/run/user/1001
-      # VNC로 UI 확인 시: VNC_PORT=5900 설정 후 localhost:5900 으로 VNC 뷰어 접속
+      # To inspect UI via VNC: set VNC_PORT=5900, then connect a VNC viewer to localhost:5900
       - VNC_PORT=${VNC_PORT:-0}
 
     security_opt:
@@ -99,10 +99,10 @@ services:
 
     profiles: [test]
 
-  # arm64 실행 이미지 (flutter-auto 기반, AGL 타겟용)
-  # 사전 조건: output/adsw_monitor-release.tar.gz 가 빌드되어 있어야 합니다.
-  # 이미지 빌드: docker compose build adsw_monitor_arm64
-  #   또는 x86_64 호스트에서: docker buildx bake adsw_monitor_arm64
+  # arm64 runtime image (flutter-auto based, for AGL targets)
+  # Prereq: output/adsw_monitor-release.tar.gz must already be built.
+  # Build image: docker compose build adsw_monitor_arm64
+  #   Or on an x86_64 host: docker buildx bake adsw_monitor_arm64
   adsw_monitor_arm64:
     build:
       context: ..
@@ -113,13 +113,13 @@ services:
     container_name: adsw_monitor_arm64
 
     volumes:
-      # flutter-auto 바이너리를 호스트에서 마운트
+      # Mount the flutter-auto binary from the host
       - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
-      # GPU/DRM 장치 접근
+      # GPU/DRM device access
       - /dev/dri:/dev/dri
-      # Wayland 소켓 마운트 (AGL 기본 사용자 UID=1001)
+      # Wayland socket mount (AGL default user UID=1001)
       - /run/user/1001:/run/user/1001
-      # rosbridge URL 오버라이드
+      # rosbridge URL override
       - ../adsw_monitor/config/config.json:/usr/share/flutter/adsw_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
 
     environment:
@@ -128,20 +128,20 @@ services:
       - APP_NAME=adsw_monitor
       - APP_VERSION=3.32.2
 
-    # DDS/ROS2 통신을 위해 host network 사용
+    # host network for DDS/ROS2 communication
     network_mode: host
 
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════
-  # ota_monitor — adsw_monitor 와 동일 파이프라인을 APP_NAME 만 바꿔 재사용
-  # (Dockerfile 들은 ARG APP_NAME 을 받는다.)
+  # ota_monitor — same pipeline as adsw_monitor, reused by changing only APP_NAME
+  # (Dockerfiles take ARG APP_NAME.)
   # ═══════════════════════════════════════════════════════════════════════
 
-  # ── 빌드 서비스 ─────────────────────────────────────────────────────────
+  # ── Build services ──────────────────────────────────────────────────────
 
-  # x86_64 Flutter Linux 빌드 (GTK 번들 생성)
-  # 사용: docker compose --profile build run --rm ota_monitor_builder_x86
+  # x86_64 Flutter Linux build (GTK bundle)
+  # Run: docker compose --profile build run --rm ota_monitor_builder_x86
   ota_monitor_builder_x86:
     build:
       context: ..
@@ -152,8 +152,8 @@ services:
       - ../output:/workspace/output
     profiles: [build]
 
-  # arm64 AOT 빌드 (AGL Yocto SDK 사용)
-  # 사용: docker compose --profile build run --rm ota_monitor_builder_arm64
+  # arm64 AOT build (AGL Yocto SDK)
+  # Run: docker compose --profile build run --rm ota_monitor_builder_arm64
   ota_monitor_builder_arm64:
     build:
       context: ..
@@ -167,9 +167,9 @@ services:
       - ../output:/workspace/output
     profiles: [build]
 
-  # ── 실행 서비스 ─────────────────────────────────────────────────────────
+  # ── Runtime services ────────────────────────────────────────────────────
 
-  # x86_64 실행 이미지 (GTK 기반, 개발/테스트용)
+  # x86_64 runtime image (GTK-based, for development/testing)
   ota_monitor:
     build:
       context: ..
@@ -179,7 +179,7 @@ services:
     image: ota_monitor:x86_64
     container_name: ota_monitor
 
-    # Wayland 소켓 마운트 (AGL/Linux 환경)
+    # Wayland socket mount (AGL/Linux environment)
     volumes:
       - /run/user/1000:/run/user/1000
       - /tmp/.X11-unix:/tmp/.X11-unix
@@ -201,8 +201,8 @@ services:
 
     restart: unless-stopped
 
-  # arm64 테스트 이미지 (QEMU 에뮬레이션 + Weston 헤드리스)
-  # 사전 조건: output/ota_monitor-arm64-release.tar.gz + output/agl-binaries/
+  # arm64 test image (QEMU emulation + headless Weston)
+  # Prereq: output/ota_monitor-arm64-release.tar.gz + output/agl-binaries/
   ota_monitor_arm64_test:
     build:
       context: ..
@@ -232,7 +232,7 @@ services:
 
     profiles: [test]
 
-  # arm64 실행 이미지 (flutter-auto 기반, AGL 타겟용)
+  # arm64 runtime image (flutter-auto based, for AGL targets)
   ota_monitor_arm64:
     build:
       context: ..
@@ -264,25 +264,25 @@ services:
   # ═══════════════════════════════════════════════════════════════════════
   # F013: OTA real-stack integration test infrastructure
   #
-  # Flutter 통합 테스트를 MockOtaManager(Dart 로컬 WebSocket) 대신
-  # 실제 rosbridge_server + rclpy OtaManager mock 으로 돌리기 위한 두 컨테이너.
+  # Two containers that let Flutter integration tests run against a real
+  # rosbridge_server + rclpy OtaManager mock instead of the Dart MockOtaManager.
   #
-  # 사전 조건:
-  #   MMF_WS 환경변수에 mmf_interfaces 가 포함된 ROS2 워크스페이스 build 경로
-  #   (install/setup.bash 가 존재하는 디렉토리의 부모) 가 지정되어야 한다.
+  # Prereq:
+  #   MMF_WS must point to the ROS2 workspace build output (the parent of
+  #   install/setup.bash) that contains the mmf_interfaces package.
   #
-  # 기동:
+  # Start:
   #   MMF_WS=/path/to/mmf_ws docker compose \
   #       --profile ota-real-stack up -d rosbridge ota_manager_mock
   #   docker compose --profile ota-real-stack logs -f ota_manager_mock
   #     # → "ota_manager_mock ready — 3 seeded apps"
   #
-  # Flutter 테스트 (별도 셸):
+  # Run Flutter tests (separate shell):
   #   cd apps/ota_monitor
   #   DISPLAY=:99 flutter test integration_test/ota_integration_test.dart \
   #       -d linux --dart-define=OTA_ROS_URL=ws://localhost:9090
   #
-  # 정리:
+  # Teardown:
   #   docker compose --profile ota-real-stack down
   # ═══════════════════════════════════════════════════════════════════════
 
@@ -302,8 +302,8 @@ services:
     network_mode: host
     volumes:
       - ../ota_monitor/integration_test:/mock:ro
-      # MMF_WS 미설정 시 placeholder 경로 — ota_manager_mock.py 가 친절한
-      # import 에러로 종료되도록 유도.
+      # Placeholder path when MMF_WS is not set — ota_manager_mock.py will
+      # exit with a helpful import error.
       - ${MMF_WS:-./.placeholder-mmf-ws}/install:/mmf_install:ro
     command: >
       bash -c "apt-get update &&
@@ -312,7 +312,7 @@ services:
                if [ -f /mmf_install/setup.bash ]; then
                  source /mmf_install/setup.bash;
                else
-                 echo '[WARN] /mmf_install/setup.bash 없음 — MMF_WS 지정 필요 (docker compose 기동 전 export MMF_WS=/path/to/ws)' >&2;
+                 echo '[WARN] /mmf_install/setup.bash missing — set MMF_WS before starting compose (e.g. export MMF_WS=/path/to/ws)' >&2;
                fi &&
                python3 /mock/ota_manager_mock.py"
     depends_on: [rosbridge]
