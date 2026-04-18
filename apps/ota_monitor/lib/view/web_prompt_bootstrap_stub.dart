@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 네이티브 플랫폼에서는 그냥 child를 바로 보여주는 스텁
+/// Stub that simply shows its child on native platforms.
 class WebPromptBootstrap extends StatelessWidget {
   const WebPromptBootstrap({
     super.key,
@@ -8,7 +8,7 @@ class WebPromptBootstrap extends StatelessWidget {
     required this.child,
   });
 
-  final Future<void> Function(Uri rosUrl) onConfigured; // 웹 전용 훅, 여기선 미사용
+  final Future<void> Function(Uri rosUrl) onConfigured; // web-only hook, unused here
   final Widget child;
 
   @override

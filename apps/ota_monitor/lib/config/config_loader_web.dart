@@ -7,7 +7,7 @@ String? lastConfigLoadWarning;
 
 Future<AppConfig> loadConfig([
   List<String>? unused, // ignored on web
-  AssetBundle? bundle, // 테스트용 주입 포인트
+  AssetBundle? bundle, // injection point for tests
 ]) async {
   lastConfigLoadWarning = null;
   final b = bundle ?? rootBundle;

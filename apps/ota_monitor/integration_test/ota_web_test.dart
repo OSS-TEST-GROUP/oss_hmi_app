@@ -1,16 +1,16 @@
 // F011: Chrome (web) integration tests for ota_monitor.
 //
-// 실행법:
+// How to run:
 //   flutter drive \
 //     --driver=test_driver/integration_test.dart \
 //     --target=integration_test/ota_web_test.dart \
 //     -d chrome
 //
-// 상세 가이드: integration_test/INTEGRATION_TEST_GUIDE.md 의 "Web 실행" 섹션.
+// Details: see the "Web run" section in integration_test/INTEGRATION_TEST_GUIDE.md.
 //
-// 이 테스트는 MockOtaManager(dart:io HttpServer) 를 사용하지 않는다. 브라우저
-// 런타임에는 dart:io가 없기 때문이다. 대신 OtaCollector에 seed 데이터를 주입해
-// UI 렌더링·상호작용을 검증한다.
+// This test does not use MockOtaManager (dart:io HttpServer) because the
+// web runtime has no dart:io. Instead we seed data on OtaCollector and
+// verify UI rendering / interaction.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

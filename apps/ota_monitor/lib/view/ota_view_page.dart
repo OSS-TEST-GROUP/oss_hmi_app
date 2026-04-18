@@ -9,8 +9,8 @@ import 'package:ota_monitor/widget/key_value_item.dart';
 class OtaViewPage extends StatefulWidget {
   const OtaViewPage({super.key, this.truncateLength = 100});
 
-  /// Character count at which Settings/State values are truncated to
-  /// "…" with a "전체 보기" affordance. Configurable via AppConfig (F005).
+  /// Character count at which Settings/State values are truncated with a
+  /// "view full text" (한국어 레이블: 전체 보기) link. Configurable via AppConfig (F005).
   final int truncateLength;
 
   @override
@@ -74,7 +74,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
     setState(() {
       _selectedAppName = appName;
     });
-    // 앱 선택 시 상세 정보 요청
+    // Request details on app selection.
     _otaCollector.requestAppSettings(appName);
     _otaCollector.requestAppState(appName);
   }
@@ -187,7 +187,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 왼쪽: 앱 목록
+          // Left: app list.
           Expanded(
             flex: 1,
             child: Column(
@@ -276,12 +276,12 @@ class _OtaViewPageState extends State<OtaViewPage> {
             ),
           ),
           const SizedBox(width: 24),
-          // 오른쪽: 앱 상세 정보 + 업데이트 히스토리
+          // Right: app details + update history.
           Expanded(
             flex: 2,
             child: Column(
               children: [
-                // 앱 상세 정보
+                // App details.
                 if (_selectedAppName == null)
                   DataViewWidget(
                     title: 'App Details',
@@ -399,7 +399,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                     );
                   }),
                 const SizedBox(height: 24),
-                // 업데이트 히스토리
+                // Update history.
                 Expanded(
                   child: Obx(() => DataViewWidget(
                         title: 'Update History (${_otaCollector.updateHistory.length})',
