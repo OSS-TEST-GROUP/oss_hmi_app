@@ -33,6 +33,40 @@ void main() {
       expect(ota.minLauncher, '4.0.0');
     });
 
+    test('discovers adsw_monitor manifest when present', () {
+      final manifestPath = '$_appsRoot/adsw_monitor/manifest.json';
+      if (!File(manifestPath).existsSync()) {
+        markTestSkipped('$manifestPath not present in this checkout.');
+        return;
+      }
+
+      final registry = PluginRegistryScanner(
+        appsRoot: _appsRoot,
+        launcherVersion: '4.0.0',
+      ).scan();
+
+      final adsw = registry.findById('adsw_monitor');
+      expect(adsw, isNotNull);
+      expect(adsw!.name, 'AD SW');
+      expect(adsw.prompts, contains('AD SW 모니터 열어줘'));
+    });
+
+    test('both ota_monitor and adsw_monitor appear in the registry', () {
+      final registry = PluginRegistryScanner(
+        appsRoot: _appsRoot,
+        launcherVersion: '4.0.0',
+      ).scan();
+      final ids = registry.apps.map((a) => a.id).toSet();
+      // Only assert when both manifests are present in this checkout.
+      final both = File('$_appsRoot/ota_monitor/manifest.json').existsSync() &&
+          File('$_appsRoot/adsw_monitor/manifest.json').existsSync();
+      if (!both) {
+        markTestSkipped('one of the manifests is not present.');
+        return;
+      }
+      expect(ids, containsAll({'ota_monitor', 'adsw_monitor'}));
+    });
+
     test('scanner is idempotent and tolerates missing manifests', () {
       // Running twice must yield the same app ids.
       final scanner = PluginRegistryScanner(

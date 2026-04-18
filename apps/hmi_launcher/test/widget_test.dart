@@ -122,4 +122,61 @@ void main() {
 
     expect(find.textContaining('등록된 앱이 없습니다'), findsOneWidget);
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // L007 E2E — both ota_monitor and adsw_monitor are reachable through
+  // the sidebar and the prompt, and activating one does not regress the
+  // other (key regression guard for L006 + L007 together).
+  // ──────────────────────────────────────────────────────────────────────
+
+  testWidgets(
+      'L007 E2E — two apps: sidebar + prompt both route correctly and no cross-activation',
+      (tester) async {
+    await _wideView(tester);
+    final ota = _m(
+      'ota_monitor',
+      name: 'OTA Monitor',
+      prompts: ['OTA 모니터 열어줘', '버전 확인해줘'],
+      color: '#FCD34D',
+    );
+    final adsw = _m(
+      'adsw_monitor',
+      name: 'AD SW',
+      prompts: ['AD SW 모니터 열어줘', '센서 상태 보여줘'],
+      color: '#7FE5A1',
+    );
+    final registry = _registry([ota, adsw]);
+
+    await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
+
+    // 1. sidebar shows both apps
+    expect(find.byKey(const Key('sidebar_item_ota_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('sidebar_item_adsw_monitor')), findsOneWidget);
+
+    // 2. prompt 'AD SW 모니터 열어줘' → adsw card
+    await tester.enterText(
+      find.byKey(const Key('prompt_input_field')),
+      'AD SW 모니터 열어줘',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(find.byKey(const Key('app_launch_card_adsw_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsNothing);
+
+    // 3. prompt 'OTA 모니터 열어줘' → ota card (ada card gone)
+    await tester.enterText(
+      find.byKey(const Key('prompt_input_field')),
+      'OTA 모니터 열어줘',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('app_launch_card_adsw_monitor')), findsNothing);
+
+    // 4. tapping the adsw sidebar row switches the card back
+    await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
+    await tester.pump();
+    expect(find.byKey(const Key('app_launch_card_adsw_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsNothing);
+  });
 }
