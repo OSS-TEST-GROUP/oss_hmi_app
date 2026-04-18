@@ -1,15 +1,23 @@
 // OTA Monitor — Integration Tests
 //
-// MockOtaManager(rosbridge WebSocket 서버)를 통해
-// 실제 roslibdart ↔ OtaCollector ↔ UI 전체 파이프라인을 검증한다.
+// 기본: MockOtaManager(로컬 WebSocket 서버)를 통해 roslibdart ↔ OtaCollector
+// ↔ UI 전체 파이프라인을 검증한다.
+//
+// F013 실제 rosbridge 모드:
+//   --dart-define=OTA_ROS_URL=ws://localhost:9090 을 넘기면 MockOtaManager 를
+//   건너뛰고 해당 URL 의 실제 rosbridge_server 에 접속한다. 사전에 ROS2
+//   rosbridge_server + ota_manager_mock.py(또는 실제 OtaManager)가 기동되어
+//   있어야 한다. 자세한 절차는 integration_test/REAL_STACK_SETUP.md 참고.
 //
 // 실행:
-//   flutter test integration_test/ -d linux
+//   flutter test integration_test/ -d linux                                     # mock
+//   flutter test integration_test/ -d linux --dart-define=OTA_ROS_URL=ws://...  # real
 //
 // 테스트 시나리오:
 //   1. App List   — 연결 후 초기 앱 목록이 UI에 표시됨
 //   2. App Details — 앱 선택 시 settings / state 가 UI에 표시됨
 //   3. Update History — 업데이트 요청 후 히스토리에 기록됨
+//   4. 수동 상태 주입 — Mock 전용(sendNotifyStatus): real 모드에서는 skip
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,27 +32,39 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'mock_ota_manager.dart';
 
+// F013: --dart-define=OTA_ROS_URL=ws://... 지정 시 실제 rosbridge 모드.
+// 빈 문자열이면 기존 MockOtaManager 경로를 그대로 사용한다.
+const String _otaRosUrlOverride =
+    String.fromEnvironment('OTA_ROS_URL', defaultValue: '');
+final bool _useRealStack = _otaRosUrlOverride.isNotEmpty;
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  late MockOtaManager mock;
+  MockOtaManager? mock;
   late RosKeeper rosKeeper;
   late OtaCollector collector;
 
   // ── 전체 테스트 생애주기 ──────────────────────────────────────────────────
 
   setUpAll(() async {
-    mock = MockOtaManager();
-    await mock.start();
+    if (!_useRealStack) {
+      mock = MockOtaManager();
+      await mock!.start();
+    }
   });
 
   tearDownAll(() async {
-    await mock.stop();
+    if (!_useRealStack && mock != null) {
+      await mock!.stop();
+    }
   });
 
   setUp(() async {
     Get.reset();
-    mock.receivedRequests.clear();
+    if (!_useRealStack) {
+      mock!.receivedRequests.clear();
+    }
 
     // OtaCollector — 실제 roslibdart Topic 팩토리 사용
     collector = OtaCollector(
@@ -52,9 +72,12 @@ void main() {
     );
     Get.put<OtaCollector>(collector, permanent: true);
 
-    // RosKeeper — mock 서버 포트를 가리킴
+    // RosKeeper — real 모드면 override URL, 아니면 mock 서버 포트
+    final rosUrl = _useRealStack
+        ? Uri.parse(_otaRosUrlOverride)
+        : Uri.parse('ws://localhost:${mock!.port}');
     final cfg = AppConfig(
-      rosUrl: Uri.parse('ws://localhost:${mock.port}'),
+      rosUrl: rosUrl,
       statusTopic: '/test/ota_monitor_status',
     );
     rosKeeper = RosKeeper(cfg);
@@ -217,6 +240,7 @@ void main() {
     testWidgets(
       '앱 선택 시 GetAppUpdateSettings, GetAppUpdateState 요청이 전송된다',
       (tester) async {
+        if (_useRealStack) return; // F013: mock.receivedRequests only in mock mode
         setTestSurface(tester);
         suppressOverflowErrors();
         await tester.pumpWidget(const OtaMonitorApp());
@@ -227,7 +251,7 @@ void main() {
             tester, () => collector.topicData['MapUpdater_settings'] != null);
 
         final topicsRequested =
-            mock.receivedRequests.map((r) => r['topic'] as String).toList();
+            mock!.receivedRequests.map((r) => r['topic'] as String).toList();
 
         expect(topicsRequested, contains(otaRequestTopics[0])); // GetAppUpdateSettings
         expect(topicsRequested, contains(otaRequestTopics[2])); // GetAppUpdateState
@@ -237,6 +261,7 @@ void main() {
     testWidgets(
       'Refresh Settings 버튼을 누르면 settings가 다시 요청된다',
       (tester) async {
+        if (_useRealStack) return; // F013: mock.receivedRequests only in mock mode
         setTestSurface(tester);
         suppressOverflowErrors();
         await tester.pumpWidget(const OtaMonitorApp());
@@ -246,19 +271,19 @@ void main() {
         await waitUntil(
             tester, () => collector.topicData['NavigationApp_settings'] != null);
 
-        final countBefore = mock.receivedRequests
+        final countBefore = mock!.receivedRequests
             .where((r) => r['topic'] == otaRequestTopics[0])
             .length;
 
         await tester.tap(find.text('Refresh Settings'));
         await waitUntil(tester, () {
-          final countAfter = mock.receivedRequests
+          final countAfter = mock!.receivedRequests
               .where((r) => r['topic'] == otaRequestTopics[0])
               .length;
           return countAfter > countBefore;
         });
 
-        final countAfter = mock.receivedRequests
+        final countAfter = mock!.receivedRequests
             .where((r) => r['topic'] == otaRequestTopics[0])
             .length;
         expect(countAfter, greaterThan(countBefore));
@@ -268,6 +293,7 @@ void main() {
     testWidgets(
       'Refresh State 버튼을 누르면 state가 다시 요청된다',
       (tester) async {
+        if (_useRealStack) return; // F013: mock.receivedRequests only in mock mode
         setTestSurface(tester);
         suppressOverflowErrors();
         await tester.pumpWidget(const OtaMonitorApp());
@@ -277,19 +303,19 @@ void main() {
         await waitUntil(
             tester, () => collector.topicData['NavigationApp_state'] != null);
 
-        final countBefore = mock.receivedRequests
+        final countBefore = mock!.receivedRequests
             .where((r) => r['topic'] == otaRequestTopics[2])
             .length;
 
         await tester.tap(find.text('Refresh State'));
         await waitUntil(tester, () {
-          final countAfter = mock.receivedRequests
+          final countAfter = mock!.receivedRequests
               .where((r) => r['topic'] == otaRequestTopics[2])
               .length;
           return countAfter > countBefore;
         });
 
-        final countAfter = mock.receivedRequests
+        final countAfter = mock!.receivedRequests
             .where((r) => r['topic'] == otaRequestTopics[2])
             .length;
         expect(countAfter, greaterThan(countBefore));
@@ -446,13 +472,14 @@ void main() {
     testWidgets(
       'sendNotifyStatus로 임의 앱을 목록에 추가할 수 있다',
       (tester) async {
+        if (_useRealStack) return; // F013: sendNotifyStatus only in mock mode
         setTestSurface(tester);
         suppressOverflowErrors();
         await tester.pumpWidget(const OtaMonitorApp());
         await waitUntil(tester, () => collector.appList.length >= 3);
 
         // 테스트에서 새 앱 상태를 직접 주입
-        mock.sendNotifyStatus('TestInjectedApp', 'testing');
+        mock!.sendNotifyStatus('TestInjectedApp', 'testing');
         await waitUntil(tester,
             () => collector.appList.any((a) => a['name'] == 'TestInjectedApp'));
 
@@ -463,6 +490,7 @@ void main() {
     testWidgets(
       'sendNotifyStatus로 기존 앱 상태를 변경할 수 있다',
       (tester) async {
+        if (_useRealStack) return; // F013: sendNotifyStatus only in mock mode
         setTestSurface(tester);
         suppressOverflowErrors();
         await tester.pumpWidget(const OtaMonitorApp());
@@ -471,7 +499,7 @@ void main() {
         // 연결 불안정 시 재전송 — 수신 확인될 때까지 반복 송신
         await waitUntil(tester, () {
           if (collector.topicData['NavigationApp_status'] == 'error') return true;
-          mock.sendNotifyStatus('NavigationApp', 'error');
+          mock!.sendNotifyStatus('NavigationApp', 'error');
           return false;
         }, maxAttempts: 60);
 

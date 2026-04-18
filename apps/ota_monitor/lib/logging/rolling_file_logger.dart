@@ -23,7 +23,8 @@ class RollingFileLogger {
   Timer? _flushTimer;
   IOSink? _sink;
   File? _file;
-  bool _writing = false;
+  Future<void>? _flushInFlight;
+  bool _stopped = false;
 
   Future<void> start() async {
     await Directory(dirPath).create(recursive: true);
@@ -50,16 +51,23 @@ class RollingFileLogger {
   }
 
   Future<void> flush() async {
-    if (_writing) return;
-    if (_sink == null || _file == null) return;
-    if (_buf.isEmpty) return;
+    // Chain concurrent flushes so callers observe completion and stop() can
+    // safely await any in-flight work before closing the sink.
+    final previous = _flushInFlight;
+    final done = Completer<void>();
+    _flushInFlight = done.future;
 
-    _writing = true;
     try {
+      await previous;
+      if (_stopped || _sink == null || _file == null || _buf.isEmpty) {
+        return;
+      }
+
       final lines = List<String>.from(_buf);
       _buf.clear();
 
       for (final line in lines) {
+        if (_stopped || _sink == null) break;
         final data = '$line\n';
         final bytes = utf8.encode(data).length;
 
@@ -67,13 +75,15 @@ class RollingFileLogger {
         if (cur + bytes > maxBytes) {
           await _rotateIfNeeded(force: true);
         }
-
-        _sink!.write(data);
+        _sink?.write(data);
       }
 
-      await _sink!.flush();
+      await _sink?.flush();
     } finally {
-      _writing = false;
+      done.complete();
+      if (identical(_flushInFlight, done.future)) {
+        _flushInFlight = null;
+      }
     }
   }
 
@@ -125,7 +135,11 @@ class RollingFileLogger {
   Future<void> stop() async {
     _flushTimer?.cancel();
     _flushTimer = null;
+    // Drain anything still buffered, but also wait for an in-flight flush
+    // from a concurrent addLine() before closing the sink.
     await flush();
+    await _flushInFlight;
+    _stopped = true;
     await _sink?.close();
     _sink = null;
   }

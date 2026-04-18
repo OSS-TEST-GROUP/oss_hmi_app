@@ -1,17 +1,74 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
 
 import 'package:ota_monitor/data/ota_data.dart';
+import 'package:ota_monitor/logging/app_log.dart';
+
+enum OtaRequestKind {
+  getSettings,
+  setSettings,
+  getState,
+  setUpdate,
+}
+
+class PendingRequest {
+  PendingRequest({
+    required this.id,
+    required this.appName,
+    required this.kind,
+    required this.sentAt,
+  });
+
+  final int id;
+  final String appName;
+  final OtaRequestKind kind;
+  final DateTime sentAt;
+}
 
 class OtaCollector extends GetxController {
   final Topic Function(Ros ros, String name, String type) topicFactory;
 
+  /// Request expiration window. Requests older than this are removed from
+  /// [pendingRequests] with a warning log. Exposed for testing.
+  final Duration requestTimeout;
+
+  /// Sweep interval for [pendingRequests] expiration. Exposed for testing.
+  final Duration timeoutSweepInterval;
+
+  /// Maximum number of entries retained in [updateHistory] (F005).
+  final int historySize;
+
+  /// App names to seed the UI with at startup (F004). Settings and state
+  /// requests are issued automatically for each entry once topics are
+  /// advertised.
+  final List<String> initialApps;
+
+  /// Poll interval used to detect changes to the GetX-registered Ros.
+  /// Exposed primarily so widget tests can disable the ticker.
+  final Duration watchdogInterval;
+
+  /// When false, onInit() skips the watchdog and timeout sweeper timers.
+  /// Widget tests flip this off to avoid 'Timer is still pending' failures.
+  final bool autoStartTimers;
+
   OtaCollector({
     Topic Function(Ros ros, String name, String type)? topicFactory,
+    this.requestTimeout = const Duration(seconds: 30),
+    this.timeoutSweepInterval = const Duration(seconds: 5),
+    this.watchdogInterval = const Duration(seconds: 1),
+    this.historySize = 20,
+    this.initialApps = const [],
+    this.autoStartTimers = true,
   }) : topicFactory = topicFactory ??
-            ((ros, name, type) => Topic(ros: ros, name: name, type: type));
+            ((ros, name, type) => Topic(ros: ros, name: name, type: type)) {
+    // Seed the app list immediately so the UI has something to show while
+    // responses are still in flight. The entries' status stays 'Unknown'
+    // until the first GetAppUpdateStateResponse / NotifyAppUpdateStatus.
+    for (final name in initialApps) {
+      _updateAppList(name);
+    }
+  }
 
   Ros get _ros => Get.find<Ros>();
 
@@ -21,8 +78,15 @@ class OtaCollector extends GetxController {
   final RxList<Map<String, dynamic>> updateHistory =
       <Map<String, dynamic>>[].obs;
 
-  // Request ID counter
+  // Request ID tracking
   int _nextRequestId = 1000;
+  final Map<int, PendingRequest> _pendingRequests = <int, PendingRequest>{};
+
+  /// Read-only view of in-flight requests (kept for diagnostics & tests).
+  Map<int, PendingRequest> get pendingRequests =>
+      Map.unmodifiable(_pendingRequests);
+
+  int get pendingRequestCount => _pendingRequests.length;
 
   // Topic instances
   Topic? _settingsRespSub;
@@ -39,22 +103,38 @@ class OtaCollector extends GetxController {
   bool _setup = false;
   Ros? _boundRos;
   Timer? _watchdog;
+  Timer? _timeoutSweeper;
+
+  // F007: surface user-facing error events to the UI via a broadcast stream.
+  final StreamController<String> _errorCtrl =
+      StreamController<String>.broadcast();
+
+  /// Emits short, user-facing error messages (displayed as SnackBars).
+  Stream<String> get errors => _errorCtrl.stream;
 
   @override
   void onInit() {
     super.onInit();
+    if (!autoStartTimers) return;
     // Poll until Ros instance is available in GetX (set by RosKeeper on connect)
-    _watchdog = Timer.periodic(const Duration(seconds: 1), (_) {
+    _watchdog = Timer.periodic(watchdogInterval, (_) {
       if (!Get.isRegistered<Ros>()) return;
       final r = _ros;
       if (_boundRos == r && _setup) return;
       _start(r);
+    });
+
+    // Periodic sweeper for expired pending requests.
+    _timeoutSweeper = Timer.periodic(timeoutSweepInterval, (_) {
+      sweepExpiredRequests();
     });
   }
 
   @override
   void onClose() {
     _watchdog?.cancel();
+    _timeoutSweeper?.cancel();
+    _errorCtrl.close();
     super.onClose();
   }
 
@@ -100,17 +180,27 @@ class OtaCollector extends GetxController {
       await _updateReqPub?.advertise();
 
       _setup = true;
-      debugPrint('[OTA] Topics subscribed & advertised');
+      appLog('[OTA] Topics subscribed & advertised');
+
+      // F004: auto-request settings/state for each initialApps entry.
+      for (final name in initialApps) {
+        requestAppSettings(name);
+        requestAppState(name);
+      }
+      if (initialApps.isNotEmpty) {
+        appLog('[OTA] Auto-requested initial apps: $initialApps');
+      }
     } catch (e) {
-      debugPrint('[OTA] _start error: $e');
+      appLog('[OTA] _start error: $e', level: 'error');
     }
   }
 
   // ── Response handlers ────────────────────────────────────────────────────
 
   void onSettingsResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] GetAppUpdateSettingsResponse: $msg');
-    final appName = msg['app_name'] as String?;
+    appLog('[OTA] GetAppUpdateSettingsResponse: $msg');
+    final matched = _matchAndRemove(msg, OtaRequestKind.getSettings);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final appSettings = msg['app_settings'] as String?;
     final retCode = msg['ret_code'] as int?;
 
@@ -122,14 +212,21 @@ class OtaCollector extends GetxController {
   }
 
   void onSetSettingsResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] SetAppUpdateSettingsResponse: $msg');
+    appLog('[OTA] SetAppUpdateSettingsResponse: $msg');
+    final matched = _matchAndRemove(msg, OtaRequestKind.setSettings);
     final retCode = msg['ret_code'] as int?;
-    topicData['last_set_settings_result'] = ReturnValue.fromInt(retCode);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
+    final result = ReturnValue.fromInt(retCode);
+    topicData['last_set_settings_result'] = result;
+    if (appName != null) {
+      topicData['${appName}_set_settings_result'] = result;
+    }
   }
 
   void onStateResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] GetAppUpdateStateResponse: $msg');
-    final appName = msg['app_name'] as String?;
+    appLog('[OTA] GetAppUpdateStateResponse: $msg');
+    final matched = _matchAndRemove(msg, OtaRequestKind.getState);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final appStateInfo = msg['app_state_info'] as String?;
     final retCode = msg['ret_code'] as int?;
 
@@ -141,8 +238,9 @@ class OtaCollector extends GetxController {
   }
 
   void onUpdateResponse(Map<String, dynamic> msg) {
-    debugPrint('[OTA] SetAppUpdateResponse: $msg');
-    final appName = msg['app_name'] as String?;
+    appLog('[OTA] SetAppUpdateResponse: $msg');
+    final matched = _matchAndRemove(msg, OtaRequestKind.setUpdate);
+    final appName = (msg['app_name'] as String?) ?? matched?.appName;
     final retCode = msg['ret_code'] as int?;
 
     if (appName != null) {
@@ -152,10 +250,12 @@ class OtaCollector extends GetxController {
   }
 
   void onNotifyStatus(Map<String, dynamic> msg) {
-    debugPrint('[OTA] NotifyAppUpdateStatus: $msg');
+    appLog('[OTA] NotifyAppUpdateStatus: $msg');
     final appName = msg['app_name'] as String?;
     final status = msg['status'] as String?;
 
+    // NotifyStatus is unsolicited — no pending request to match. Intentionally
+    // skip _matchAndRemove() here.
     if (appName != null && status != null) {
       topicData['${appName}_status'] = status;
       _updateAppList(appName, status: status);
@@ -166,40 +266,107 @@ class OtaCollector extends GetxController {
   // ── Publish helpers ──────────────────────────────────────────────────────
 
   void requestAppSettings(String appName) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.getSettings);
     _publish(_settingsReqPub, {'id': id, 'app_name': appName});
-    debugPrint('[OTA] Requested settings for $appName (id=$id)');
+    appLog('[OTA] Requested settings for $appName (id=$id)');
   }
 
   void setAppSettings(String appName, String settingsJson) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.setSettings);
     _publish(_setSettingsReqPub,
         {'id': id, 'app_name': appName, 'app_settings': settingsJson});
-    debugPrint('[OTA] Set settings for $appName (id=$id)');
+    appLog('[OTA] Set settings for $appName (id=$id)');
   }
 
   void requestAppState(String appName) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.getState);
     _publish(_stateReqPub, {'id': id, 'app_name': appName});
-    debugPrint('[OTA] Requested state for $appName (id=$id)');
+    appLog('[OTA] Requested state for $appName (id=$id)');
   }
 
   void requestUpdate(String appName) {
-    final id = _nextRequestId++;
+    final id = _registerRequest(appName, OtaRequestKind.setUpdate);
     _publish(_updateReqPub, {'id': id, 'app_name': appName});
-    debugPrint('[OTA] Requested update for $appName (id=$id)');
+    appLog('[OTA] Requested update for $appName (id=$id)');
   }
 
   void _publish(Topic? topic, Map<String, dynamic> fields) {
     if (topic == null) {
-      debugPrint('[OTA] publish skipped: topic not ready');
+      appLog('[OTA] publish skipped: topic not ready', level: 'warn');
+      if (!_errorCtrl.isClosed) {
+        _errorCtrl.add('ROS에 연결되지 않음 — 잠시 후 다시 시도하세요');
+      }
       return;
     }
     try {
       topic.publish(fields);
     } catch (e) {
-      debugPrint('[OTA] publish error: $e');
+      appLog('[OTA] publish error: $e', level: 'warn');
+      if (!_errorCtrl.isClosed) {
+        _errorCtrl.add('요청 전송 실패: $e');
+      }
     }
+  }
+
+  // ── Request / response correlation ───────────────────────────────────────
+
+  int _registerRequest(String appName, OtaRequestKind kind) {
+    final id = _nextRequestId++;
+    _pendingRequests[id] = PendingRequest(
+      id: id,
+      appName: appName,
+      kind: kind,
+      sentAt: DateTime.now(),
+    );
+    return id;
+  }
+
+  /// Look up the pending request referenced by [msg]'s `id` field (if any)
+  /// and remove it when the [expectedKind] matches. Returns the matched
+  /// [PendingRequest] on success, or null otherwise.
+  PendingRequest? _matchAndRemove(
+      Map<String, dynamic> msg, OtaRequestKind expectedKind) {
+    final id = _extractInt(msg['id']);
+    if (id == null) return null;
+    final pending = _pendingRequests[id];
+    if (pending == null) {
+      appLog('[OTA] orphan response id=$id (no pending request)', level: 'warn');
+      return null;
+    }
+    if (pending.kind != expectedKind) {
+      appLog(
+          '[OTA] id=$id kind mismatch (pending=${pending.kind} response=$expectedKind)');
+      return null;
+    }
+    _pendingRequests.remove(id);
+    return pending;
+  }
+
+  static int? _extractInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  /// Remove requests older than [requestTimeout]. Returns the number of
+  /// expired entries removed. Public for tests.
+  int sweepExpiredRequests() {
+    if (_pendingRequests.isEmpty) return 0;
+    final now = DateTime.now();
+    final expired = <int>[];
+    _pendingRequests.forEach((id, req) {
+      if (now.difference(req.sentAt) >= requestTimeout) {
+        expired.add(id);
+      }
+    });
+    for (final id in expired) {
+      final p = _pendingRequests.remove(id);
+      appLog(
+          '[OTA] request id=$id timed out after ${requestTimeout.inSeconds}s '
+          '(app=${p?.appName}, kind=${p?.kind})');
+    }
+    return expired.length;
   }
 
   // ── Internal helpers ─────────────────────────────────────────────────────
@@ -231,8 +398,8 @@ class OtaCollector extends GetxController {
       'message': message,
       'ret_code': retCode,
     });
-    if (updateHistory.length > 20) {
-      updateHistory.removeRange(20, updateHistory.length);
+    if (updateHistory.length > historySize) {
+      updateHistory.removeRange(historySize, updateHistory.length);
     }
   }
 }

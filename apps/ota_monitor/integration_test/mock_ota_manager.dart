@@ -166,8 +166,10 @@ class MockOtaManager {
 
   void _handleGetSettings(Map<String, dynamic> msg) {
     final appName = msg['app_name'] as String? ?? '';
+    final id = msg['id'];
     final app = _findApp(appName);
     _broadcast(otaResponseTopics[0], {
+      if (id != null) 'id': id,
       'app_name': appName,
       'app_settings': app?.settings ?? '{}',
       'ret_code': 1,
@@ -176,7 +178,9 @@ class MockOtaManager {
 
   void _handleSetSettings(Map<String, dynamic> msg) {
     final appName = msg['app_name'] as String? ?? '';
+    final id = msg['id'];
     _broadcast(otaResponseTopics[1], {
+      if (id != null) 'id': id,
       'app_name': appName,
       'ret_code': 1,
     });
@@ -184,8 +188,10 @@ class MockOtaManager {
 
   void _handleGetState(Map<String, dynamic> msg) {
     final appName = msg['app_name'] as String? ?? '';
+    final id = msg['id'];
     final app = _findApp(appName);
     _broadcast(otaResponseTopics[2], {
+      if (id != null) 'id': id,
       'app_name': appName,
       'app_state_info': app?.state ?? 'unknown',
       'ret_code': 1,
@@ -194,9 +200,11 @@ class MockOtaManager {
 
   void _handleSetUpdate(Map<String, dynamic> msg) {
     final appName = msg['app_name'] as String? ?? '';
+    final id = msg['id'];
 
     // 1) 즉시: update 요청 수락 응답
     _broadcast(otaResponseTopics[3], {
+      if (id != null) 'id': id,
       'app_name': appName,
       'ret_code': 1,
     });

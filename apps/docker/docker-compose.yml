@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ─────────────────────────────────────────────
   # 빌드 서비스 (소스 → 바이너리)
@@ -41,6 +39,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: adsw_monitor
     image: adsw_monitor:x86_64
     container_name: adsw_monitor
 
@@ -131,4 +131,190 @@ services:
     # DDS/ROS2 통신을 위해 host network 사용
     network_mode: host
 
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # ota_monitor — adsw_monitor 와 동일 파이프라인을 APP_NAME 만 바꿔 재사용
+  # (Dockerfile 들은 ARG APP_NAME 을 받는다.)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── 빌드 서비스 ─────────────────────────────────────────────────────────
+
+  # x86_64 Flutter Linux 빌드 (GTK 번들 생성)
+  # 사용: docker compose --profile build run --rm ota_monitor_builder_x86
+  ota_monitor_builder_x86:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build
+    image: ota_monitor_builder:x86_64
+    volumes:
+      - ../ota_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # arm64 AOT 빌드 (AGL Yocto SDK 사용)
+  # 사용: docker compose --profile build run --rm ota_monitor_builder_arm64
+  ota_monitor_builder_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build.arm64
+      args:
+        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
+        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
+    image: ota_monitor_builder:arm64
+    volumes:
+      - ../ota_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # ── 실행 서비스 ─────────────────────────────────────────────────────────
+
+  # x86_64 실행 이미지 (GTK 기반, 개발/테스트용)
+  ota_monitor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: ota_monitor
+    image: ota_monitor:x86_64
+    container_name: ota_monitor
+
+    # Wayland 소켓 마운트 (AGL/Linux 환경)
+    volumes:
+      - /run/user/1000:/run/user/1000
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ../ota_monitor/config/config.json:/app/config/config.json
+
+    environment:
+      - DISPLAY=:1
+      - XDG_RUNTIME_DIR=/run/user/1000
+
+    network_mode: host
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    restart: unless-stopped
+
+  # arm64 테스트 이미지 (QEMU 에뮬레이션 + Weston 헤드리스)
+  # 사전 조건: output/ota_monitor-arm64-release.tar.gz + output/agl-binaries/
+  ota_monitor_arm64_test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64.test
+      args:
+        APP_NAME: ota_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: ota_monitor:arm64-test
+    container_name: ota_monitor_arm64_test
+
+    volumes:
+      - ../ota_monitor/config/config.json:/etc/ota_monitor/config.json
+
+    environment:
+      - APP_NAME=ota_monitor
+      - APP_VERSION=3.32.2
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - VNC_PORT=${VNC_PORT:-0}
+
+    security_opt:
+      - seccomp:unconfined
+
+    network_mode: host
+
+    profiles: [test]
+
+  # arm64 실행 이미지 (flutter-auto 기반, AGL 타겟용)
+  ota_monitor_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64
+      args:
+        APP_NAME: ota_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: ota_monitor:arm64
+    container_name: ota_monitor_arm64
+
+    volumes:
+      - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
+      - /dev/dri:/dev/dri
+      - /run/user/1001:/run/user/1001
+      - ../ota_monitor/config/config.json:/usr/share/flutter/ota_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+
+    environment:
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - APP_NAME=ota_monitor
+      - APP_VERSION=3.32.2
+
+    network_mode: host
+
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # F013: OTA real-stack integration test infrastructure
+  #
+  # Flutter 통합 테스트를 MockOtaManager(Dart 로컬 WebSocket) 대신
+  # 실제 rosbridge_server + rclpy OtaManager mock 으로 돌리기 위한 두 컨테이너.
+  #
+  # 사전 조건:
+  #   MMF_WS 환경변수에 mmf_interfaces 가 포함된 ROS2 워크스페이스 build 경로
+  #   (install/setup.bash 가 존재하는 디렉토리의 부모) 가 지정되어야 한다.
+  #
+  # 기동:
+  #   MMF_WS=/path/to/mmf_ws docker compose \
+  #       --profile ota-real-stack up -d rosbridge ota_manager_mock
+  #   docker compose --profile ota-real-stack logs -f ota_manager_mock
+  #     # → "ota_manager_mock ready — 3 seeded apps"
+  #
+  # Flutter 테스트 (별도 셸):
+  #   cd apps/ota_monitor
+  #   DISPLAY=:99 flutter test integration_test/ota_integration_test.dart \
+  #       -d linux --dart-define=OTA_ROS_URL=ws://localhost:9090
+  #
+  # 정리:
+  #   docker compose --profile ota-real-stack down
+  # ═══════════════════════════════════════════════════════════════════════
+
+  rosbridge:
+    image: ros:humble-ros-base
+    network_mode: host
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y --no-install-recommends ros-humble-rosbridge-suite &&
+               source /opt/ros/humble/setup.bash &&
+               ros2 run rosbridge_server rosbridge_websocket"
+    profiles: [ota-real-stack]
+    restart: unless-stopped
+
+  ota_manager_mock:
+    image: ros:humble-ros-base
+    network_mode: host
+    volumes:
+      - ../ota_monitor/integration_test:/mock:ro
+      # MMF_WS 미설정 시 placeholder 경로 — ota_manager_mock.py 가 친절한
+      # import 에러로 종료되도록 유도.
+      - ${MMF_WS:-./.placeholder-mmf-ws}/install:/mmf_install:ro
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y --no-install-recommends python3 &&
+               source /opt/ros/humble/setup.bash &&
+               if [ -f /mmf_install/setup.bash ]; then
+                 source /mmf_install/setup.bash;
+               else
+                 echo '[WARN] /mmf_install/setup.bash 없음 — MMF_WS 지정 필요 (docker compose 기동 전 export MMF_WS=/path/to/ws)' >&2;
+               fi &&
+               python3 /mock/ota_manager_mock.py"
+    depends_on: [rosbridge]
+    profiles: [ota-real-stack]
     restart: unless-stopped

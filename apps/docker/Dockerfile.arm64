@@ -69,7 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ADD output/${APP_NAME}-arm64-release.tar.gz /
 
 # config.json 오버라이드 (빌드 시 포함, 런타임에서 볼륨으로 덮어쓸 수 있음)
-COPY adsw_monitor/config/config.json ${BUNDLE_PATH}/data/flutter_assets/assets/config/config.json
+COPY ${APP_NAME}/config/config.json ${BUNDLE_PATH}/data/flutter_assets/assets/config/config.json
 
 # flutter-auto 엔트리포인트 스크립트
 # flutter-auto 바이너리는 호스트에서 볼륨 마운트하거나

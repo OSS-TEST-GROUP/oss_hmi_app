@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:roslibdart/roslibdart.dart';
 import '../config/app_config.dart';
+import '../logging/app_log.dart';
 import 'package:get/get.dart';
 
 typedef RosFactory = Ros Function(String url);
@@ -14,6 +16,19 @@ class RosKeeper {
   })  : _rosFactory = rosFactory ?? ((url) => Ros(url: url)),
         _timerFactory = timerFactory ??
             ((duration, onTick) => Timer.periodic(duration, onTick));
+
+  /// F010: exponential backoff sequence used by [_kickReconnect].
+  ///
+  /// Doubles the delay up to [maxBackoff], then stays there. Exposed as a
+  /// pure function so the 1s → 2s → 4s → 8s progression can be unit tested
+  /// without simulating wall-clock time.
+  static const Duration initialBackoff = Duration(seconds: 1);
+  static const Duration maxBackoff = Duration(seconds: 8);
+
+  static Duration nextBackoff(Duration current) {
+    final next = current * 2;
+    return next > maxBackoff ? maxBackoff : next;
+  }
 
   final AppConfig cfg;
   final RosFactory _rosFactory;
@@ -32,6 +47,11 @@ class RosKeeper {
 
   bool _restored = false;
 
+  // F007: number of consecutive reconnect iterations that did not yield a
+  // connected state. Exposed as a listenable notifier so the UI can show
+  // a warning badge after repeated failures.
+  final ValueNotifier<int> consecutiveFailures = ValueNotifier<int>(0);
+
   Future<void> start() async {
     await stop();
     _stopping = false;
@@ -47,19 +67,20 @@ class RosKeeper {
 
     _statusSub = _ros!.statusStream.listen(
       (s) async {
-        print('[ROS] status=$s');
+        appLog('[ROS] status=$s');
         if (s == Status.connected) {
           await _onConnected();
         } else {
           _restored = false;
         }
       },
-      onError: (e, st) => print('[ROS] statusStream error: $e'),
-      onDone: () => print('[ROS] statusStream done'),
+      onError: (e, st) => appLog('[ROS] statusStream error: $e', level: 'warn'),
+      onDone: () => appLog('[ROS] statusStream done'),
     );
 
     _reconnectPoll?.cancel();
-    _reconnectPoll = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _reconnectPoll = Timer.periodic(
+        Duration(seconds: cfg.rosReconnectIntervalSec), (_) async {
       final r = _ros;
       if (_stopping || r == null) return;
       if (_reconnecting) return;
@@ -69,7 +90,8 @@ class RosKeeper {
 
     _kickReconnect();
 
-    _timer = _timerFactory(const Duration(seconds: 1), (_) async {
+    _timer = _timerFactory(
+        Duration(seconds: cfg.heartbeatIntervalSec), (_) async {
       final r = _ros;
       if (r == null) return;
       if (r.status != Status.connected) return;
@@ -100,7 +122,9 @@ class RosKeeper {
     } catch (_) {}
 
     _restored = true;
-    print('[ROS] onConnected: restored topics & DI updated');
+    // F007: fresh connection resets the failure streak.
+    consecutiveFailures.value = 0;
+    appLog('[ROS] onConnected: restored topics & DI updated');
   }
 
   Future<bool> _safeCloseWithResult(Ros r) async {
@@ -108,13 +132,13 @@ class RosKeeper {
       await r.close().timeout(const Duration(seconds: 2));
       return true;
     } catch (e) {
-      print('[RECON] close timeout/failed: $e');
+      appLog('[RECON] close timeout/failed: $e', level: 'warn');
       return false;
     }
   }
 
   void _recreateRos() {
-    print('[RECON] recreate Ros');
+    appLog('[RECON] recreate Ros');
 
     _statusSub?.cancel();
     _statusSub = null;
@@ -130,15 +154,15 @@ class RosKeeper {
 
     _statusSub = _ros!.statusStream.listen(
       (s) async {
-        print('[ROS] status=$s');
+        appLog('[ROS] status=$s');
         if (s == Status.connected) {
           await _onConnected();
         } else {
           _restored = false;
         }
       },
-      onError: (e, st) => print('[ROS] statusStream error: $e'),
-      onDone: () => print('[ROS] statusStream done'),
+      onError: (e, st) => appLog('[ROS] statusStream error: $e', level: 'warn'),
+      onDone: () => appLog('[ROS] statusStream done'),
     );
   }
 
@@ -152,8 +176,7 @@ class RosKeeper {
 
     unawaited(() async {
       try {
-        var delay = const Duration(seconds: 1);
-        const maxDelay = Duration(seconds: 8);
+        var delay = initialBackoff;
 
         while (!_stopping) {
           final r = _ros;
@@ -167,7 +190,7 @@ class RosKeeper {
           try {
             r.connect();
           } catch (e) {
-            print('[RECON] connect threw: $e');
+            appLog('[RECON] connect threw: $e', level: 'warn');
           }
 
           await Future<void>.delayed(const Duration(seconds: 1));
@@ -181,9 +204,11 @@ class RosKeeper {
             _recreateRos();
           }
 
+          // F007: one more iteration without a connection.
+          consecutiveFailures.value = consecutiveFailures.value + 1;
+
           await Future<void>.delayed(delay);
-          delay = delay * 2;
-          if (delay > maxDelay) delay = maxDelay;
+          delay = nextBackoff(delay);
         }
       } finally {
         _reconnecting = false;

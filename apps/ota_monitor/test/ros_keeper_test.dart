@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:ota_monitor/config/app_config.dart';
 import 'package:ota_monitor/ros/ros_keeper.dart';
@@ -101,6 +102,119 @@ void main() {
       verify(() => mockRos1.close()).called(1);
       verifyNever(() => mockRos2.close());
       expect(keeper.ros, same(mockRos2));
+    });
+
+    // ── F010: exponential backoff sequence (pure function) ───────────────
+
+    group('nextBackoff', () {
+      test('doubles up to maxBackoff and caps at 8s', () {
+        expect(RosKeeper.nextBackoff(const Duration(seconds: 1)),
+            const Duration(seconds: 2));
+        expect(RosKeeper.nextBackoff(const Duration(seconds: 2)),
+            const Duration(seconds: 4));
+        expect(RosKeeper.nextBackoff(const Duration(seconds: 4)),
+            const Duration(seconds: 8));
+        expect(RosKeeper.nextBackoff(const Duration(seconds: 8)),
+            const Duration(seconds: 8));
+      });
+
+      test('stays at maxBackoff when current already exceeds it', () {
+        expect(RosKeeper.nextBackoff(const Duration(seconds: 30)),
+            RosKeeper.maxBackoff);
+      });
+
+      test('initial constants match the documented values', () {
+        expect(RosKeeper.initialBackoff, const Duration(seconds: 1));
+        expect(RosKeeper.maxBackoff, const Duration(seconds: 8));
+      });
+    });
+
+    // ── F010: GetX instance replacement on status.connected ──────────────
+
+    group('onConnected GetX wiring', () {
+      late StreamController<Status> statusCtrl;
+
+      // A timer factory that does NOT auto-fire the heartbeat callback,
+      // so the test doesn't exercise Topic.publish on a skeleton mock Ros.
+      Timer inertTimerFactory(Duration d, void Function(Timer) cb) =>
+          Timer(const Duration(days: 1), () {});
+
+      setUp(() => Get.reset());
+      tearDown(() => Get.reset());
+
+      MockRos readyMock() {
+        final r = MockRos();
+        statusCtrl = StreamController<Status>.broadcast();
+        when(() => r.statusStream).thenAnswer((_) => statusCtrl.stream);
+        // status starts at none; the stream emission drives the transition.
+        when(() => r.status).thenReturn(Status.none);
+        when(() => r.close()).thenAnswer((_) async {});
+        return r;
+      }
+
+      test('Get.put<Ros> is populated when statusStream emits connected',
+          () async {
+        final r = readyMock();
+        final keeper = RosKeeper(
+          cfg,
+          rosFactory: (_) => r,
+          timerFactory: inertTimerFactory,
+        );
+        await keeper.start();
+        // Flip status and fire the stream.
+        when(() => r.status).thenReturn(Status.connected);
+        statusCtrl.add(Status.connected);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(Get.isRegistered<Ros>(), isTrue);
+        expect(Get.find<Ros>(), same(r));
+        await statusCtrl.close();
+        await keeper.stop();
+      });
+
+      test('Get.replace<Ros> is used when an instance was already registered',
+          () async {
+        final older = MockRos();
+        when(() => older.statusStream)
+            .thenAnswer((_) => const Stream<Status>.empty());
+        when(() => older.status).thenReturn(Status.none);
+        when(() => older.close()).thenAnswer((_) async {});
+        Get.put<Ros>(older, permanent: true);
+
+        final r = readyMock();
+        final keeper = RosKeeper(
+          cfg,
+          rosFactory: (_) => r,
+          timerFactory: inertTimerFactory,
+        );
+        await keeper.start();
+        when(() => r.status).thenReturn(Status.connected);
+        statusCtrl.add(Status.connected);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(Get.find<Ros>(), same(r),
+            reason: 'onConnected must swap the GetX instance');
+        await statusCtrl.close();
+        await keeper.stop();
+      });
+    });
+
+    // ── F010: AppConfig-driven interval wiring (F005 integration) ────────
+
+    test('heartbeat timer duration comes from cfg.heartbeatIntervalSec',
+        () async {
+      cfg = AppConfig(
+        rosUrl: Uri.parse('ws://dummy:9090'),
+        statusTopic: '/app_status/test_ota',
+        heartbeatIntervalSec: 7,
+      );
+      final keeper = RosKeeper(
+        cfg,
+        rosFactory: (_) => mockRos,
+        timerFactory: fakeTimerFactory,
+      );
+      await keeper.start();
+      expect(createdTimerDurations, contains(const Duration(seconds: 7)));
     });
   });
 }
