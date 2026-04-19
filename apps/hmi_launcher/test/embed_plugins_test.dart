@@ -45,13 +45,14 @@ Future<void> _wideView(WidgetTester tester) async {
 
 void main() {
   setUp(() {
-    // Reset GetX before each test
+    // Reset GetX before each test to clear any previous state
     Get.reset();
   });
 
-  tearDown(() {
+  tearDown() {
+    // Reset GetX state
     Get.reset();
-  });
+  }
 
   group('Plugin Embedding (ADR-002)', () {
     testWidgets('Test 1: launcher shows embedded ota_monitor on sidebar tap',
@@ -73,16 +74,23 @@ void main() {
         initialRegistry: registry,
         enableRos: false, // No real ROS connection in tests
       ));
+      await tester.pump(); // Initial frame
 
       // Tap sidebar ota_monitor item
       await tester.tap(find.byKey(const Key('sidebar_nav_ota_monitor')));
-      await tester.pump(); // Don't use pumpAndSettle - views may have pending futures
+      await tester.pump(); // Trigger transition
+      await tester.pump(const Duration(milliseconds: 250)); // Complete animation
 
       // Verify OtaEmbeddedPanel is mounted (contains OtaViewPage)
       expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
 
       // Note: Cannot verify exact accent color (#F5C400) in statusbar without
       // widget introspection, but accent scope is tested in shell_v2_test.dart
+
+      // Clean up - navigate away before test ends to dispose collectors
+      await tester.tap(find.byKey(const Key('sidebar_home_item')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
     });
 
     testWidgets(
@@ -105,6 +113,7 @@ void main() {
         initialRegistry: registry,
         enableRos: false,
       ));
+      await tester.pump(); // Initial frame
 
       // Step 1: verify home panel visible
       expect(
@@ -114,11 +123,13 @@ void main() {
       // Step 2: tap ota_monitor, verify embedded panel renders
       await tester.tap(find.byKey(const Key('sidebar_nav_ota_monitor')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
 
       // Step 3: tap home, verify home panel back
       await tester.tap(find.byKey(const Key('sidebar_home_item')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(
           find.textContaining('Which app would you like to launch'),
           findsOneWidget);
@@ -126,11 +137,13 @@ void main() {
       // Step 4: tap adsw_monitor, verify embedded panel renders
       await tester.tap(find.byKey(const Key('sidebar_nav_adsw_monitor')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
 
       // Step 5: tap home, verify home panel
       await tester.tap(find.byKey(const Key('sidebar_home_item')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(
           find.textContaining('Which app would you like to launch'),
           findsOneWidget);
@@ -157,9 +170,11 @@ void main() {
         initialRegistry: registry,
         enableRos: false, // Don't create real LauncherRosKeeper
       ));
+      await tester.pump(); // Initial frame
 
       await tester.tap(find.byKey(const Key('sidebar_nav_ota_monitor')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
 
       // OtaEmbeddedPanel should render (contains OtaViewPage)
       expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
@@ -167,6 +182,11 @@ void main() {
       // Verify the mock Ros is still registered (not replaced by launcher)
       expect(Get.isRegistered<Ros>(), isTrue);
       expect(Get.find<Ros>(), equals(mockRos));
+
+      // Clean up
+      await tester.tap(find.byKey(const Key('sidebar_home_item')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
     });
 
     testWidgets('Test 4: statusbar accent changes with app selection',
@@ -188,6 +208,7 @@ void main() {
         initialRegistry: registry,
         enableRos: false,
       ));
+      await tester.pump(); // Initial frame
 
       // Initial state: launcher blue accent (implicit, home selected)
       // Note: Detailed accent color verification is in shell_v2_test.dart
@@ -195,18 +216,21 @@ void main() {
       // Select ota_monitor
       await tester.tap(find.byKey(const Key('sidebar_nav_ota_monitor')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
       // Accent should now be #F5C400 (verified by shell_v2 tests)
 
       // Select adsw_monitor
       await tester.tap(find.byKey(const Key('sidebar_nav_adsw_monitor')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
       // Accent should now be #00E5A0 (verified by shell_v2 tests)
 
       // Return home
       await tester.tap(find.byKey(const Key('sidebar_home_item')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(
           find.textContaining('Which app would you like to launch'),
           findsOneWidget);

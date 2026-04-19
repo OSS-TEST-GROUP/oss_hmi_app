@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
@@ -45,6 +46,11 @@ Future<void> _wideView(WidgetTester tester) async {
 }
 
 void main() {
+  tearDown(() {
+    // Clean up GetX state
+    Get.reset();
+  });
+
   testWidgets('renders the launcher shell and sidebar entries from registry',
       (tester) async {
     await _wideView(tester);

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
+import 'package:roslibdart/roslibdart.dart';
 import 'package:hmi_launcher/domain/app_manifest.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
 import 'package:hmi_launcher/presentation/shell/launcher_shell.dart';
@@ -11,6 +13,10 @@ void main() {
     late PluginRegistry testRegistry;
 
     setUp(() {
+      // Register mock Ros for embedded panels (IndexedStack creates all panels upfront)
+      Get.reset();
+      Get.put<Ros>(Ros(url: 'ws://mock:9090'));
+
       final otaManifest = AppManifest(
         id: 'ota_monitor',
         name: 'OTA Monitor',
@@ -39,6 +45,11 @@ void main() {
       ]);
     });
 
+    tearDown(() {
+      // Clean up GetX state from embedded panels
+      Get.reset();
+    });
+
     testWidgets('Test Case A: accent color propagates when app selection changes',
         (tester) async {
       await tester.pumpWidget(
@@ -62,7 +73,8 @@ void main() {
 
       // Tap ota_monitor from sidebar
       await tester.tap(find.byKey(const Key('sidebar_nav_ota_monitor')));
-      await tester.pumpAndSettle();
+      await tester.pump(); // Trigger state change
+      await tester.pump(const Duration(milliseconds: 250)); // Complete animation
 
       // Accent should now be OTA yellow
       final otaAccentScope = tester.widget<AppAccentScope>(
@@ -72,7 +84,8 @@ void main() {
 
       // Tap adsw_monitor from sidebar
       await tester.tap(find.byKey(const Key('sidebar_nav_adsw_monitor')));
-      await tester.pumpAndSettle();
+      await tester.pump(); // Trigger state change
+      await tester.pump(const Duration(milliseconds: 250)); // Complete animation
 
       // Accent should now be ADSW green
       final adswAccentScope = tester.widget<AppAccentScope>(

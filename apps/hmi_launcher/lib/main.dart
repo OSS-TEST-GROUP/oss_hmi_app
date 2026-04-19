@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:roslibdart/roslibdart.dart';
 
 import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
@@ -80,18 +82,37 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
           appsRoot: appsRoot,
           launcherVersion: launcherVersion,
         ).scan();
-    _initRos();
+    // Initialize ROS immediately (synchronously) to ensure it's ready
+    // before any embedded panels try to mount
+    _initRosSync();
   }
 
   /// L009: Initialize unified ROS keeper for embedded plugins.
   ///
   /// Creates a single Ros instance registered in GetX. All plugin collectors
   /// (OtaCollector, AdswCollector, etc.) will find this via Get.find<Ros>().
-  Future<void> _initRos() async {
-    if (!widget.enableRos) return;
+  ///
+  /// When enableRos=false (tests), a mock Ros is registered to prevent
+  /// Get.find<Ros>() errors in collectors.
+  void _initRosSync() {
+    if (!widget.enableRos) {
+      // Register mock Ros for tests to prevent Get.find<Ros>() errors
+      _registerMockRos();
+      return;
+    }
     final config = LauncherConfig.defaults();
     _rosKeeper = LauncherRosKeeper(config);
-    await _rosKeeper!.start();
+    // Start ROS asynchronously but don't await (collectors will handle connection state)
+    _rosKeeper!.start();
+  }
+
+  /// Registers a mock Ros instance for test environments.
+  ///
+  /// Plugin collectors call Get.find<Ros>() in their constructors.
+  /// Without this, tests with enableRos=false would crash.
+  void _registerMockRos() {
+    if (Get.isRegistered<Ros>()) return; // Test may have injected one
+    Get.put<Ros>(Ros(url: 'ws://mock:9090'));
   }
 
   @override

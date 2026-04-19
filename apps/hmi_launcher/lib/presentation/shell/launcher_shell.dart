@@ -30,8 +30,9 @@ class LauncherShell extends StatefulWidget {
 class _LauncherShellState extends State<LauncherShell> {
   late String? _selectedAppId;
   late NluRouter _nluRouter;
-  final GlobalKey<LauncherHomePanelState> _homePanelKey =
-      GlobalKey<LauncherHomePanelState>();
+
+  // Callback to communicate prompt submission to home panel
+  void Function(String input, AppManifest? matchedApp)? _homePanelPromptCallback;
 
   @override
   void initState() {
@@ -86,9 +87,9 @@ class _LauncherShellState extends State<LauncherShell> {
   void _handlePromptSubmit(String input) {
     final matchedApp = _nluRouter.resolve(input);
 
-    // If on home panel, pass to it
-    if (_selectedAppId == null && _homePanelKey.currentState != null) {
-      _homePanelKey.currentState!.handlePromptSubmit(input, matchedApp);
+    // If on home panel, notify it via callback
+    if (_selectedAppId == null && _homePanelPromptCallback != null) {
+      _homePanelPromptCallback!(input, matchedApp);
     }
 
     // Auto-launch if match found
@@ -132,7 +133,9 @@ class _LauncherShellState extends State<LauncherShell> {
                             apps: widget.registry.apps,
                             selectedAppId: _selectedAppId,
                             onAppLaunch: _handleAppLaunch,
-                            homePanelKey: _homePanelKey,
+                            onHomePanelReady: (callback) {
+                              _homePanelPromptCallback = callback;
+                            },
                           ),
                         ),
                         LauncherPromptBar(

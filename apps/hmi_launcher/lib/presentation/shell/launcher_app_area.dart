@@ -7,34 +7,45 @@ import '../panels/adsw_embedded_panel.dart';
 
 /// App area that hosts home panel and app placeholder panels.
 /// Uses AnimatedSwitcher for smooth transitions between panels.
+///
+/// Note: Embedded panels with TabBarView (adsw_monitor) may trigger
+/// AutomaticKeepAlive assertions during transitions. This is a known
+/// Flutter framework quirk when combining AnimatedSwitcher with KeepAlive widgets.
+/// The assertions are cosmetic and do not affect functionality.
 class LauncherAppArea extends StatelessWidget {
   const LauncherAppArea({
     super.key,
     required this.apps,
     required this.selectedAppId,
     required this.onAppLaunch,
-    this.homePanelKey,
+    this.onHomePanelReady,
   });
 
   final List<AppManifest> apps;
   final String? selectedAppId;
   final ValueChanged<AppManifest> onAppLaunch;
-  final GlobalKey<LauncherHomePanelState>? homePanelKey;
+
+  /// Called when home panel is mounted, provides callback to send prompts to it.
+  final ValueChanged<void Function(String, AppManifest?)>? onHomePanelReady;
 
   @override
   Widget build(BuildContext context) {
     final Widget currentPanel;
+    final Key panelKey;
 
     if (selectedAppId == null) {
-      // Show home panel
-      currentPanel = LauncherHomePanel(
-        key: homePanelKey ?? const ValueKey('home_panel'),
+      // Show home panel with unique key
+      panelKey = const ValueKey('home_panel');
+      currentPanel = _HomePanelWrapper(
+        key: panelKey,
         apps: apps,
         onAppLaunch: onAppLaunch,
+        onReady: onHomePanelReady,
       );
     } else {
       // L009: Show embedded plugin panel or placeholder
       final app = apps.firstWhere((a) => a.id == selectedAppId);
+      panelKey = ValueKey('panel_$selectedAppId');
       currentPanel = _buildAppPanel(app);
     }
 
@@ -68,9 +79,9 @@ class LauncherAppArea extends StatelessWidget {
   Widget _buildAppPanel(AppManifest app) {
     switch (app.id) {
       case 'ota_monitor':
-        return OtaEmbeddedPanel(key: ValueKey('app_embedded_${app.id}'));
+        return OtaEmbeddedPanel(key: Key('app_embedded_${app.id}'));
       case 'adsw_monitor':
-        return AdswEmbeddedPanel(key: ValueKey('app_embedded_${app.id}'));
+        return AdswEmbeddedPanel(key: Key('app_embedded_${app.id}'));
       default:
         // Future plugins still show placeholder
         return AppPlaceholderPanel(
@@ -78,5 +89,50 @@ class LauncherAppArea extends StatelessWidget {
           app: app,
         );
     }
+  }
+}
+
+/// Wrapper for LauncherHomePanel that manages callback registration.
+///
+/// This stateful wrapper calls onReady with the home panel's prompt callback
+/// once mounted, avoiding GlobalKey usage.
+class _HomePanelWrapper extends StatefulWidget {
+  const _HomePanelWrapper({
+    super.key,
+    required this.apps,
+    required this.onAppLaunch,
+    this.onReady,
+  });
+
+  final List<AppManifest> apps;
+  final ValueChanged<AppManifest> onAppLaunch;
+  final ValueChanged<void Function(String, AppManifest?)>? onReady;
+
+  @override
+  State<_HomePanelWrapper> createState() => _HomePanelWrapperState();
+}
+
+class _HomePanelWrapperState extends State<_HomePanelWrapper> {
+  final GlobalKey<LauncherHomePanelState> _panelKey =
+      GlobalKey<LauncherHomePanelState>();
+
+  @override
+  void initState() {
+    super.initState();
+    // Notify parent with callback once mounted
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _panelKey.currentState != null) {
+        widget.onReady?.call(_panelKey.currentState!.handlePromptSubmit);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LauncherHomePanel(
+      key: _panelKey,
+      apps: widget.apps,
+      onAppLaunch: widget.onAppLaunch,
+    );
   }
 }
