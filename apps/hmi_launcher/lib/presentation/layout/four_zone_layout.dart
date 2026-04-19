@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 
 /// 4-Zone Launcher Layout — common template required by I-02 in the plan.
 ///
+/// Deprecated: Superseded by LauncherShell in L008. Kept for L002 widget test compatibility.
+/// Will be removed in v5.0.
+@Deprecated('Use LauncherShell instead. Will be removed in v5.0.')
+/// 4-Zone Launcher Layout — common template required by I-02 in the plan.
+///
 /// Layout reference (planning doc p.5):
 ///
 ///   ┌────────────────────────────────────────────────┐
