@@ -14,6 +14,9 @@ import 'package:ota_monitor/controller/ota_collector.dart';
 import 'package:ota_monitor/view/ota_view_page.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
 
+// L009: Export view widget for launcher embedding
+export 'view/ota_view_page.dart' show OtaViewPage;
+
 late AppConfig appConfig;
 late RosKeeper rosKeeper;
 String? startupConfigWarning;

@@ -16,6 +16,10 @@ import 'package:adsw_monitor/view/mw_view_page.dart';
 import 'package:adsw_monitor/view/web_prompt_bootstrap.dart';
 import 'package:adsw_monitor/view/log_overlay.dart';
 
+// L009: Export view widgets for launcher embedding
+export 'view/adsw_view_page.dart' show AdswViewPage;
+export 'view/mw_view_page.dart' show MwViewPage;
+
 late AppConfig appConfig;
 late RosKeeper rosKeeper;
 

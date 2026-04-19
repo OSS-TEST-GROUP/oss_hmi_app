@@ -1,0 +1,8 @@
+{
+  "rosbridge": {
+    "url": "ws://localhost:9090"
+  },
+  "statusTopic": "/app_status/hmi_launcher",
+  "rosReconnectIntervalSec": 2,
+  "heartbeatIntervalSec": 1
+}

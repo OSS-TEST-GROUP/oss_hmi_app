@@ -53,7 +53,10 @@ void main() {
       _m('adsw_monitor', name: 'AD SW', prompts: ['AD SW 모니터 열어줘']),
     ]);
 
-    await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
+    await tester.pumpWidget(HmiLauncherApp(
+      initialRegistry: registry,
+      enableRos: false, // L009: disable ROS in tests
+    ));
 
     expect(find.byType(LauncherShell), findsOneWidget);
     expect(find.byKey(const Key('sidebar_nav_ota_monitor')), findsOneWidget);
@@ -68,7 +71,10 @@ void main() {
       _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 모니터 열어줘']),
     ]);
 
-    await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
+    await tester.pumpWidget(HmiLauncherApp(
+      initialRegistry: registry,
+      enableRos: false, // L009: disable ROS in tests
+    ));
 
     await tester.enterText(
       find.byKey(const Key('prompt_input_field')),
@@ -95,7 +101,10 @@ void main() {
       _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 모니터 열어줘']),
     ]);
 
-    await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
+    await tester.pumpWidget(HmiLauncherApp(
+      initialRegistry: registry,
+      enableRos: false, // L009: disable ROS in tests
+    ));
 
     await tester.enterText(
       find.byKey(const Key('prompt_input_field')),
@@ -108,7 +117,7 @@ void main() {
     expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsNothing);
   });
 
-  testWidgets('sidebar tap selects the app and navigates to placeholder',
+  testWidgets('sidebar tap selects the app and shows embedded panel',
       (tester) async {
     await _wideView(tester);
     final registry = _registry([
@@ -116,19 +125,25 @@ void main() {
       _m('adsw_monitor', name: 'AD SW', prompts: ['AD SW 모니터 열어줘']),
     ]);
 
-    await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
+    await tester.pumpWidget(HmiLauncherApp(
+      initialRegistry: registry,
+      enableRos: false, // L009: disable ROS in tests
+    ));
 
     await tester.tap(find.byKey(const Key('sidebar_nav_adsw_monitor')));
     await tester.pump();
 
-    // L008: sidebar tap shows placeholder panel, not launch card
-    expect(find.textContaining('is being prepared'), findsOneWidget);
+    // L009: sidebar tap shows embedded panel, not placeholder
+    expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
   });
 
   testWidgets('empty registry renders launcher shell with no app items',
       (tester) async {
     await _wideView(tester);
-    await tester.pumpWidget(HmiLauncherApp(initialRegistry: _registry(const [])));
+    await tester.pumpWidget(HmiLauncherApp(
+      initialRegistry: _registry(const []),
+      enableRos: false, // L009: disable ROS in tests
+    ));
 
     // LauncherShell should render
     expect(find.byType(LauncherShell), findsOneWidget);
@@ -164,7 +179,10 @@ void main() {
     );
     final registry = _registry([ota, adsw]);
 
-    await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
+    await tester.pumpWidget(HmiLauncherApp(
+      initialRegistry: registry,
+      enableRos: false, // L009: disable ROS in tests
+    ));
 
     // 1. sidebar shows both apps
     expect(find.byKey(const Key('sidebar_nav_ota_monitor')), findsOneWidget);
@@ -201,9 +219,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Which app would you like to launch'), findsOneWidget);
 
-    // 5. tapping adsw sidebar item navigates to placeholder
+    // 5. tapping adsw sidebar item navigates to embedded panel (L009)
     await tester.tap(find.byKey(const Key('sidebar_nav_adsw_monitor')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('is being prepared'), findsOneWidget);
+    // L009: now shows embedded AdswEmbeddedPanel instead of placeholder
+    expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
   });
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../domain/app_manifest.dart';
 import '../panels/launcher_home_panel.dart';
 import '../panels/app_placeholder_panel.dart';
+import '../panels/ota_embedded_panel.dart';
+import '../panels/adsw_embedded_panel.dart';
 
 /// App area that hosts home panel and app placeholder panels.
 /// Uses AnimatedSwitcher for smooth transitions between panels.
@@ -31,12 +33,9 @@ class LauncherAppArea extends StatelessWidget {
         onAppLaunch: onAppLaunch,
       );
     } else {
-      // Show app placeholder panel
+      // L009: Show embedded plugin panel or placeholder
       final app = apps.firstWhere((a) => a.id == selectedAppId);
-      currentPanel = AppPlaceholderPanel(
-        key: ValueKey('app_panel_$selectedAppId'),
-        app: app,
-      );
+      currentPanel = _buildAppPanel(app);
     }
 
     return Container(
@@ -60,5 +59,24 @@ class LauncherAppArea extends StatelessWidget {
         child: currentPanel,
       ),
     );
+  }
+
+  /// L009: Build app panel - embedded plugin or placeholder.
+  ///
+  /// Switch on app.id to return the appropriate embedded panel.
+  /// Future plugins not yet embedded show AppPlaceholderPanel.
+  Widget _buildAppPanel(AppManifest app) {
+    switch (app.id) {
+      case 'ota_monitor':
+        return OtaEmbeddedPanel(key: ValueKey('app_embedded_${app.id}'));
+      case 'adsw_monitor':
+        return AdswEmbeddedPanel(key: ValueKey('app_embedded_${app.id}'));
+      default:
+        // Future plugins still show placeholder
+        return AppPlaceholderPanel(
+          key: ValueKey('app_panel_${app.id}'),
+          app: app,
+        );
+    }
   }
 }

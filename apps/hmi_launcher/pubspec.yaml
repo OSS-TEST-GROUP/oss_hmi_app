@@ -35,6 +35,16 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # L009: Shared dependencies for plugin embedding
+  get: ^4.7.2
+  roslibdart: ^0.0.1-dev+4
+
+  # L009: Plugin path dependencies
+  ota_monitor:
+    path: ../ota_monitor
+  adsw_monitor:
+    path: ../adsw_monitor
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -59,6 +69,7 @@ flutter:
 
   assets:
     - assets/FONT_LICENSES.txt
+    - config/launcher_config.json
 
   fonts:
     - family: Orbitron
