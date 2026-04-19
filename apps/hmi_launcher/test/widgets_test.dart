@@ -6,6 +6,8 @@ import 'package:hmi_launcher/presentation/widgets/app_launch_card.dart';
 import 'package:hmi_launcher/presentation/widgets/data_card.dart';
 import 'package:hmi_launcher/presentation/widgets/prompt_input_bar.dart';
 import 'package:hmi_launcher/presentation/widgets/sidebar_navigator.dart';
+import 'package:hmi_launcher/presentation/theme/app_accent_scope.dart';
+import 'package:hmi_launcher/presentation/theme/launcher_tokens.dart';
 
 AppManifest _manifest(String id, {String name = 'Name', String icon = '📦'}) {
   return AppManifest(
@@ -22,7 +24,10 @@ AppManifest _manifest(String id, {String name = 'Name', String icon = '📦'}) {
 Widget _wrap(Widget child, {Size size = const Size(1200, 800)}) {
   return MaterialApp(
     theme: ThemeData.dark(),
-    home: Scaffold(body: SizedBox(width: size.width, height: size.height, child: child)),
+    home: AppAccentScope(
+      accentColor: LauncherTokens.launcher,
+      child: Scaffold(body: SizedBox(width: size.width, height: size.height, child: child)),
+    ),
   );
 }
 
@@ -89,7 +94,7 @@ void main() {
       ));
 
       expect(find.text('OTA Monitor'), findsOneWidget);
-      expect(find.text('실행'), findsOneWidget);
+      expect(find.text('Launch'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('app_launch_button_ota_monitor')));
       expect(launched, isTrue);

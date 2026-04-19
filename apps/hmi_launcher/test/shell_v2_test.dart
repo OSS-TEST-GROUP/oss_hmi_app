@@ -123,7 +123,7 @@ void main() {
       await tester.tap(find.byKey(const Key('quick_chip_ota_monitor')));
       await tester.pumpAndSettle();
 
-      // AppLaunchCard should appear
+      // AppLaunchCard should appear in the home panel
       expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsOneWidget);
       expect(find.byKey(const Key('app_launch_button_ota_monitor')), findsOneWidget);
     });
@@ -145,16 +145,19 @@ void main() {
         'OTA 모니터 열어줘',
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
+      await tester.pump();
+
+      // Wait for scroll animation
+      await tester.pump(const Duration(milliseconds: 300));
 
       // User bubble should appear
       expect(find.byKey(const Key('chat_bubble_user')), findsAtLeastNWidgets(1));
 
-      // AppLaunchCard should appear after delay
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pumpAndSettle();
-
+      // AppLaunchCard should appear before auto-launch
       expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsOneWidget);
+
+      // Complete pending timers
+      await tester.pumpAndSettle();
     });
   });
 }

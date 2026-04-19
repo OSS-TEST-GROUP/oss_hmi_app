@@ -36,30 +36,28 @@ class _AppLaunchCardState extends State<AppLaunchCard> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Stack(
         key: Key('app_launch_card_${widget.app.id}'),
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-        decoration: BoxDecoration(
-          color: LauncherTokens.bg3,
-          borderRadius: BorderRadius.circular(8),
-          border: Border(
-            left: BorderSide(color: accent, width: 3),
-            top: BorderSide(color: LauncherTokens.b1),
-            right: BorderSide(color: LauncherTokens.b1),
-            bottom: BorderSide(color: LauncherTokens.b1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _isHovered
-                  ? accent.withOpacity(0.08)
-                  : Colors.black.withOpacity(0.4),
-              blurRadius: _isHovered ? 24 : 18,
-              offset: const Offset(0, 3),
+        children: [
+          // Main card container
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+            decoration: BoxDecoration(
+              color: LauncherTokens.bg3,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: LauncherTokens.b1),
+              boxShadow: [
+                BoxShadow(
+                  color: _isHovered
+                      ? accent.withOpacity(0.08)
+                      : Colors.black.withOpacity(0.4),
+                  blurRadius: _isHovered ? 24 : 18,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Row(
+            child: Row(
           children: [
             Text(
               widget.app.icon,
@@ -114,10 +112,28 @@ class _AppLaunchCardState extends State<AppLaunchCard> {
                   letterSpacing: 0.5,
                 ),
               ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-  }
+        // Accent border on left
+        Positioned(
+          left: 0,
+          top: 8,
+          bottom: 8,
+          child: Container(
+            width: 3,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(5),
+                bottomLeft: Radius.circular(5),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 }

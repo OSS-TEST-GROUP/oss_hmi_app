@@ -4,6 +4,8 @@
 //   - tests in this file (main shell + prompt → card flow)
 //   - test/widgets_test.dart (individual widgets)
 //   - test/plugin_registry_test.dart (domain)
+//
+// Migrated to LauncherShell (L008) — no longer uses FourZoneLayout.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hmi_launcher/domain/app_manifest.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
 import 'package:hmi_launcher/main.dart';
-import 'package:hmi_launcher/presentation/layout/four_zone_layout.dart';
+import 'package:hmi_launcher/presentation/shell/launcher_shell.dart';
 
 PluginRegistry _registry(List<AppManifest> apps) {
   return PluginRegistry(
@@ -43,7 +45,7 @@ Future<void> _wideView(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('renders the four zones and sidebar entries from registry',
+  testWidgets('renders the launcher shell and sidebar entries from registry',
       (tester) async {
     await _wideView(tester);
     final registry = _registry([
@@ -53,10 +55,10 @@ void main() {
 
     await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
 
-    expect(find.byType(FourZoneLayout), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_ota_monitor')), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_adsw_monitor')), findsOneWidget);
-    expect(find.text('어떤 앱을 실행할까요?'), findsOneWidget);
+    expect(find.byType(LauncherShell), findsOneWidget);
+    expect(find.byKey(const Key('sidebar_nav_ota_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('sidebar_nav_adsw_monitor')), findsOneWidget);
+    expect(find.textContaining('Which app would you like to launch'), findsOneWidget);
   });
 
   testWidgets('typing a matching prompt shows the AppLaunchCard',
@@ -75,8 +77,15 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
 
+    // Wait for scroll animation to complete
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Card should appear before auto-launch (which happens at 320ms)
     expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsOneWidget);
     expect(find.text('OTA Monitor'), findsWidgets);
+
+    // Complete pending timers before test ends
+    await tester.pumpAndSettle();
   });
 
   testWidgets('non-matching input shows a helpful message and no card',
@@ -93,13 +102,13 @@ void main() {
       '오늘 날씨 어때',
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('main_message')), findsOneWidget);
+    expect(find.textContaining('No matching app found'), findsOneWidget);
     expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsNothing);
   });
 
-  testWidgets('sidebar tap selects the app and surfaces its card',
+  testWidgets('sidebar tap selects the app and navigates to placeholder',
       (tester) async {
     await _wideView(tester);
     final registry = _registry([
@@ -109,18 +118,26 @@ void main() {
 
     await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
 
-    await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
+    await tester.tap(find.byKey(const Key('sidebar_nav_adsw_monitor')));
     await tester.pump();
 
-    expect(find.byKey(const Key('app_launch_card_adsw_monitor')), findsOneWidget);
+    // L008: sidebar tap shows placeholder panel, not launch card
+    expect(find.textContaining('is being prepared'), findsOneWidget);
   });
 
-  testWidgets('empty registry renders an instructional empty state',
+  testWidgets('empty registry renders launcher shell with no app items',
       (tester) async {
     await _wideView(tester);
     await tester.pumpWidget(HmiLauncherApp(initialRegistry: _registry(const [])));
 
-    expect(find.textContaining('등록된 앱이 없습니다'), findsOneWidget);
+    // LauncherShell should render
+    expect(find.byType(LauncherShell), findsOneWidget);
+
+    // Home panel should render with initial message
+    expect(find.textContaining('Which app would you like to launch'), findsOneWidget);
+
+    // No app nav items (only home item exists)
+    expect(find.byKey(const Key('sidebar_home_item')), findsOneWidget);
   });
 
   // ──────────────────────────────────────────────────────────────────────
@@ -150,33 +167,43 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(initialRegistry: registry));
 
     // 1. sidebar shows both apps
-    expect(find.byKey(const Key('sidebar_item_ota_monitor')), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_adsw_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('sidebar_nav_ota_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('sidebar_nav_adsw_monitor')), findsOneWidget);
 
-    // 2. prompt 'AD SW 모니터 열어줘' → adsw card
+    // 2. prompt 'AD SW 모니터 열어줘' → adsw card (in home panel)
     await tester.enterText(
       find.byKey(const Key('prompt_input_field')),
       'AD SW 모니터 열어줘',
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const Key('app_launch_card_adsw_monitor')), findsOneWidget);
     expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsNothing);
 
-    // 3. prompt 'OTA 모니터 열어줘' → ota card (ada card gone)
+    // 3. prompt 'OTA 모니터 열어줘' → ota card (adsw card gone)
     await tester.enterText(
       find.byKey(const Key('prompt_input_field')),
       'OTA 모니터 열어줘',
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsOneWidget);
     expect(find.byKey(const Key('app_launch_card_adsw_monitor')), findsNothing);
 
-    // 4. tapping the adsw sidebar row switches the card back
-    await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
-    await tester.pump();
-    expect(find.byKey(const Key('app_launch_card_adsw_monitor')), findsOneWidget);
-    expect(find.byKey(const Key('app_launch_card_ota_monitor')), findsNothing);
+    // Wait for auto-launch timer to complete
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+
+    // 4. tapping home returns to launcher home panel
+    await tester.tap(find.byKey(const Key('sidebar_home_item')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Which app would you like to launch'), findsOneWidget);
+
+    // 5. tapping adsw sidebar item navigates to placeholder
+    await tester.tap(find.byKey(const Key('sidebar_nav_adsw_monitor')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('is being prepared'), findsOneWidget);
   });
 }
