@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
@@ -12,10 +14,41 @@ import 'ros/launcher_ros_keeper.dart';
 /// `min_launcher` to decide plugin compatibility.
 const String launcherVersion = '4.0.0';
 
-/// Root of the `apps/` tree the registry scans at startup. Relative to the
-/// launcher process's current working directory; adjust when the launcher
-/// is packaged as an AGL bundle.
-const String appsRoot = 'apps';
+/// Resolve the plugin `apps/` root at startup.
+///
+/// Priority:
+///   1. `HMI_APPS_ROOT` environment variable (absolute or relative path).
+///   2. First candidate that contains at least one `<app>/manifest.json`.
+///      Candidates cover common run contexts:
+///        - `apps`           : CWD == repo root
+///        - `..`             : CWD == apps/hmi_launcher (flutter run)
+///        - `../..`, `../../apps` : CWD == build/linux/x64/.../bundle
+///   3. Fallback: `apps` (yields empty registry, no crash).
+String resolveAppsRoot() {
+  final override = Platform.environment['HMI_APPS_ROOT'];
+  if (override != null && override.isNotEmpty) return override;
+
+  const candidates = <String>[
+    'apps',
+    '..',
+    '../..',
+    '../apps',
+    '../../apps',
+    '../../../apps',
+  ];
+  for (final c in candidates) {
+    final dir = Directory(c);
+    if (!dir.existsSync()) continue;
+    final hasManifest = dir
+        .listSync(followLinks: false)
+        .whereType<Directory>()
+        .any((sub) =>
+            File('${sub.path}${Platform.pathSeparator}manifest.json')
+                .existsSync());
+    if (hasManifest) return c;
+  }
+  return 'apps';
+}
 
 void main() {
   runApp(const HmiLauncherApp());
@@ -79,7 +112,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
     super.initState();
     _registry = widget.initialRegistry ??
         PluginRegistryScanner(
-          appsRoot: appsRoot,
+          appsRoot: resolveAppsRoot(),
           launcherVersion: launcherVersion,
         ).scan();
     // Initialize ROS immediately (synchronously) to ensure it's ready

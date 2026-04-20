@@ -116,7 +116,7 @@ class PluginRegistryScanner {
 
   static List<String> _defaultListEntries(String dir) {
     final d = Directory(dir);
-    if (!d.existsSync()) return const [];
+    if (!d.existsSync()) return <String>[];
     return d
         .listSync(followLinks: false)
         .whereType<Directory>()
