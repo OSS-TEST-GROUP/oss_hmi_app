@@ -34,6 +34,30 @@ class AppConfig {
         statusTopic: '/app_status/ota_monitor',
       );
 
+  /// F008: produce a new AppConfig with selected fields overridden.
+  /// All AppConfig fields are final, so callers must build a new instance
+  /// when applying runtime changes (e.g. rosbridge URL from Settings UI).
+  AppConfig copyWith({
+    Uri? rosUrl,
+    String? statusTopic,
+    List<String>? initialApps,
+    int? rosReconnectIntervalSec,
+    int? heartbeatIntervalSec,
+    int? historySize,
+    int? truncateLength,
+  }) =>
+      AppConfig(
+        rosUrl: rosUrl ?? this.rosUrl,
+        statusTopic: statusTopic ?? this.statusTopic,
+        initialApps: initialApps ?? this.initialApps,
+        rosReconnectIntervalSec:
+            rosReconnectIntervalSec ?? this.rosReconnectIntervalSec,
+        heartbeatIntervalSec:
+            heartbeatIntervalSec ?? this.heartbeatIntervalSec,
+        historySize: historySize ?? this.historySize,
+        truncateLength: truncateLength ?? this.truncateLength,
+      );
+
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
         rosUrl: Uri.parse(
           (j['rosbridge']?['url'] as String?) ?? 'ws://localhost:9090',
