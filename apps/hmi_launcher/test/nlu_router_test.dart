@@ -59,5 +59,45 @@ void main() {
       ];
       expect(NluRouter(tied).resolve('hello')?.id, 'aaa');
     });
+
+    test('falls back to app name when no prompt matches', () {
+      final apps = [
+        AppManifest(
+          id: 'ota_monitor',
+          name: 'OTA Monitor',
+          icon: '📦',
+          version: '1.0.0',
+          entry: 'ota_monitor/main.dart',
+          prompts: const ['업데이트 상태 확인'],
+        ),
+        AppManifest(
+          id: 'adsw_monitor',
+          name: 'AD SW',
+          icon: '📡',
+          version: '1.0.0',
+          entry: 'adsw_monitor/main.dart',
+          prompts: const ['센서 상태 보여줘'],
+        ),
+      ];
+      final r = NluRouter(apps);
+      expect(r.resolve('OTA')?.id, 'ota_monitor');
+      expect(r.resolve('ota monitor')?.id, 'ota_monitor');
+      expect(r.resolve('AD SW')?.id, 'adsw_monitor');
+      expect(r.resolve('adsw')?.id, 'adsw_monitor');
+    });
+
+    test('name fallback ignores single-char queries', () {
+      final apps = [
+        AppManifest(
+          id: 'adsw_monitor',
+          name: 'AD SW',
+          icon: '📡',
+          version: '1.0.0',
+          entry: 'adsw_monitor/main.dart',
+          prompts: const [],
+        ),
+      ];
+      expect(NluRouter(apps).resolve('a'), isNull);
+    });
   });
 }

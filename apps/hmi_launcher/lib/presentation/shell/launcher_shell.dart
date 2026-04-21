@@ -67,8 +67,12 @@ class _LauncherShellState extends State<LauncherShell> {
           .map((a) => PromptChip(label: 'Open ${a.name}', appId: a.id))
           .toList();
     }
-    // Per-app chips are Phase B (sensor health, "what's out of date?", etc.).
-    return const [];
+    // While a plugin is open, offer a quick Close chip so the user can
+    // return to home without reaching for the sidebar. Deeper per-app
+    // chips (sensor health, "what's out of date?", ...) are Phase B.
+    return const [
+      PromptChip(label: 'Close app', query: 'close'),
+    ];
   }
 
   String get _placeholder => _selectedAppId == null
@@ -93,7 +97,34 @@ class _LauncherShellState extends State<LauncherShell> {
     setState(() => _fullscreen = on);
   }
 
+  /// Phrases that return the user to the home panel. Matched as whole
+  /// queries so commands like "close ota monitor" still fall through to
+  /// NLU routing (which would open OTA rather than close the current
+  /// app).
+  static const _closeCommands = {
+    'close', 'close app', 'exit', 'exit app', 'quit', 'back',
+    'home', 'go home', 'back to home',
+    '홈', '홈으로', '닫기', '닫아', '닫아줘', '종료', '나가기', '뒤로',
+    '뒤로 가기',
+  };
+
   void _handlePromptSubmit(String input) {
+    final lc = input.trim().toLowerCase();
+
+    if (_closeCommands.contains(lc)) {
+      if (_selectedAppId == null) {
+        _showToast('Already on home');
+        return;
+      }
+      final closing = _selectedApp?.name ?? 'app';
+      setState(() {
+        _selectedAppId = null;
+        _fullscreen = false;
+      });
+      _showToast('Closed $closing');
+      return;
+    }
+
     final match = _nluRouter.resolve(input);
     if (match != null) {
       setState(() => _selectedAppId = match.id);

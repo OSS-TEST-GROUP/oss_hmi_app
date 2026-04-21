@@ -24,21 +24,55 @@ class NluRouter {
     final query = input.trim().toLowerCase();
     if (query.isEmpty) return null;
 
-    AppManifest? bestApp;
-    var bestLen = -1;
+    // Primary: prompt substring match (input contains a declared prompt).
+    AppManifest? bestByPrompt;
+    var bestPromptLen = -1;
 
     for (final app in apps) {
       for (final prompt in app.prompts) {
         final p = prompt.toLowerCase();
         if (!query.contains(p)) continue;
         final len = p.length;
-        if (len > bestLen ||
-            (len == bestLen && (bestApp == null || app.id.compareTo(bestApp.id) < 0))) {
-          bestApp = app;
-          bestLen = len;
+        if (len > bestPromptLen ||
+            (len == bestPromptLen &&
+                (bestByPrompt == null ||
+                    app.id.compareTo(bestByPrompt.id) < 0))) {
+          bestByPrompt = app;
+          bestPromptLen = len;
         }
       }
     }
-    return bestApp;
+    if (bestByPrompt != null) return bestByPrompt;
+
+    // Fallback: match against the manifest's display name or id.
+    // Either direction is accepted: a short query like "ota" opens the
+    // app whose name/id contains it, and a longer sentence like
+    // "launch ota_monitor now" still matches on id substring.
+    // Single-char queries are ignored to avoid false positives.
+    if (query.length < 2) return null;
+
+    AppManifest? bestByName;
+    var bestNameScore = -1;
+    for (final app in apps) {
+      final name = app.name.toLowerCase();
+      final id = app.id.toLowerCase();
+      var score = -1;
+      if (name.contains(query) || query.contains(name)) {
+        score = name.length;
+      }
+      if (id.contains(query) || query.contains(id)) {
+        final s = id.length;
+        if (s > score) score = s;
+      }
+      if (score < 0) continue;
+      if (score > bestNameScore ||
+          (score == bestNameScore &&
+              (bestByName == null ||
+                  app.id.compareTo(bestByName.id) < 0))) {
+        bestByName = app;
+        bestNameScore = score;
+      }
+    }
+    return bestByName;
   }
 }
