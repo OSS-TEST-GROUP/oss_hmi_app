@@ -32,6 +32,7 @@ class LauncherShell extends StatefulWidget {
 class _LauncherShellState extends State<LauncherShell> {
   late String? _selectedAppId;
   late NluRouter _nluRouter;
+  bool _fullscreen = false;
 
   @override
   void initState() {
@@ -75,11 +76,21 @@ class _LauncherShellState extends State<LauncherShell> {
       : 'Ask about ${_selectedApp!.name}…';
 
   void _handleAppSelected(String? appId) {
-    setState(() => _selectedAppId = appId);
+    setState(() {
+      _selectedAppId = appId;
+      // Leaving a plugin (back to home) always exits fullscreen so the
+      // shell chrome is visible again.
+      if (appId == null) _fullscreen = false;
+    });
   }
 
   void _handleAppLaunch(AppManifest app) {
     setState(() => _selectedAppId = app.id);
+  }
+
+  void _setFullscreen(bool on) {
+    if (_fullscreen == on) return;
+    setState(() => _fullscreen = on);
   }
 
   void _handlePromptSubmit(String input) {
@@ -121,40 +132,137 @@ class _LauncherShellState extends State<LauncherShell> {
 
   @override
   Widget build(BuildContext context) {
+    final appArea = LauncherAppArea(
+      apps: widget.registry.apps,
+      selectedAppId: _selectedAppId,
+      onAppLaunch: _handleAppLaunch,
+    );
+
     return AppAccentScope(
       accentColor: LauncherTokens.accent,
       child: Scaffold(
         key: const Key('launcher_shell'),
         backgroundColor: LauncherTokens.bg0,
-        body: Column(
-          children: [
-            LauncherTitleBar(appTitle: _topTitle, appSub: _topSub),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  LauncherSidebar(
-                    apps: widget.registry.apps,
-                    selectedAppId: _selectedAppId,
-                    onAppSelected: _handleAppSelected,
-                  ),
-                  Expanded(
-                    child: LauncherAppArea(
-                      apps: widget.registry.apps,
-                      selectedAppId: _selectedAppId,
-                      onAppLaunch: _handleAppLaunch,
-                    ),
-                  ),
-                ],
+        body: _fullscreen
+            ? _buildFullscreen(appArea)
+            : _buildWindowed(appArea),
+      ),
+    );
+  }
+
+  Widget _buildWindowed(Widget appArea) {
+    // Fullscreen toggle is only meaningful while a plugin is mounted.
+    final canFullscreen = _selectedAppId != null;
+    return Column(
+      children: [
+        LauncherTitleBar(
+          appTitle: _topTitle,
+          appSub: _topSub,
+          onEnterFullscreen:
+              canFullscreen ? () => _setFullscreen(true) : null,
+        ),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LauncherSidebar(
+                apps: widget.registry.apps,
+                selectedAppId: _selectedAppId,
+                onAppSelected: _handleAppSelected,
               ),
-            ),
-            LauncherPromptBar(
-              chips: _chips,
-              onChip: _handleChip,
-              onSubmit: _handlePromptSubmit,
-              placeholder: _placeholder,
-            ),
-          ],
+              Expanded(child: appArea),
+            ],
+          ),
+        ),
+        LauncherPromptBar(
+          chips: _chips,
+          onChip: _handleChip,
+          onSubmit: _handlePromptSubmit,
+          placeholder: _placeholder,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFullscreen(Widget appArea) {
+    // Immersive mode: hide topbar + sidebar, keep the prompt bar so users
+    // can still voice/text-switch to another app. An exit affordance sits
+    // top-right as an overlay.
+    return Column(
+      children: [
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(child: appArea),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: _FullscreenExitButton(
+                  onTap: () => _setFullscreen(false),
+                ),
+              ),
+            ],
+          ),
+        ),
+        LauncherPromptBar(
+          chips: _chips,
+          onChip: _handleChip,
+          onSubmit: _handlePromptSubmit,
+          placeholder: _placeholder,
+        ),
+      ],
+    );
+  }
+}
+
+/// Floating "exit fullscreen" pill shown in the top-right corner of the
+/// immersive app view. Uses an elevated dark pill so it remains legible
+/// over plugins of any background color.
+class _FullscreenExitButton extends StatefulWidget {
+  const _FullscreenExitButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_FullscreenExitButton> createState() =>
+      _FullscreenExitButtonState();
+}
+
+class _FullscreenExitButtonState extends State<_FullscreenExitButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          key: const Key('fullscreen_exit_button'),
+          duration: const Duration(milliseconds: 330),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _hover
+                ? const Color(0xFF000000)
+                : const Color(0xE6171A20),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.fullscreen_exit, size: 16, color: Colors.white),
+              SizedBox(width: 6),
+              Text(
+                'Exit',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

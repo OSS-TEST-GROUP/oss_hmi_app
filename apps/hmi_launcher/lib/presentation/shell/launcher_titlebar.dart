@@ -14,10 +14,15 @@ class LauncherTitleBar extends StatelessWidget
     super.key,
     required this.appTitle,
     this.appSub,
+    this.onEnterFullscreen,
   });
 
   final String appTitle;
   final String? appSub;
+
+  /// When non-null, a fullscreen-toggle icon button is shown in the right
+  /// group. Typically wired only while a plugin app is selected.
+  final VoidCallback? onEnterFullscreen;
 
   @override
   Size get preferredSize =>
@@ -37,7 +42,9 @@ class LauncherTitleBar extends StatelessWidget
         children: [
           Expanded(child: _TopbarLeft(appTitle: appTitle, appSub: appSub)),
           const _VehicleStrip(),
-          const Expanded(child: _TopbarRight()),
+          Expanded(
+            child: _TopbarRight(onEnterFullscreen: onEnterFullscreen),
+          ),
         ],
       ),
     );
@@ -210,7 +217,9 @@ class _StripSep extends StatelessWidget {
 }
 
 class _TopbarRight extends StatefulWidget {
-  const _TopbarRight();
+  const _TopbarRight({this.onEnterFullscreen});
+
+  final VoidCallback? onEnterFullscreen;
 
   @override
   State<_TopbarRight> createState() => _TopbarRightState();
@@ -259,19 +268,32 @@ class _TopbarRightState extends State<_TopbarRight> {
           ),
         ),
         const SizedBox(width: 10),
-        _IconBtn(icon: Icons.help_outline, semanticLabel: 'Help'),
-        _IconBtn(icon: Icons.language, semanticLabel: 'Language'),
-        _IconBtn(icon: Icons.person_outline, semanticLabel: 'Account'),
+        if (widget.onEnterFullscreen != null)
+          _IconBtn(
+            key: const Key('topbar_fullscreen_enter'),
+            icon: Icons.fullscreen,
+            semanticLabel: 'Fullscreen',
+            onTap: widget.onEnterFullscreen!,
+          ),
+        const _IconBtn(icon: Icons.help_outline, semanticLabel: 'Help'),
+        const _IconBtn(icon: Icons.language, semanticLabel: 'Language'),
+        const _IconBtn(icon: Icons.person_outline, semanticLabel: 'Account'),
       ],
     );
   }
 }
 
 class _IconBtn extends StatefulWidget {
-  const _IconBtn({required this.icon, required this.semanticLabel});
+  const _IconBtn({
+    super.key,
+    required this.icon,
+    required this.semanticLabel,
+    this.onTap,
+  });
 
   final IconData icon;
   final String semanticLabel;
+  final VoidCallback? onTap;
 
   @override
   State<_IconBtn> createState() => _IconBtnState();
@@ -286,7 +308,7 @@ class _IconBtnState extends State<_IconBtn> {
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
-        onTap: () {},
+        onTap: widget.onTap ?? () {},
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 330),
           width: 36,
