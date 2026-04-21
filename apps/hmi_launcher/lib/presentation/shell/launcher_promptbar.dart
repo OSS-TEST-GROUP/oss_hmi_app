@@ -1,17 +1,40 @@
 import 'package:flutter/material.dart';
-import '../theme/launcher_tokens.dart';
-import '../theme/app_accent_scope.dart';
 
-/// Prompt input bar with mic button, text field, and send button.
-/// Height: 60px (fixed via LauncherTokens.promptbarHeight).
+import '../theme/launcher_tokens.dart';
+
+/// Quick-chip entry: an action the user can trigger with one tap above
+/// the prompt input.
+class PromptChip {
+  const PromptChip({required this.label, this.appId, this.query});
+
+  /// Visible text on the chip.
+  final String label;
+
+  /// If set, tapping the chip launches this plugin directly.
+  final String? appId;
+
+  /// Prompt text sent to the NLU router when tapped. Used when [appId]
+  /// is not set — lets the router decide what to open.
+  final String? query;
+}
+
+/// Tesla-style prompt bar: the primary entry point of the launcher.
+///
+/// Layout: optional chips row on top, then a single-line input framed by
+/// a mic button, "Ask AGL" brand tag, divider, text field, and send
+/// button. Sits at the bottom of the shell.
 class LauncherPromptBar extends StatefulWidget {
   const LauncherPromptBar({
     super.key,
     required this.onSubmit,
-    this.placeholder = 'Enter app name or query...',
+    this.chips = const [],
+    this.onChip,
+    this.placeholder = 'Ask AGL — "open OTA", "show sensor health"…',
   });
 
   final ValueChanged<String> onSubmit;
+  final List<PromptChip> chips;
+  final ValueChanged<PromptChip>? onChip;
   final String placeholder;
 
   @override
@@ -20,9 +43,25 @@ class LauncherPromptBar extends StatefulWidget {
 
 class _LauncherPromptBarState extends State<LauncherPromptBar> {
   final TextEditingController _controller = TextEditingController();
-  bool _isMicHovered = false;
+  final FocusNode _focusNode = FocusNode();
+  bool _focused = false;
 
-  void _handleSubmit() {
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(
+      () => setState(() => _focused = _focusNode.hasFocus),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     widget.onSubmit(text);
@@ -30,115 +69,258 @@ class _LauncherPromptBarState extends State<LauncherPromptBar> {
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('launcher_promptbar'),
+      decoration: const BoxDecoration(
+        color: LauncherTokens.bg0,
+        border: Border(top: BorderSide(color: LauncherTokens.b1)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.chips.isNotEmpty) ...[
+            SizedBox(
+              height: 30,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: widget.chips.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final c = widget.chips[i];
+                  return _Chip(
+                    label: c.label,
+                    onTap: () => widget.onChip?.call(c),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          _InputBar(
+            controller: _controller,
+            focusNode: _focusNode,
+            focused: _focused,
+            placeholder: widget.placeholder,
+            onSubmit: _submit,
+          ),
+        ],
+      ),
+    );
   }
+}
+
+class _Chip extends StatefulWidget {
+  const _Chip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_Chip> createState() => _ChipState();
+}
+
+class _ChipState extends State<_Chip> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    final accent = AppAccentScope.of(context);
-
-    return Container(
-      key: const Key('launcher_promptbar'),
-      height: LauncherTokens.promptbarHeight,
-      decoration: BoxDecoration(
-        color: LauncherTokens.bg2,
-        border: Border(top: BorderSide(color: LauncherTokens.b1)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          MouseRegion(
-            onEnter: (_) => setState(() => _isMicHovered = true),
-            onExit: (_) => setState(() => _isMicHovered = false),
-            child: GestureDetector(
-              onTap: () {
-                // Mic functionality placeholder
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Voice input not implemented yet'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-              },
-              child: AnimatedScale(
-                key: const Key('promptbar_mic'),
-                scale: _isMicHovered ? 1.12 : 1.0,
-                duration: const Duration(milliseconds: 150),
-                child: const Text(
-                  '🎙',
-                  style: TextStyle(fontSize: 20),
-                ),
-              ),
+    final border = _hover ? LauncherTokens.t1 : LauncherTokens.b2;
+    final fg = _hover ? LauncherTokens.t1 : LauncherTokens.t2;
+    final bg = _hover ? LauncherTokens.bg3 : LauncherTokens.bg0;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 330),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: bg,
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: fg,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InputBar extends StatelessWidget {
+  const _InputBar({
+    required this.controller,
+    required this.focusNode,
+    required this.focused,
+    required this.placeholder,
+    required this.onSubmit,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool focused;
+  final String placeholder;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 330),
+      padding: const EdgeInsets.fromLTRB(10, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: LauncherTokens.bg0,
+        border: Border.all(
+          color: focused ? LauncherTokens.accent : LauncherTokens.b2,
+        ),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        children: [
+          _IconButton(
+            icon: Icons.mic_none,
+            onTap: () {},
+            semanticLabel: 'Voice input',
+          ),
+          const SizedBox(width: 10),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.auto_awesome,
+                  size: 14, color: LauncherTokens.accent),
+              SizedBox(width: 6),
+              Text(
+                'Ask AGL',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: LauncherTokens.t1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Container(width: 1, height: 20, color: LauncherTokens.b1),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
               key: const Key('prompt_input_field'),
-              controller: _controller,
-              style: TextStyle(
-                fontFamily: LauncherTokens.fontBody,
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
+              controller: controller,
+              focusNode: focusNode,
+              style: const TextStyle(
+                fontSize: 14,
                 color: LauncherTokens.t1,
               ),
               decoration: InputDecoration(
-                hintText: widget.placeholder,
-                hintStyle: TextStyle(
-                  color: LauncherTokens.t3,
-                  fontFamily: LauncherTokens.fontBody,
-                ),
-                filled: true,
-                fillColor: LauncherTokens.bg3,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: BorderSide(color: LauncherTokens.b1, width: 1.5),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: BorderSide(color: LauncherTokens.b1, width: 1.5),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: BorderSide(color: accent, width: 1.5),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 0,
-                ),
+                hintText: placeholder,
+                hintStyle: const TextStyle(color: LauncherTokens.tHint),
+                border: InputBorder.none,
                 isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
               ),
-              onSubmitted: (_) => _handleSubmit(),
+              onSubmitted: (_) => onSubmit(),
             ),
           ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: _handleSubmit,
-            child: Container(
-              key: const Key('promptbar_send_button'),
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: accent,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withOpacity(0.25),
-                    blurRadius: 14,
-                    spreadRadius: 0,
-                  ),
-                ],
-              ),
-              child: Icon(
-                Icons.arrow_upward,
-                color: LauncherTokens.bg0,
-                size: 16,
-              ),
-            ),
-          ),
+          const SizedBox(width: 8),
+          _SendButton(onTap: onSubmit),
         ],
+      ),
+    );
+  }
+}
+
+class _IconButton extends StatefulWidget {
+  const _IconButton({
+    required this.icon,
+    required this.onTap,
+    required this.semanticLabel,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String semanticLabel;
+
+  @override
+  State<_IconButton> createState() => _IconButtonState();
+}
+
+class _IconButtonState extends State<_IconButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 330),
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: _hover ? LauncherTokens.bg3 : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            widget.icon,
+            size: 18,
+            color: LauncherTokens.t1,
+            semanticLabel: widget.semanticLabel,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SendButton extends StatefulWidget {
+  const _SendButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_SendButton> createState() => _SendButtonState();
+}
+
+class _SendButtonState extends State<_SendButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          key: const Key('promptbar_send_button'),
+          duration: const Duration(milliseconds: 330),
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: _hover
+                ? LauncherTokens.accentHover
+                : LauncherTokens.accent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.arrow_forward,
+            size: 16,
+            color: LauncherTokens.bg0,
+          ),
+        ),
       ),
     );
   }

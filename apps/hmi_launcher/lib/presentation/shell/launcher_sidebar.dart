@@ -1,267 +1,168 @@
 import 'package:flutter/material.dart';
+
 import '../../domain/app_manifest.dart';
 import '../theme/launcher_tokens.dart';
-import '../theme/app_accent_scope.dart';
 
-/// Sidebar navigation widget with logo, nav items, add button, and connection indicator.
-/// Width: 188px (fixed via LauncherTokens.sidebarWidth).
+/// Tesla-style left rail.
+///
+/// Sentence-case labels, 14/500, active item = left 3px blue marker
+/// + `bg4` background. Small line icons render as affordances, not
+/// decoration. Home entry is always first; plugin apps follow.
 class LauncherSidebar extends StatelessWidget {
   const LauncherSidebar({
     super.key,
     required this.apps,
     required this.selectedAppId,
     required this.onAppSelected,
+    this.connected = true,
+    this.hostLabel = 'agl-ivi-01',
   });
 
   final List<AppManifest> apps;
   final String? selectedAppId;
   final ValueChanged<String?> onAppSelected;
+  final bool connected;
+  final String hostLabel;
 
   @override
   Widget build(BuildContext context) {
-    final accent = AppAccentScope.of(context);
-
     return Container(
       key: const Key('launcher_sidebar'),
       width: LauncherTokens.sidebarWidth,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: LauncherTokens.bg2,
         border: Border(right: BorderSide(color: LauncherTokens.b1)),
       ),
-      child: Stack(
+      padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Glow line at top
-          Positioned(
-            key: const Key('sidebar_glow_line'),
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 1,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    accent.withOpacity(0.5),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Main content
-          Column(
-            children: [
-              _LogoBlock(key: const Key('sidebar_logo')),
-              _NavSectionLabel(
-                key: const Key('sidebar_home_label'),
-                label: 'HOME',
-              ),
-              _NavItem(
-                key: const Key('sidebar_home_item'),
-                icon: '🏠',
-                text: 'Home / Launcher',
-                isActive: selectedAppId == null,
-                accentColor: accent,
-                onTap: () => onAppSelected(null),
-              ),
-              _NavSectionLabel(
-                key: const Key('sidebar_apps_label'),
-                label: 'APPS',
-                topMargin: 6,
-              ),
-              ...apps.map((app) => _NavItem(
-                    key: Key('sidebar_nav_${app.id}'),
-                    icon: app.icon,
-                    text: app.name,
-                    isActive: selectedAppId == app.id,
-                    accentColor: accent,
-                    onTap: () => onAppSelected(app.id),
-                  )),
-              const Spacer(),
-              _AddButton(key: const Key('sidebar_add_button')),
-              _ConnectionIndicator(key: const Key('sidebar_connection_indicator')),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Logo block with icon and version info.
-class _LogoBlock extends StatelessWidget {
-  const _LogoBlock({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppAccentScope.of(context);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: LauncherTokens.b1)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            key: const Key('logo_icon'),
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [accent, accent.withOpacity(0.6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(7),
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withOpacity(0.2),
-                  blurRadius: 14,
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
+          const Padding(
+            padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
             child: Text(
-              'A',
+              'APPS',
+              key: Key('sidebar_section_label'),
               style: TextStyle(
-                fontFamily: LauncherTokens.fontDisplay,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: LauncherTokens.bg0,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: LauncherTokens.tHint,
+                letterSpacing: 0.8,
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'AGL Launcher',
-                  style: TextStyle(
-                    fontFamily: LauncherTokens.fontDisplay,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: LauncherTokens.t1,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'v4.0 · Plugin Registry',
-                  style: TextStyle(
-                    fontFamily: LauncherTokens.fontMono,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w400,
-                    color: LauncherTokens.t3,
-                  ),
-                ),
-              ],
-            ),
+          _RailItem(
+            key: const Key('sidebar_item_home'),
+            label: 'Launcher',
+            icon: Icons.home_outlined,
+            isActive: selectedAppId == null,
+            onTap: () => onAppSelected(null),
           ),
+          for (final app in apps)
+            _RailItem(
+              key: Key('sidebar_item_${app.id}'),
+              label: app.name,
+              icon: _iconFor(app.id),
+              isActive: selectedAppId == app.id,
+              onTap: () => onAppSelected(app.id),
+            ),
+          _AddButton(onTap: () {}),
+          const Spacer(),
+          _RailFoot(connected: connected, hostLabel: hostLabel),
         ],
       ),
     );
   }
 }
 
-/// Section label for nav groups.
-class _NavSectionLabel extends StatelessWidget {
-  const _NavSectionLabel({
+IconData _iconFor(String appId) {
+  switch (appId) {
+    case 'ota_monitor':
+      return Icons.system_update_alt;
+    case 'adsw_monitor':
+      return Icons.sensors;
+    case 'rviz':
+      return Icons.view_in_ar_outlined;
+    case 'settings':
+      return Icons.settings_outlined;
+    case 'logs':
+      return Icons.description_outlined;
+    case 'can':
+      return Icons.swap_horiz;
+    default:
+      return Icons.apps_outlined;
+  }
+}
+
+class _RailItem extends StatefulWidget {
+  const _RailItem({
     super.key,
     required this.label,
-    this.topMargin = 0,
-  });
-
-  final String label;
-  final double topMargin;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(14, 10 + topMargin, 14, 4),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: LauncherTokens.fontMono,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          color: LauncherTokens.t3,
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-}
-
-/// Navigation item widget.
-class _NavItem extends StatefulWidget {
-  const _NavItem({
-    super.key,
     required this.icon,
-    required this.text,
     required this.isActive,
-    required this.accentColor,
     required this.onTap,
   });
 
-  final String icon;
-  final String text;
+  final String label;
+  final IconData icon;
   final bool isActive;
-  final Color accentColor;
   final VoidCallback onTap;
 
   @override
-  State<_NavItem> createState() => _NavItemState();
+  State<_RailItem> createState() => _RailItemState();
 }
 
-class _NavItemState extends State<_NavItem> {
-  bool _isHovered = false;
+class _RailItemState extends State<_RailItem> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
+    final bg = widget.isActive
+        ? LauncherTokens.bg4
+        : (_hover ? const Color(0xFFF0EFEC) : Colors.transparent);
     return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 330),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
-            color: (widget.isActive || _isHovered)
-                ? LauncherTokens.bg4
-                : Colors.transparent,
-            border: Border(
-              left: BorderSide(
-                color: widget.isActive
-                    ? widget.accentColor
-                    : Colors.transparent,
-                width: 2,
-              ),
-            ),
+            color: bg,
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
             children: [
-              SizedBox(
-                width: 20,
-                child: Text(
-                  widget.icon,
-                  style: const TextStyle(fontSize: 15),
-                  textAlign: TextAlign.center,
+              Container(
+                width: 3,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: widget.isActive
+                      ? LauncherTokens.accent
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
                 ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                widget.icon,
+                size: 16,
+                color: widget.isActive
+                    ? LauncherTokens.t1
+                    : LauncherTokens.t2,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  widget.text,
+                  widget.label,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: LauncherTokens.fontBody,
-                    fontSize: 12,
-                    fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w400,
-                    color: widget.isActive ? widget.accentColor : LauncherTokens.t2,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isActive
+                        ? LauncherTokens.t1
+                        : LauncherTokens.t2,
                   ),
                 ),
               ),
@@ -273,85 +174,96 @@ class _NavItemState extends State<_NavItem> {
   }
 }
 
-/// Add app button.
-class _AddButton extends StatelessWidget {
-  const _AddButton({super.key});
+class _AddButton extends StatefulWidget {
+  const _AddButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_AddButton> createState() => _AddButtonState();
+}
+
+class _AddButtonState extends State<_AddButton> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(8),
-      padding: const EdgeInsets.all(7),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: LauncherTokens.b2,
-          style: BorderStyle.solid,
+    final fg = _hover ? LauncherTokens.t1 : LauncherTokens.tHint;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          key: const Key('sidebar_add_button'),
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: _hover ? const Color(0xFFF0EFEC) : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.add, size: 14, color: fg),
+              const SizedBox(width: 10),
+              Text(
+                'Add app',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
         ),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '＋',
-            style: TextStyle(
-              fontSize: 13,
-              color: LauncherTokens.t3,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            'Add App',
-            style: TextStyle(
-              fontFamily: LauncherTokens.fontBody,
-              fontSize: 11,
-              fontWeight: FontWeight.w400,
-              color: LauncherTokens.t3,
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
-/// Connection status indicator.
-class _ConnectionIndicator extends StatelessWidget {
-  const _ConnectionIndicator({super.key});
+class _RailFoot extends StatelessWidget {
+  const _RailFoot({required this.connected, required this.hostLabel});
+
+  final bool connected;
+  final String hostLabel;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 6),
+      decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: LauncherTokens.b1)),
       ),
       child: Row(
         children: [
           Container(
-            width: 7,
-            height: 7,
+            width: 6,
+            height: 6,
             decoration: BoxDecoration(
-              color: LauncherTokens.ok,
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: LauncherTokens.ok.withOpacity(0.8),
-                  blurRadius: 7,
-                  spreadRadius: 0,
-                ),
-              ],
+              color: connected ? LauncherTokens.accent : LauncherTokens.off,
             ),
           ),
-          const SizedBox(width: 7),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              connected ? 'AGL connected' : 'Disconnected',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: LauncherTokens.t1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           Text(
-            'AGL CONNECTED',
-            style: TextStyle(
-              fontFamily: LauncherTokens.fontMono,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: LauncherTokens.ok,
-              letterSpacing: 0.4,
+            hostLabel,
+            style: const TextStyle(
+              fontSize: 11,
+              color: LauncherTokens.tHint,
+              fontFamily: 'monospace',
             ),
           ),
         ],

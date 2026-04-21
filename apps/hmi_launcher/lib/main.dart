@@ -74,12 +74,17 @@ class HmiLauncherApp extends StatelessWidget {
     return MaterialApp(
       title: 'AGL Launcher',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: LauncherTokens.bg1,
-        colorScheme: ColorScheme.dark(
-          primary: LauncherTokens.launcher,
-          secondary: LauncherTokens.t2,
+      theme: ThemeData(
+        useMaterial3: true,
+        fontFamily: LauncherTokens.fontBody,
+        scaffoldBackgroundColor: LauncherTokens.bg0,
+        colorScheme: const ColorScheme.light(
+          primary: LauncherTokens.accent,
+          onPrimary: LauncherTokens.bg0,
+          surface: LauncherTokens.bg0,
+          onSurface: LauncherTokens.t1,
         ),
+        splashFactory: NoSplash.splashFactory,
       ),
       home: LauncherHomePage(
         initialRegistry: initialRegistry,

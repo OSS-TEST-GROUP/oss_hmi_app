@@ -1,49 +1,63 @@
 import 'dart:ui';
 
-/// Design tokens extracted from AGL_Launcher_Design_v2.html CSS variables.
-/// All values are const to enable tree-shaking and compile-time optimization.
+/// Design tokens for the Tesla-reskin launcher shell.
+///
+/// Source: AGL Launcher design bundle (Tesla Design System reskin,
+/// 2026-04-20). Monochrome canvas with a single Electric Blue accent.
+/// Per-app tinting is intentionally dropped — the active accent is the
+/// same Electric Blue everywhere, per the design spec.
 abstract final class LauncherTokens {
-  // ── Background Layers ──
-  static const Color bg0 = Color(0xFF040810); // deepest
-  static const Color bg1 = Color(0xFF060C16); // app background
-  static const Color bg2 = Color(0xFF09111F); // panel
-  static const Color bg3 = Color(0xFF0D1828); // card
-  static const Color bg4 = Color(0xFF121F34); // hover
+  // ── Surfaces ──
+  static const Color bg0 = Color(0xFFFFFFFF); // pure white (page)
+  static const Color bg1 = Color(0xFFFFFFFF); // shell / app view
+  static const Color bg2 = Color(0xFFFAFAFA); // rail / alt surface
+  static const Color bg3 = Color(0xFFF4F4F4); // hover / soft surface
+  static const Color bg4 = Color(0xFFEFEFEC); // active rail item
 
   // ── Borders ──
-  static const Color b1 = Color(0xFF1A2D45);
-  static const Color b2 = Color(0xFF243D5C);
+  static const Color b1 = Color(0xFFEEEEEE); // subtle divider
+  static const Color b2 = Color(0xFFD0D1D2); // ui border
 
   // ── Text ──
-  static const Color t1 = Color(0xFFC8E0FF); // primary
-  static const Color t2 = Color(0xFF6A90B8); // secondary
-  static const Color t3 = Color(0xFF3A5572); // tertiary/hint
+  static const Color t1 = Color(0xFF171A20); // primary (carbon)
+  static const Color t2 = Color(0xFF393C41); // body (graphite)
+  static const Color t3 = Color(0xFF5C5E62); // tertiary (pewter)
+  static const Color tHint = Color(0xFF8E8E8E); // placeholder (silver fog)
 
-  // ── App Accent Colors ──
-  static const Color launcher = Color(0xFF00D4FF);
-  static const Color adsw = Color(0xFF00E5A0);
-  static const Color ota = Color(0xFFF5C400);
-  static const Color rviz = Color(0xFFE060FF);
+  // ── Accent (Electric Blue — primary CTA only) ──
+  static const Color accent = Color(0xFF3E6AE1);
+  static const Color accentHover = Color(0xFF3457C2);
+  static const Color accentCarbon = Color(0xFF171A20);
 
-  // ── Status Colors ──
-  static const Color ok = Color(0xFF00D97E);
-  static const Color warn = Color(0xFFF5A800);
-  static const Color error = Color(0xFFF53060);
-  static const Color info = Color(0xFF4A9EFF);
-  static const Color off = Color(0xFF3A5572);
+  // ── Status (monochrome, blue for active) ──
+  static const Color ok = Color(0xFF3E6AE1);
+  static const Color warn = Color(0xFF171A20);
+  static const Color error = Color(0xFF171A20);
+  static const Color info = Color(0xFF3E6AE1);
+  static const Color off = Color(0xFFD0D1D2);
 
-  // ── Fixed Dimensions ──
-  static const double titlebarHeight = 30.0;
-  static const double statusbarHeight = 40.0;
+  // Legacy per-app accent aliases. AppAccentScope still exists but always
+  // resolves to Electric Blue in Tesla mode.
+  static const Color launcher = accent;
+  static const Color adsw = accent;
+  static const Color ota = accent;
+  static const Color rviz = accent;
+
+  // ── Dimensions ──
+  static const double titlebarHeight = 56.0;
+  static const double statusbarHeight = 0.0; // deprecated in Tesla layout
   static const double promptbarHeight = 60.0;
-  static const double sidebarWidth = 188.0;
+  static const double sidebarWidth = 220.0;
 
-  // ── Typography (font families) ──
-  static const String fontDisplay = 'Orbitron';
+  // ── Typography ──
+  // Inter is the design intent; not bundled, so Flutter falls back to the
+  // platform's default sans-serif. Keep the string to document intent.
+  static const String fontDisplay = 'Inter';
+  static const String fontBody = 'Inter';
   static const String fontMono = 'JetBrainsMono';
-  static const String fontBody = 'NotoSansKR';
 
-  // ── Traffic Light Dots ──
+  // ── Legacy compat (traffic-light dots from v2) ──
+  // Retained only so in-flight imports keep compiling. Unused by Tesla shell.
   static const Color dotRed = Color(0xFFFF5F57);
   static const Color dotYellow = Color(0xFFFFBD2E);
   static const Color dotGreen = Color(0xFF28C840);

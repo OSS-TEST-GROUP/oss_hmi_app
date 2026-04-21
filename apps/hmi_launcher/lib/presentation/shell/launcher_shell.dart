@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import '../../domain/plugin_registry.dart';
+
 import '../../domain/app_manifest.dart';
 import '../../domain/nlu_router.dart';
-import '../theme/launcher_tokens.dart';
+import '../../domain/plugin_registry.dart';
 import '../theme/app_accent_scope.dart';
-import 'launcher_titlebar.dart';
-import 'launcher_sidebar.dart';
-import 'launcher_statusbar.dart';
-import 'launcher_promptbar.dart';
+import '../theme/launcher_tokens.dart';
 import 'launcher_app_area.dart';
-import '../panels/launcher_home_panel.dart';
+import 'launcher_promptbar.dart';
+import 'launcher_sidebar.dart';
+import 'launcher_titlebar.dart';
 
-/// Root shell widget for AGL Launcher v2.
-/// Composes titlebar, sidebar, statusbar, app area, and promptbar.
+/// Root shell for the Tesla-reskin launcher.
+///
+/// Layout: [top bar] · [ left rail | app view ] · [prompt bar].
+/// All surfaces share a single Electric Blue accent exposed through
+/// [AppAccentScope] so child widgets stay visually consistent.
 class LauncherShell extends StatefulWidget {
   const LauncherShell({
     super.key,
@@ -31,9 +33,6 @@ class _LauncherShellState extends State<LauncherShell> {
   late String? _selectedAppId;
   late NluRouter _nluRouter;
 
-  // Callback to communicate prompt submission to home panel
-  void Function(String input, AppManifest? matchedApp)? _homePanelPromptCallback;
-
   @override
   void initState() {
     super.initState();
@@ -41,81 +40,98 @@ class _LauncherShellState extends State<LauncherShell> {
     _nluRouter = NluRouter(widget.registry.apps);
   }
 
-  Color _getCurrentAccent() {
-    if (_selectedAppId == null) {
-      return LauncherTokens.launcher;
+  AppManifest? get _selectedApp {
+    if (_selectedAppId == null) return null;
+    for (final a in widget.registry.apps) {
+      if (a.id == _selectedAppId) return a;
     }
-
-    final app = widget.registry.apps.firstWhere(
-      (a) => a.id == _selectedAppId,
-      orElse: () => widget.registry.apps.first,
-    );
-
-    // Parse hex color from manifest
-    final colorStr = app.color.replaceFirst('#', '');
-    if (colorStr.length == 6) {
-      return Color(int.parse('0xFF$colorStr'));
-    }
-    return LauncherTokens.launcher;
+    return null;
   }
 
-  String _getCurrentAppName() {
-    if (_selectedAppId == null) {
-      return 'AGL LAUNCHER';
+  String get _topTitle => _selectedApp?.name ?? 'Launcher';
+
+  String get _topSub {
+    final app = _selectedApp;
+    if (app == null) {
+      final n = widget.registry.apps.length;
+      return '$n ${n == 1 ? 'app' : 'apps'} installed';
     }
-
-    final app = widget.registry.apps.firstWhere(
-      (a) => a.id == _selectedAppId,
-      orElse: () => widget.registry.apps.first,
-    );
-
-    return '${app.icon} ${app.name}';
+    return '${app.category} · v${app.version}';
   }
+
+  List<PromptChip> get _chips {
+    if (_selectedAppId == null) {
+      return widget.registry.apps
+          .take(4)
+          .map((a) => PromptChip(label: 'Open ${a.name}', appId: a.id))
+          .toList();
+    }
+    // Per-app chips are Phase B (sensor health, "what's out of date?", etc.).
+    return const [];
+  }
+
+  String get _placeholder => _selectedAppId == null
+      ? 'Ask AGL — "open OTA", "show sensor health"…'
+      : 'Ask about ${_selectedApp!.name}…';
 
   void _handleAppSelected(String? appId) {
-    setState(() {
-      _selectedAppId = appId;
-    });
+    setState(() => _selectedAppId = appId);
   }
 
   void _handleAppLaunch(AppManifest app) {
-    setState(() {
-      _selectedAppId = app.id;
-    });
+    setState(() => _selectedAppId = app.id);
   }
 
   void _handlePromptSubmit(String input) {
-    final matchedApp = _nluRouter.resolve(input);
-
-    // If on home panel, notify it via callback
-    if (_selectedAppId == null && _homePanelPromptCallback != null) {
-      _homePanelPromptCallback!(input, matchedApp);
+    final match = _nluRouter.resolve(input);
+    if (match != null) {
+      setState(() => _selectedAppId = match.id);
+      _showToast('Opened ${match.name}');
+      return;
     }
+    final hints =
+        widget.registry.apps.map((a) => a.name).take(3).join(', ');
+    _showToast('"$input" — try: $hints');
+  }
 
-    // Auto-launch if match found
-    if (matchedApp != null) {
-      Future.delayed(const Duration(milliseconds: 320), () {
-        setState(() {
-          _selectedAppId = matchedApp.id;
-        });
-      });
+  void _handleChip(PromptChip chip) {
+    if (chip.appId != null) {
+      final app = widget.registry.apps.firstWhere(
+        (a) => a.id == chip.appId,
+        orElse: () => widget.registry.apps.first,
+      );
+      _handleAppLaunch(app);
+      return;
     }
+    if (chip.query != null) _handlePromptSubmit(chip.query!);
+  }
+
+  void _showToast(String msg) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: LauncherTokens.t1,
+      ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final accent = _getCurrentAccent();
-
     return AppAccentScope(
-      accentColor: accent,
+      accentColor: LauncherTokens.accent,
       child: Scaffold(
         key: const Key('launcher_shell'),
-        backgroundColor: LauncherTokens.bg1,
+        backgroundColor: LauncherTokens.bg0,
         body: Column(
           children: [
-            const LauncherTitleBar(),
+            LauncherTitleBar(appTitle: _topTitle, appSub: _topSub),
             Expanded(
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   LauncherSidebar(
                     apps: widget.registry.apps,
@@ -123,29 +139,20 @@ class _LauncherShellState extends State<LauncherShell> {
                     onAppSelected: _handleAppSelected,
                   ),
                   Expanded(
-                    child: Column(
-                      children: [
-                        LauncherStatusBar(
-                          appName: _getCurrentAppName(),
-                        ),
-                        Expanded(
-                          child: LauncherAppArea(
-                            apps: widget.registry.apps,
-                            selectedAppId: _selectedAppId,
-                            onAppLaunch: _handleAppLaunch,
-                            onHomePanelReady: (callback) {
-                              _homePanelPromptCallback = callback;
-                            },
-                          ),
-                        ),
-                        LauncherPromptBar(
-                          onSubmit: _handlePromptSubmit,
-                        ),
-                      ],
+                    child: LauncherAppArea(
+                      apps: widget.registry.apps,
+                      selectedAppId: _selectedAppId,
+                      onAppLaunch: _handleAppLaunch,
                     ),
                   ),
                 ],
               ),
+            ),
+            LauncherPromptBar(
+              chips: _chips,
+              onChip: _handleChip,
+              onSubmit: _handlePromptSubmit,
+              placeholder: _placeholder,
             ),
           ],
         ),
