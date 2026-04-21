@@ -12,6 +12,30 @@ enum OtaRequestKind {
   setUpdate,
 }
 
+/// F009: response event emitted whenever an Actor-service Response arrives
+/// (success or business-level error). Lets the Actor tab (and future
+/// consumers) react to individual requests without polling [topicData].
+///
+/// `id` is the request id that was assigned by [OtaCollector] when the
+/// matching publish was issued; callers use it to match their own in-flight
+/// request. `body` carries the raw decoded message so consumers can read
+/// fields that are specific to a particular response kind.
+class OtaResponseEvent {
+  OtaResponseEvent({
+    required this.kind,
+    required this.id,
+    required this.appName,
+    required this.retCode,
+    required this.body,
+  });
+
+  final OtaRequestKind kind;
+  final int? id;
+  final String? appName;
+  final int? retCode;
+  final Map<String, dynamic> body;
+}
+
 class PendingRequest {
   PendingRequest({
     required this.id,
@@ -112,6 +136,17 @@ class OtaCollector extends GetxController {
   /// Emits short, user-facing error messages (displayed as SnackBars).
   Stream<String> get errors => _errorCtrl.stream;
 
+  // F009: per-request response events for the Actor tab's raw UI. Each
+  // event fires after [_matchAndRemove] succeeds (or is skipped for
+  // unsolicited notifications), so `id` is safe to use for request-reply
+  // correlation on the listener side.
+  final StreamController<OtaResponseEvent> _responseCtrl =
+      StreamController<OtaResponseEvent>.broadcast();
+
+  /// Emits each Actor-service response as it arrives. Broadcast stream;
+  /// late subscribers miss past events.
+  Stream<OtaResponseEvent> get responses => _responseCtrl.stream;
+
   @override
   void onInit() {
     super.onInit();
@@ -135,6 +170,7 @@ class OtaCollector extends GetxController {
     _watchdog?.cancel();
     _timeoutSweeper?.cancel();
     _errorCtrl.close();
+    _responseCtrl.close();
     super.onClose();
   }
 
@@ -209,6 +245,8 @@ class OtaCollector extends GetxController {
       topicData['${appName}_settings_ret'] = ReturnValue.fromInt(retCode);
       _updateAppList(appName, settings: appSettings);
     }
+    _emitResponse(OtaRequestKind.getSettings, msg, matched?.id, appName,
+        retCode);
   }
 
   void onSetSettingsResponse(Map<String, dynamic> msg) {
@@ -221,6 +259,8 @@ class OtaCollector extends GetxController {
     if (appName != null) {
       topicData['${appName}_set_settings_result'] = result;
     }
+    _emitResponse(OtaRequestKind.setSettings, msg, matched?.id, appName,
+        retCode);
   }
 
   void onStateResponse(Map<String, dynamic> msg) {
@@ -235,6 +275,7 @@ class OtaCollector extends GetxController {
       topicData['${appName}_state_ret'] = ReturnValue.fromInt(retCode);
       _updateAppList(appName, state: appStateInfo);
     }
+    _emitResponse(OtaRequestKind.getState, msg, matched?.id, appName, retCode);
   }
 
   void onUpdateResponse(Map<String, dynamic> msg) {
@@ -247,6 +288,8 @@ class OtaCollector extends GetxController {
       topicData['${appName}_update_result'] = ReturnValue.fromInt(retCode);
       _addUpdateHistory(appName, 'Update requested', retCode);
     }
+    _emitResponse(OtaRequestKind.setUpdate, msg, matched?.id, appName,
+        retCode);
   }
 
   void onNotifyStatus(Map<String, dynamic> msg) {
@@ -264,30 +307,37 @@ class OtaCollector extends GetxController {
   }
 
   // ── Publish helpers ──────────────────────────────────────────────────────
+  //
+  // F009: each of these returns the assigned request id so the caller
+  // (Actor tab cards, tests) can match the corresponding response event.
 
-  void requestAppSettings(String appName) {
+  int requestAppSettings(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.getSettings);
     _publish(_settingsReqPub, {'id': id, 'app_name': appName});
     appLog('[OTA] Requested settings for $appName (id=$id)');
+    return id;
   }
 
-  void setAppSettings(String appName, String settingsJson) {
+  int setAppSettings(String appName, String settingsJson) {
     final id = _registerRequest(appName, OtaRequestKind.setSettings);
     _publish(_setSettingsReqPub,
         {'id': id, 'app_name': appName, 'app_settings': settingsJson});
     appLog('[OTA] Set settings for $appName (id=$id)');
+    return id;
   }
 
-  void requestAppState(String appName) {
+  int requestAppState(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.getState);
     _publish(_stateReqPub, {'id': id, 'app_name': appName});
     appLog('[OTA] Requested state for $appName (id=$id)');
+    return id;
   }
 
-  void requestUpdate(String appName) {
+  int requestUpdate(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.setUpdate);
     _publish(_updateReqPub, {'id': id, 'app_name': appName});
     appLog('[OTA] Requested update for $appName (id=$id)');
+    return id;
   }
 
   void _publish(Topic? topic, Map<String, dynamic> fields) {
@@ -319,6 +369,27 @@ class OtaCollector extends GetxController {
       sentAt: DateTime.now(),
     );
     return id;
+  }
+
+  /// F009: emit an [OtaResponseEvent] on the broadcast [responses] stream.
+  /// Tolerates a closed controller (guards against events arriving after
+  /// onClose during widget disposal).
+  void _emitResponse(
+    OtaRequestKind kind,
+    Map<String, dynamic> msg,
+    int? matchedId,
+    String? appName,
+    int? retCode,
+  ) {
+    if (_responseCtrl.isClosed) return;
+    final msgId = _extractInt(msg['id']);
+    _responseCtrl.add(OtaResponseEvent(
+      kind: kind,
+      id: msgId ?? matchedId,
+      appName: appName,
+      retCode: retCode,
+      body: msg,
+    ));
   }
 
   /// Look up the pending request referenced by [msg]'s `id` field (if any)

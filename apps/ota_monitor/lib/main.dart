@@ -12,6 +12,7 @@ import 'package:ota_monitor/ros/ros_keeper.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 import 'package:ota_monitor/controller/settings_controller.dart';
 
+import 'package:ota_monitor/view/actor_page.dart';
 import 'package:ota_monitor/view/ota_view_page.dart';
 import 'package:ota_monitor/view/settings_page.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
@@ -302,7 +303,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
               controller: _tabController,
               children: [
                 OtaViewPage(truncateLength: widget.truncateLength),
-                _placeholder('Actor service raw calls', 'F009'),
+                ActorPage(collector: Get.find<OtaCollector>()),
                 _placeholder('Client service interface', 'F021'),
                 SettingsPage(
                   controller: _settingsController,
