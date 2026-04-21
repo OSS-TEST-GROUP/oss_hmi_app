@@ -49,14 +49,18 @@ class SettingsController {
   /// Validate + persist + replace RosKeeper in one call.
   /// Returns true on success, false on invalid input. Throws only on I/O
   /// failures from the persistence step.
+  ///
+  /// Input is trimmed before validation so leading/trailing whitespace
+  /// from copy-paste doesn't reject otherwise-valid URLs (CONSIDER #1).
   Future<bool> applyUrl(String newUrl) async {
-    if (!isValidUrl(newUrl)) {
-      appLog('[settings] reject invalid url: $newUrl', level: 'warn');
+    final url = newUrl.trim();
+    if (!isValidUrl(url)) {
+      appLog('[settings] reject invalid url: $url', level: 'warn');
       return false;
     }
 
-    await _persistUrl(newUrl);
-    await _replaceKeeper(newUrl);
+    await _persistUrl(url);
+    await _replaceKeeper(url);
     return true;
   }
 
@@ -94,29 +98,55 @@ class SettingsController {
   }
 
   Future<void> _replaceKeeper(String newUrl) async {
-    final newCfg = initialConfig.copyWith(rosUrl: Uri.parse(newUrl));
+    // SHOULD #4: base the next config on the *current* keeper's config,
+    // not the startup-time initialConfig. This preserves any other live
+    // settings (status topic, intervals, historySize, ...) that a future
+    // feature may add, avoiding silent reset of unrelated fields.
+    final old = _readKeeper();
+    final baseCfg = old.cfg;
+    final newCfg = baseCfg.copyWith(rosUrl: Uri.parse(newUrl));
     final next = _keeperFactory(newCfg);
 
-    final old = _readKeeper();
     _writeKeeper(next);
 
     // Stop the previous keeper after the global handle has flipped, so
     // any concurrent read resolves to the new keeper rather than a
-    // half-stopped one.
+    // half-stopped one. next.start() is awaited last so the UI sees a
+    // fully-connecting keeper by the time Apply returns.
     await old.stop();
     await next.start();
   }
 }
 
-/// Resolve the writable on-disk config path used by SettingsController and
-/// recognised by [config_loader_io._findConfigFile] at next launch.
+/// Resolve the writable on-disk config path. The order MUST mirror
+/// [config_loader_io._findConfigFile] so that whatever is loaded at the
+/// next launch is the same file that SettingsController writes today.
+///
+/// Specifically, if the user launched the app with `OTA_CONFIG=/path/x.json`,
+/// startup loads that file — so persistence MUST also write to that file,
+/// otherwise the next launch silently reverts to OTA_CONFIG's value.
+/// (Reviewer MUST #1 against revision 0.)
 Future<File> _defaultConfigPath() async {
+  // 1) ENV override — has the highest precedence at startup, so we MUST
+  //    write here when set.
+  final envPath = Platform.environment['OTA_CONFIG'];
+  if (envPath != null && envPath.isNotEmpty) {
+    return File(envPath);
+  }
+
+  // 2) XDG_CONFIG_HOME or HOME/.config — config_loader's user-scope path.
   final xdg = Platform.environment['XDG_CONFIG_HOME'];
+  if (xdg != null && xdg.isNotEmpty) {
+    return File('$xdg/ota_monitor/config.json');
+  }
   final home = Platform.environment['HOME'];
-  final base = (xdg != null && xdg.isNotEmpty)
-      ? xdg
-      : (home != null && home.isNotEmpty ? '$home/.config' : '/tmp');
-  return File('$base/ota_monitor/config.json');
+  if (home != null && home.isNotEmpty) {
+    return File('$home/.config/ota_monitor/config.json');
+  }
+
+  // 3) Last-resort: ephemeral. Persistence is best-effort here; the user
+  //    should set HOME or OTA_CONFIG for stable storage.
+  return File('/tmp/ota_monitor/config.json');
 }
 
 /// Test helper: SettingsController writes through this key when an

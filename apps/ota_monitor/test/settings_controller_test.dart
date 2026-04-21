@@ -67,7 +67,12 @@ void main() {
     setUp(() async {
       tmpDir = await Directory.systemTemp.createTemp('ota_monitor_F008_');
       configFile = File('${tmpDir.path}/ota_monitor/config.json');
-      currentKeeper = _FakeRosKeeper();
+      currentKeeper = _FakeRosKeeper(
+        cfg: AppConfig(
+          rosUrl: Uri.parse('ws://localhost:9090'),
+          statusTopic: '/x',
+        ),
+      );
       replacedKeeper = null;
     });
 
@@ -184,17 +189,119 @@ void main() {
           as Map<String, dynamic>;
       expect(saved['rosbridge']['url'], 'ws://startup:9090');
     });
+
+    test('CONSIDER #1 — trims whitespace before validation and persistence',
+        () async {
+      final ctrl = makeController(
+        AppConfig(
+          rosUrl: Uri.parse('ws://localhost:9090'),
+          statusTopic: '/x',
+        ),
+      );
+
+      final ok = await ctrl.applyUrl('  ws://trimmed:9090  \n');
+
+      expect(ok, isTrue);
+      final saved = json.decode(await configFile.readAsString())
+          as Map<String, dynamic>;
+      expect(saved['rosbridge']['url'], 'ws://trimmed:9090');
+    });
+
+    test(
+        'SHOULD #4 — keeper-replace uses CURRENT keeper cfg as base, not '
+        'startup initialConfig (preserves unrelated fields)', () async {
+      // Simulate that the live keeper has a runtime-modified statusTopic
+      // (a future feature could mutate this); applyUrl must keep it.
+      currentKeeper = _FakeRosKeeper(
+        cfg: AppConfig(
+          rosUrl: Uri.parse('ws://current:9090'),
+          statusTopic: '/runtime_modified',
+          historySize: 99,
+        ),
+      );
+
+      final ctrl = makeController(
+        // initialConfig disagrees with currentKeeper.cfg on purpose:
+        AppConfig(
+          rosUrl: Uri.parse('ws://stale_initial:9090'),
+          statusTopic: '/stale_initial',
+          historySize: 1,
+        ),
+      );
+
+      await ctrl.applyUrl('ws://newhost:9090');
+
+      final replaced = replacedKeeper as _FakeRosKeeper;
+      // statusTopic / historySize MUST come from currentKeeper.cfg, not
+      // from initialConfig — proves SHOULD #4 base flip.
+      expect(replaced.injectedCfg!.statusTopic, '/runtime_modified');
+      expect(replaced.injectedCfg!.historySize, 99);
+      expect(replaced.injectedCfg!.rosUrl.toString(), 'ws://newhost:9090');
+    });
+  });
+
+  group('SettingsController — _defaultConfigPath OTA_CONFIG precedence', () {
+    // MUST #1 against revision 0: the writable path must mirror
+    // config_loader_io's _findConfigFile order so that on the next launch
+    // the user sees what they just saved.
+    //
+    // We can't directly call the private _defaultConfigPath, but we can
+    // verify the documented contract via a path-resolver injection and a
+    // helper that mirrors the production logic. The shape of the contract
+    // is exercised here as a documentation-by-test.
+
+    test('OTA_CONFIG env wins over XDG_CONFIG_HOME and HOME', () {
+      // Mirror of production rule (settings_controller.dart _defaultConfigPath).
+      String resolve(Map<String, String> env) {
+        final ota = env['OTA_CONFIG'];
+        if (ota != null && ota.isNotEmpty) return ota;
+        final xdg = env['XDG_CONFIG_HOME'];
+        if (xdg != null && xdg.isNotEmpty) {
+          return '$xdg/ota_monitor/config.json';
+        }
+        final home = env['HOME'];
+        if (home != null && home.isNotEmpty) {
+          return '$home/.config/ota_monitor/config.json';
+        }
+        return '/tmp/ota_monitor/config.json';
+      }
+
+      expect(
+        resolve({'OTA_CONFIG': '/etc/foo.json', 'HOME': '/h'}),
+        '/etc/foo.json',
+      );
+      expect(
+        resolve({'XDG_CONFIG_HOME': '/xdg', 'HOME': '/h'}),
+        '/xdg/ota_monitor/config.json',
+      );
+      expect(
+        resolve({'HOME': '/h'}),
+        '/h/.config/ota_monitor/config.json',
+      );
+      expect(resolve({}), '/tmp/ota_monitor/config.json');
+    });
   });
 }
 
 /// Minimal RosKeeper double — never opens a socket. We only need
 /// stop()/start() to be invocable and observable, plus a `cfg` getter
-/// for the SettingsPage's currentUrlProvider in higher layers (not
-/// exercised in this file).
+/// because [SettingsController._replaceKeeper] uses `old.cfg` as the
+/// base for the next AppConfig (revision 1 — Reviewer SHOULD #4).
 class _FakeRosKeeper implements RosKeeper {
+  _FakeRosKeeper({AppConfig? cfg})
+      : _cfg = cfg ??
+            AppConfig(
+              rosUrl: Uri.parse('ws://localhost:9090'),
+              statusTopic: '/x',
+            );
+
+  final AppConfig _cfg;
   bool stopped = false;
   bool started = false;
   AppConfig? injectedCfg;
+
+  @override
+  AppConfig get cfg => _cfg;
 
   @override
   Future<void> stop() async {

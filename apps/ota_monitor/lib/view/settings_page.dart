@@ -39,9 +39,13 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  bool get _isValid =>
-      _urlField.text.isNotEmpty &&
-      SettingsController.isValidUrl(_urlField.text);
+  bool get _isValid {
+    // CONSIDER #1: trim whitespace so a copy-pasted URL with a stray
+    // trailing newline still enables Apply. Controller.applyUrl trims
+    // again — both layers stay in sync.
+    final v = _urlField.text.trim();
+    return v.isNotEmpty && SettingsController.isValidUrl(v);
+  }
 
   Future<void> _onApply() async {
     if (!_isValid || _busy) return;
@@ -79,6 +83,17 @@ class _SettingsPageState extends State<SettingsPage> {
         SnackBar(
           content: Text(ok ? '기본값으로 재연결 중...' : '리셋 실패'),
           duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      // SHOULD #2: resetToDefault also performs file I/O and keeper
+      // restart, both of which can throw. Surface failures as a SnackBar
+      // exactly like _onApply so the user is never left guessing.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('리셋 실패: $e'),
+          backgroundColor: const Color(0xFFB45309),
         ),
       );
     } finally {
