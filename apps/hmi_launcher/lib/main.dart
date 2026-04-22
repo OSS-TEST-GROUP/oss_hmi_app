@@ -6,6 +6,7 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
+import 'presentation/keyboard/keyboard_host.dart';
 import 'presentation/shell/launcher_shell.dart';
 import 'presentation/theme/launcher_tokens.dart';
 import 'ros/launcher_ros_keeper.dart';
@@ -86,6 +87,7 @@ class HmiLauncherApp extends StatelessWidget {
         ),
         splashFactory: NoSplash.splashFactory,
       ),
+      builder: (context, child) => KeyboardHost(child: child!),
       home: LauncherHomePage(
         initialRegistry: initialRegistry,
         enableRos: enableRos,
