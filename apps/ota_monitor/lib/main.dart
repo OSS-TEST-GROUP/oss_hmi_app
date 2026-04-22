@@ -9,10 +9,12 @@ import 'package:ota_monitor/config/config_loader.dart';
 import 'package:ota_monitor/config/app_config.dart';
 import 'package:ota_monitor/logging/app_log.dart';
 import 'package:ota_monitor/ros/ros_keeper.dart';
+import 'package:ota_monitor/controller/client_service_controller.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 import 'package:ota_monitor/controller/settings_controller.dart';
 
 import 'package:ota_monitor/view/actor_page.dart';
+import 'package:ota_monitor/view/client_page.dart';
 import 'package:ota_monitor/view/ota_view_page.dart';
 import 'package:ota_monitor/view/settings_page.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
@@ -128,6 +130,9 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
 
   late final TabController _tabController;
   late final SettingsController _settingsController;
+
+  /// F021 — Client tab controller, lazy-built from the live RosKeeper.
+  ClientServiceController? _clientController;
 
   @override
   void initState() {
@@ -264,6 +269,20 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
     );
   }
 
+  /// F021 — lazily build the Client tab once a Ros instance is registered
+  /// in GetX. Falls back to the placeholder before the first connection.
+  Widget _buildClientTab() {
+    if (_clientController == null) {
+      if (!Get.isRegistered<Ros>()) {
+        return _placeholder('Client tab waiting for ROS', 'F021');
+      }
+      _clientController =
+          ClientServiceController(ros: Get.find<Ros>());
+      _clientController!.setup();
+    }
+    return ClientPage(controller: _clientController!);
+  }
+
   Widget _placeholder(String label, String featureId) => Center(
         child: Padding(
           padding: const EdgeInsets.all(48),
@@ -319,7 +338,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
               children: [
                 OtaViewPage(truncateLength: widget.truncateLength),
                 ActorPage(collector: Get.find<OtaCollector>()),
-                _placeholder('Client service interface', 'F021'),
+                _buildClientTab(),
                 SettingsPage(
                   controller: _settingsController,
                   currentUrlProvider: () =>
