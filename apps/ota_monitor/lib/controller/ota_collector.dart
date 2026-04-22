@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
 
@@ -129,6 +130,14 @@ class OtaCollector extends GetxController {
   Timer? _watchdog;
   Timer? _timeoutSweeper;
 
+  /// F009 SHOULD #1: flips to `true` once `_start` has finished subscribing
+  /// and advertising the Actor topics. The Actor tab listens to this so its
+  /// Send buttons stay disabled until the rosbridge round-trip is wired —
+  /// wireframe §4 "미연결 → Send disabled" requirement.
+  final ValueNotifier<bool> readyNotifier = ValueNotifier<bool>(false);
+
+  bool get isReady => readyNotifier.value;
+
   // F007: surface user-facing error events to the UI via a broadcast stream.
   final StreamController<String> _errorCtrl =
       StreamController<String>.broadcast();
@@ -171,6 +180,7 @@ class OtaCollector extends GetxController {
     _timeoutSweeper?.cancel();
     _errorCtrl.close();
     _responseCtrl.close();
+    readyNotifier.dispose();
     super.onClose();
   }
 
@@ -179,6 +189,7 @@ class OtaCollector extends GetxController {
 
   Future<void> _start(Ros r) async {
     _setup = false;
+    readyNotifier.value = false;
     _boundRos = r;
 
     try {
@@ -216,6 +227,7 @@ class OtaCollector extends GetxController {
       await _updateReqPub?.advertise();
 
       _setup = true;
+      readyNotifier.value = true;
       appLog('[OTA] Topics subscribed & advertised');
 
       // F004: auto-request settings/state for each initialApps entry.

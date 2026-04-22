@@ -256,6 +256,128 @@ void main() {
     });
   });
 
+  group('F009 rev1 SHOULD fixes', () {
+    testWidgets(
+        'SHOULD #1 — Send stays disabled while collector is not ready',
+        (tester) async {
+      enlargeView(tester);
+      // Fresh collector that has NOT had startTopics() called yet, so
+      // readyNotifier is still false at the moment the widget is pumped.
+      Get.reset();
+      final notReady = OtaCollector(
+        topicFactory: (_, __, ___) => _MockTopic(),
+        autoStartTimers: false,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ActorPage(collector: notReady)),
+        ),
+      );
+      await tester.pump();
+
+      // Even with a valid app_name, Send must be disabled until isReady.
+      await tester.enterText(
+        find.byKey(const Key('field_actor_get_settings_app_name')),
+        'demo_app',
+      );
+      await tester.pump();
+      final btn = tester.widget<ElevatedButton>(
+        find.byKey(const Key('btn_actor_get_settings')),
+      );
+      expect(btn.onPressed, isNull);
+
+      // Flip ready → button enables automatically (listener-based rebuild).
+      notReady.readyNotifier.value = true;
+      await tester.pump();
+      final btn2 = tester.widget<ElevatedButton>(
+        find.byKey(const Key('btn_actor_get_settings')),
+      );
+      expect(btn2.onPressed, isNotNull);
+    });
+
+    testWidgets('SHOULD #2 — businessError renders leading ✕', (tester) async {
+      enlargeView(tester);
+      await tester.pumpWidget(makeApp());
+      await tester.pump();
+
+      await tester.enterText(
+        find.byKey(const Key('field_actor_get_settings_app_name')),
+        'err_app',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('btn_actor_get_settings')));
+      await tester.pump();
+
+      final pub = verify(() => reqTopics[0].publish(captureAny()));
+      pub.called(1);
+      final id = (pub.captured.single as Map<String, dynamic>)['id'] as int;
+
+      subscriptions[otaResponseTopics[0]]!({
+        'id': id,
+        'app_name': 'err_app',
+        'app_settings': '',
+        'ret_code': 2,
+      });
+      await tester.pump();
+      await tester.pump();
+
+      final resp = tester.widget<Text>(
+        find.byKey(const Key('text_actor_get_settings_response')),
+      );
+      expect(resp.data, startsWith('✕'));
+      expect(resp.data, contains('ret_code: ERROR'));
+    });
+
+    testWidgets(
+        'SHOULD #4 — a response of a different kind must not affect another card',
+        (tester) async {
+      enlargeView(tester);
+      await tester.pumpWidget(makeApp());
+      await tester.pump();
+
+      // Fire GetAppUpdateSettings on card #1.
+      await tester.enterText(
+        find.byKey(const Key('field_actor_get_settings_app_name')),
+        'target_app',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('btn_actor_get_settings')));
+      await tester.pump();
+
+      final pub = verify(() => reqTopics[0].publish(captureAny()));
+      pub.called(1);
+      final id = (pub.captured.single as Map<String, dynamic>)['id'] as int;
+
+      // Inject a GetAppUpdateStateResponse carrying the SAME id.
+      // GetState card must ignore it (kind mismatch with widget.kind),
+      // and GetSettings card must also ignore it (wrong response topic
+      // → different stream event kind).
+      subscriptions[otaResponseTopics[2]]!({
+        'id': id,
+        'app_name': 'target_app',
+        'app_state_info': 'leaked',
+        'ret_code': 1,
+      });
+      await tester.pump();
+      await tester.pump();
+
+      // GetSettings card: still 'Sending…' because no GetSettings response arrived.
+      final settingsResp = tester.widget<Text>(
+        find.byKey(const Key('text_actor_get_settings_response')),
+      );
+      expect(settingsResp.data, contains('Sending'));
+      expect(settingsResp.data, isNot(contains('leaked')));
+
+      // GetState card: still '(no response yet)' since it never issued a request.
+      final stateResp = tester.widget<Text>(
+        find.byKey(const Key('text_actor_get_state_response')),
+      );
+      expect(stateResp.data, contains('no response yet'));
+      expect(stateResp.data, isNot(contains('leaked')));
+    });
+  });
+
   group('F009 OtaCollector responses stream', () {
     test('emits OtaResponseEvent after onSettingsResponse', () async {
       final events = <OtaResponseEvent>[];

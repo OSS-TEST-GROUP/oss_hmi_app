@@ -132,12 +132,20 @@ class _ActorCardState extends State<_ActorCard> {
     _controllers =
         widget.fields.map((_) => TextEditingController()).toList(growable: false);
     _sub = widget.collector.responses.listen(_onResponse);
+    // F009 SHOULD #1 (rev 1): rebuild when the collector toggles ready →
+    // Send button enables/disables accordingly.
+    widget.collector.readyNotifier.addListener(_onReadyChange);
+  }
+
+  void _onReadyChange() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _sub?.cancel();
+    widget.collector.readyNotifier.removeListener(_onReadyChange);
     for (final c in _controllers) {
       c.dispose();
     }
@@ -150,11 +158,16 @@ class _ActorCardState extends State<_ActorCard> {
     _timer?.cancel();
     _timer = null;
     if (!mounted) return;
+    final isOk = ev.retCode == 1;
     setState(() {
       _inflightId = null;
-      _display = _formatResponse(ev);
-      _displayKind =
-          (ev.retCode == 1) ? _DisplayKind.ok : _DisplayKind.businessError;
+      // F009 SHOULD #2 (rev 1): wireframe §4 mandates a leading ✕ glyph on
+      // business-level errors so the affordance is consistent with ⚠ used
+      // for timeouts. Color alone is insufficient (accessibility).
+      _display = isOk
+          ? _formatResponse(ev)
+          : '✕ ${_formatResponse(ev)}';
+      _displayKind = isOk ? _DisplayKind.ok : _DisplayKind.businessError;
     });
   }
 
@@ -181,6 +194,12 @@ class _ActorCardState extends State<_ActorCard> {
 
   bool get _canSend {
     if (_inflightId != null) return false;
+    // F009 SHOULD #1 (rev 1): wireframe §4 "미연결 → Send disabled".
+    // The collector exposes isReady once _start() has finished
+    // subscribing/advertising the Actor topics; before that, publish()
+    // would silently fail with an errors-stream SnackBar and leave the
+    // card's `_display` stuck on "Sending..." until the 5s timeout.
+    if (!widget.collector.isReady) return false;
     // First field (app_name) must not be empty. Additional fields may be
     // empty (e.g. SetAppUpdateSettings with an empty app_settings is
     // accepted at the UI layer — the Manager decides.)
