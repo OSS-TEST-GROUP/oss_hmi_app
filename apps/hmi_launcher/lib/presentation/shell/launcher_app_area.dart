@@ -11,17 +11,27 @@ import '../theme/launcher_tokens.dart';
 /// with a soft cross-fade when [selectedAppId] changes.
 ///
 /// Future plugins not yet embedded fall back to [AppPlaceholderPanel].
+/// Builds the panel shown for a selected plugin. Defaults to the real
+/// embedded plugin panels (OTA, ADSW) with a placeholder fallback, but
+/// tests can inject a lightweight builder to skip plugin internals.
+typedef AppPanelBuilder = Widget Function(AppManifest app);
+
 class LauncherAppArea extends StatelessWidget {
   const LauncherAppArea({
     super.key,
     required this.apps,
     required this.selectedAppId,
     required this.onAppLaunch,
+    this.panelBuilder,
   });
 
   final List<AppManifest> apps;
   final String? selectedAppId;
   final ValueChanged<AppManifest> onAppLaunch;
+
+  /// Optional override for the plugin-panel factory. When null, the
+  /// built-in OTA / ADSW / placeholder routing is used.
+  final AppPanelBuilder? panelBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +47,7 @@ class LauncherAppArea extends StatelessWidget {
       );
     } else {
       final app = apps.firstWhere((a) => a.id == selectedAppId);
-      key = ValueKey('panel_$selectedAppId');
+      key = Key('app_embedded_${app.id}');
       panel = _buildPanel(app, key);
     }
 
@@ -64,6 +74,9 @@ class LauncherAppArea extends StatelessWidget {
   }
 
   Widget _buildPanel(AppManifest app, Key key) {
+    if (panelBuilder != null) {
+      return KeyedSubtree(key: key, child: panelBuilder!(app));
+    }
     switch (app.id) {
       case 'ota_monitor':
         return OtaEmbeddedPanel(key: key);

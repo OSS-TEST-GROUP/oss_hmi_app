@@ -20,10 +20,16 @@ class LauncherShell extends StatefulWidget {
     super.key,
     required this.registry,
     this.initialAppId,
+    this.panelBuilder,
   });
 
   final PluginRegistry registry;
   final String? initialAppId;
+
+  /// Optional override for the plugin-panel factory. Forwarded to
+  /// [LauncherAppArea]; tests inject a lightweight builder so the shell
+  /// can be exercised without pulling in plugin internals.
+  final AppPanelBuilder? panelBuilder;
 
   @override
   State<LauncherShell> createState() => _LauncherShellState();
@@ -167,6 +173,7 @@ class _LauncherShellState extends State<LauncherShell> {
       apps: widget.registry.apps,
       selectedAppId: _selectedAppId,
       onAppLaunch: _handleAppLaunch,
+      panelBuilder: widget.panelBuilder,
     );
 
     return AppAccentScope(

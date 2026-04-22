@@ -7,6 +7,7 @@ import 'package:roslibdart/roslibdart.dart';
 import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
 import 'presentation/keyboard/keyboard_host.dart';
+import 'presentation/shell/launcher_app_area.dart';
 import 'presentation/shell/launcher_shell.dart';
 import 'presentation/theme/launcher_tokens.dart';
 import 'ros/launcher_ros_keeper.dart';
@@ -60,6 +61,7 @@ class HmiLauncherApp extends StatelessWidget {
     super.key,
     this.initialRegistry,
     this.enableRos = true,
+    this.panelBuilder,
   });
 
   /// Allows tests to inject a fixture registry so the UI doesn't depend on
@@ -69,6 +71,10 @@ class HmiLauncherApp extends StatelessWidget {
   /// L009: Whether to initialize ROS. Tests should set false to avoid
   /// real network connections.
   final bool enableRos;
+
+  /// Optional plugin-panel factory override. Forwarded to [LauncherShell]
+  /// via [LauncherHomePage]; used by tests to skip plugin internals.
+  final AppPanelBuilder? panelBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +97,7 @@ class HmiLauncherApp extends StatelessWidget {
       home: LauncherHomePage(
         initialRegistry: initialRegistry,
         enableRos: enableRos,
+        panelBuilder: panelBuilder,
       ),
     );
   }
@@ -101,10 +108,12 @@ class LauncherHomePage extends StatefulWidget {
     super.key,
     this.initialRegistry,
     this.enableRos = true,
+    this.panelBuilder,
   });
 
   final PluginRegistry? initialRegistry;
   final bool enableRos;
+  final AppPanelBuilder? panelBuilder;
 
   @override
   State<LauncherHomePage> createState() => _LauncherHomePageState();
@@ -165,6 +174,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   Widget build(BuildContext context) {
     return LauncherShell(
       registry: _registry,
+      panelBuilder: widget.panelBuilder,
     );
   }
 }
