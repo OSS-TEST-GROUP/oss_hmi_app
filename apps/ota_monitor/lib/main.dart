@@ -207,24 +207,39 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
             ),
           ),
           const Spacer(),
+          // F011 / F020 §2: live connection indicator. AnimatedBuilder on
+          // the holder ensures we re-listen if the keeper itself is swapped
+          // (e.g. after a SettingsController.applyUrl flip).
           AnimatedBuilder(
             animation: widget.keeperHolder,
-            builder: (_, __) => ValueListenableBuilder<int>(
-              valueListenable:
-                  widget.keeperHolder.current.consecutiveFailures,
-              builder: (_, failures, __) {
-                if (failures < _failureThreshold) return const SizedBox();
-                return Tooltip(
-                  message: 'ROS 재연결 $failures회 실패',
-                  child: const Icon(
-                    Icons.warning_amber_rounded,
-                    key: Key('icon_ros_warning'),
-                    color: Color(0xFFF59E0B),
-                    size: 28,
+            builder: (_, __) {
+              final keeper = widget.keeperHolder.current;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ValueListenableBuilder<Status>(
+                    valueListenable: keeper.statusNotifier,
+                    builder: (_, st, __) => _ConnIndicator(status: st),
                   ),
-                );
-              },
-            ),
+                  const SizedBox(width: 12),
+                  ValueListenableBuilder<int>(
+                    valueListenable: keeper.consecutiveFailures,
+                    builder: (_, failures, __) {
+                      if (failures < _failureThreshold) return const SizedBox();
+                      return Tooltip(
+                        message: 'ROS 재연결 $failures회 실패',
+                        child: const Icon(
+                          Icons.warning_amber_rounded,
+                          key: Key('icon_ros_warning'),
+                          color: Color(0xFFF59E0B),
+                          size: 28,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -315,6 +330,47 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// F011 / F020 §2 — header connection indicator.
+/// Renders an `icon_conn_status` dot + a `text_conn_status` label that
+/// integration_test (and the operator) can read to know whether ROS is
+/// connected, connecting, or disconnected.
+class _ConnIndicator extends StatelessWidget {
+  const _ConnIndicator({required this.status});
+
+  final Status status;
+
+  @override
+  Widget build(BuildContext context) {
+    final ({Color color, String label}) view = switch (status) {
+      Status.connected     => (color: const Color(0xFF34D399), label: 'connected'),
+      Status.connecting    => (color: const Color(0xFFFBBF24), label: 'connecting'),
+      Status.errored       => (color: const Color(0xFFEF4444), label: 'disconnected'),
+      Status.closed        => (color: const Color(0xFFEF4444), label: 'disconnected'),
+      Status.none          => (color: const Color(0xFF9CA3AF), label: 'disconnected'),
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.circle,
+          key: const Key('icon_conn_status'),
+          color: view.color,
+          size: 12,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          view.label,
+          key: const Key('text_conn_status'),
+          style: const TextStyle(
+            fontSize: 13,
+            color: Color(0xFFCBD5E1),
+          ),
+        ),
+      ],
     );
   }
 }
