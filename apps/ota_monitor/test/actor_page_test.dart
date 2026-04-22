@@ -35,8 +35,11 @@ void main() {
     ros = _MockRos();
     Get.put<Ros>(ros);
 
-    respTopics = List.generate(5, (_) => _MockTopic());
-    reqTopics = List.generate(4, (_) => _MockTopic());
+    // F023: OtaCollector wires GetAppList request + response in addition
+    // to the 5 actor responses + 4 actor requests. Slots reserved here
+    // accordingly (resp idx 5 = GetAppListResponse, req idx 4 = GetAppList).
+    respTopics = List.generate(6, (_) => _MockTopic());
+    reqTopics = List.generate(5, (_) => _MockTopic());
     subscriptions = {};
 
     // Map factory order (see OtaCollector._start) to the response-topic name
@@ -45,19 +48,26 @@ void main() {
     int respIdx = 0;
     int reqIdx = 0;
 
-    for (var i = 0; i < respTopics.length; i++) {
+    // First 5 responses are the original Actor + NotifyAppUpdateStatus.
+    for (var i = 0; i < respTopicByIndex.length; i++) {
       final name = respTopicByIndex[i];
       when(() => respTopics[i].subscribe(any())).thenAnswer((inv) async {
         subscriptions[name] =
             inv.positionalArguments[0] as Function(Map<String, dynamic>);
       });
     }
+    // 6th response slot = GetAppListResponse (F023).
+    when(() => respTopics[5].subscribe(any())).thenAnswer((inv) async {
+      subscriptions[otaGetAppListResTopic] =
+          inv.positionalArguments[0] as Function(Map<String, dynamic>);
+    });
     for (final t in reqTopics) {
       when(() => t.advertise()).thenAnswer((_) async {});
       when(() => t.publish(any())).thenAnswer((_) async {});
     }
 
     Topic topicFactory(Ros _, String name, String type) {
+      if (name == otaGetAppListResTopic) return respTopics[respIdx++];
       if (otaResponseTopics.contains(name)) return respTopics[respIdx++];
       return reqTopics[reqIdx++];
     }

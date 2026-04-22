@@ -148,6 +148,24 @@ class _OtaViewPageState extends State<OtaViewPage> {
     );
   }
 
+  /// F023 — issue a GetAppList query to the Manager. If no response
+  /// arrives within 5 s, surface a SnackBar so the user knows the list
+  /// they're looking at is the local cache (config seed + manual adds).
+  Future<void> _onRefreshAppList() async {
+    final beforeGen = _otaCollector.appListGeneration.value;
+    _otaCollector.requestAppList();
+    await Future<void>.delayed(const Duration(seconds: 5));
+    if (!mounted) return;
+    if (_otaCollector.appListGeneration.value == beforeGen) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('앱 목록 조회 시간 초과 — 로컬 캐시 사용'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   void _onAddTestApp() {
     showDialog(
       context: context,
@@ -199,6 +217,31 @@ class _OtaViewPageState extends State<OtaViewPage> {
                       isExpanded: _expandedSections['appList'] ?? true,
                       onTap: () => _toggleSection('appList'),
                       children: [
+                        // F023 — refresh button + Manager/local source label.
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                key: const Key('btn_apps_refresh_list'),
+                                icon: const Icon(Icons.refresh, size: 18),
+                                tooltip: 'Manager 에서 App List 다시 조회',
+                                onPressed: _onRefreshAppList,
+                                color: const Color(0xFF60A5FA),
+                              ),
+                              const SizedBox(width: 4),
+                              Obx(() => Text(
+                                    'source: ${_otaCollector.appListSource}',
+                                    key: const Key('text_apps_list_source'),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF9CA3AF),
+                                      fontFamily: 'monospace',
+                                    ),
+                                  )),
+                            ],
+                          ),
+                        ),
                         ..._otaCollector.appList.map((app) {
                           final appName = app['name'] as String;
                           final status = app['status'] as String? ?? 'Unknown';

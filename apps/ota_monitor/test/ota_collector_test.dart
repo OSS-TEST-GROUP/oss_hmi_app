@@ -21,8 +21,12 @@ void main() {
     mockRos = MockRos();
     Get.put<Ros>(mockRos);
 
-    respTopics = List.generate(5, (_) => MockTopic());
-    reqTopics  = List.generate(4, (_) => MockTopic());
+    // F023: OtaCollector now also wires GetAppList request + response —
+    // reserve mock slots for both. respTopics now also covers
+    // GetAppListResponse (resp idx 5) and reqTopics covers GetAppList
+    // (req idx 4).
+    respTopics = List.generate(6, (_) => MockTopic());
+    reqTopics  = List.generate(5, (_) => MockTopic());
 
     for (final t in [...respTopics, ...reqTopics]) {
       when(() => t.subscribe(any())).thenAnswer((_) async {});
@@ -34,6 +38,9 @@ void main() {
     int reqIdx  = 0;
 
     Topic topicFactory(Ros ros, String name, String type) {
+      // F023 — GetAppList response is not in otaResponseTopics, route
+      // it explicitly so the dedicated subscription gets a real mock.
+      if (name == otaGetAppListResTopic) return respTopics[respIdx++];
       if (otaResponseTopics.contains(name)) return respTopics[respIdx++];
       return reqTopics[reqIdx++];
     }
@@ -202,6 +209,72 @@ void main() {
 
   // ── publish helpers ──────────────────────────────────────────────────────
 
+  group('F023 — GetAppList', () {
+    test('onGetAppListResponse replaces appList and sets source=manager',
+        () async {
+      await initTopics();
+
+      // Seed appList with one local entry to prove it gets replaced.
+      collector.appList.add({
+        'name': 'local_only',
+        'settings': '',
+        'state': '',
+        'status': 'Unknown',
+      });
+      expect(collector.appListSource.value, 'local');
+      expect(collector.appListGeneration.value, 0);
+
+      collector.onGetAppListResponse({
+        'app_names': ['from_manager_a', 'from_manager_b'],
+        'owner_client_ids': [1, 2],
+        'ret_code': 1,
+      });
+
+      expect(collector.appListSource.value, 'manager');
+      expect(collector.appListGeneration.value, 1);
+      expect(collector.appList.map((e) => e['name']).toList(),
+          ['from_manager_a', 'from_manager_b']);
+      expect(collector.appOwnerClientIds['from_manager_a'], 1);
+      expect(collector.appOwnerClientIds['from_manager_b'], 2);
+    });
+
+    test('preserves cached settings/state for apps that survive the swap',
+        () async {
+      await initTopics();
+      collector.appList.add({
+        'name': 'shared',
+        'settings': '{"v":"1"}',
+        'state': 'idle',
+        'status': 'Synced',
+      });
+
+      collector.onGetAppListResponse({
+        'app_names': ['shared'],
+        'owner_client_ids': [42],
+        'ret_code': 1,
+      });
+
+      expect(collector.appList.length, 1);
+      final entry = collector.appList[0];
+      expect(entry['name'], 'shared');
+      expect(entry['settings'], '{"v":"1"}');   // cached survived
+      expect(entry['state'], 'idle');
+      expect(entry['status'], 'Synced');
+    });
+
+    test('requestAppList publishes id and increments per call', () async {
+      await initTopics();
+      final id1 = collector.requestAppList();
+      final id2 = collector.requestAppList();
+      expect(id2, id1 + 1);
+      // reqTopics[4] is the GetAppList request slot (factory order).
+      verify(() => reqTopics[4].publish(any(
+            that: predicate<Map<String, dynamic>>(
+                (m) => m['id'] is int && (m['id'] as int) > 0),
+          ))).called(2);
+    });
+  });
+
   group('publish after startTopics', () {
     test('requestAppSettings publishes id + app_name on reqTopics[0]',
         () async {
@@ -312,8 +385,9 @@ void main() {
         () async {
       Get.reset();
       Get.put<Ros>(mockRos);
-      final respTopics2 = List.generate(5, (_) => MockTopic());
-      final reqTopics2 = List.generate(4, (_) => MockTopic());
+      // F023 — extra slots for GetAppList response + request mocks.
+      final respTopics2 = List.generate(6, (_) => MockTopic());
+      final reqTopics2 = List.generate(5, (_) => MockTopic());
       for (final t in [...respTopics2, ...reqTopics2]) {
         when(() => t.subscribe(any())).thenAnswer((_) async {});
         when(() => t.advertise()).thenAnswer((_) async {});
@@ -322,6 +396,7 @@ void main() {
       int ri = 0, qi = 0;
       final c = OtaCollector(
         topicFactory: (ros, name, type) {
+          if (name == otaGetAppListResTopic) return respTopics2[ri++];
           if (otaResponseTopics.contains(name)) return respTopics2[ri++];
           return reqTopics2[qi++];
         },
@@ -358,8 +433,9 @@ void main() {
         () async {
       Get.reset();
       Get.put<Ros>(mockRos);
-      final respTopics2 = List.generate(5, (_) => MockTopic());
-      final reqTopics2 = List.generate(4, (_) => MockTopic());
+      // F023 — extra slots for GetAppList response + request mocks.
+      final respTopics2 = List.generate(6, (_) => MockTopic());
+      final reqTopics2 = List.generate(5, (_) => MockTopic());
       for (final t in [...respTopics2, ...reqTopics2]) {
         when(() => t.subscribe(any())).thenAnswer((_) async {});
         when(() => t.advertise()).thenAnswer((_) async {});
@@ -368,6 +444,7 @@ void main() {
       int ri = 0, qi = 0;
       final c = OtaCollector(
         topicFactory: (ros, name, type) {
+          if (name == otaGetAppListResTopic) return respTopics2[ri++];
           if (otaResponseTopics.contains(name)) return respTopics2[ri++];
           return reqTopics2[qi++];
         },

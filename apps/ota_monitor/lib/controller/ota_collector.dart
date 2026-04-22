@@ -125,6 +125,25 @@ class OtaCollector extends GetxController {
   Topic? _stateReqPub;
   Topic? _updateReqPub;
 
+  // F023 — GetAppList query (Manager 진실 소스 통합).
+  Topic? _getAppListReqPub;
+  Topic? _getAppListResSub;
+  int _nextGetAppListId = 1;
+
+  /// Source label for the App List (F023).
+  /// 'local' until the first GetAppListResponse arrives, then 'manager'.
+  final RxString appListSource = 'local'.obs;
+
+  /// Per-app owner client_id from the most recent GetAppListResponse.
+  /// Used by tooltips / debug overlays in the Apps tab.
+  final RxMap<String, int> appOwnerClientIds = <String, int>{}.obs;
+
+  /// Monotonic counter incremented on every successful
+  /// GetAppListResponse. Lets the UI's refresh button observe whether a
+  /// response arrived inside its 5 s window without itself owning
+  /// subscription bookkeeping.
+  final RxInt appListGeneration = 0.obs;
+
   bool _setup = false;
   Ros? _boundRos;
   Timer? _watchdog;
@@ -226,6 +245,15 @@ class OtaCollector extends GetxController {
       await _stateReqPub?.advertise();
       await _updateReqPub?.advertise();
 
+      // F023 — GetAppList query channel.
+      _getAppListReqPub = topicFactory(
+          r, otaGetAppListReqTopic, otaGetAppListReqType);
+      _getAppListResSub = topicFactory(
+          r, otaGetAppListResTopic, otaGetAppListResType);
+      await _getAppListReqPub?.advertise();
+      await _getAppListResSub?.subscribe(
+          (m) async => onGetAppListResponse(m));
+
       _setup = true;
       readyNotifier.value = true;
       appLog('[OTA] Topics subscribed & advertised');
@@ -316,6 +344,58 @@ class OtaCollector extends GetxController {
       _updateAppList(appName, status: status);
       _addUpdateHistory(appName, 'Status: $status', null);
     }
+  }
+
+  // ── F023: GetAppList query ───────────────────────────────────────────────
+  //
+  // Issues a GetAppList request to the Manager and lets onGetAppListResponse
+  // overwrite [appList] with the authoritative snapshot. Returns the
+  // request id so a caller (Apps tab refresh button, integration test)
+  // can correlate the response.
+  int requestAppList() {
+    final id = _nextGetAppListId++;
+    _publish(_getAppListReqPub, {'id': id});
+    appLog('[OTA] GetAppList request id=$id');
+    return id;
+  }
+
+  /// Public for unit tests; called by the rosbridge subscription in
+  /// production.
+  void onGetAppListResponse(Map<String, dynamic> msg) {
+    final names = (msg['app_names'] as List?)
+            ?.whereType<String>()
+            .toList(growable: false) ??
+        const <String>[];
+    final owners = (msg['owner_client_ids'] as List?)
+            ?.map((v) => (v as num).toInt())
+            .toList(growable: false) ??
+        const <int>[];
+
+    appLog('[OTA] GetAppListResponse apps=${names.length}');
+
+    // F023 ac3: replace appList wholesale, but preserve any per-app
+    // status/settings/state cached from prior responses (key = appName).
+    final preserved = <String, Map<String, dynamic>>{};
+    for (final entry in appList) {
+      preserved[entry['name'] as String] = Map<String, dynamic>.from(entry);
+    }
+    appList.clear();
+    final newOwners = <String, int>{};
+    for (var i = 0; i < names.length; i++) {
+      final n = names[i];
+      final cached = preserved[n] ?? <String, dynamic>{
+        'name': n,
+        'settings': '',
+        'state': '',
+        'status': 'Unknown',
+      };
+      cached['name'] = n;
+      appList.add(cached);
+      if (i < owners.length) newOwners[n] = owners[i];
+    }
+    appOwnerClientIds.assignAll(newOwners);
+    appListSource.value = 'manager';
+    appListGeneration.value = appListGeneration.value + 1;
   }
 
   // ── Publish helpers ──────────────────────────────────────────────────────
