@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../theme/launcher_tokens.dart';
+import 'hangul_composer.dart';
 import 'text_input_bridge.dart';
 
 /// Input layers offered by the Tesla-reskin virtual keyboard.
-enum KeyboardLayer { letters, numbers, symbols }
+enum KeyboardLayer { letters, numbers, symbols, hangul }
 
 /// Dock-style on-screen keyboard for touch IVI use.
 ///
@@ -36,7 +37,19 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
   // True while a single shift is armed; consumed on the next character.
   bool _shift = false;
 
+  // Hangul composition state — owned by the keyboard because composition
+  // spans multiple key presses and must be flushed on layer/focus change.
+  final HangulComposer _composer = HangulComposer();
+  // Length (UTF-16 code units) of the in-progress syllable currently on
+  // screen. Hangul syllables are single BMP characters so this stays
+  // 0 or 1; the field exists for clarity.
+  int _composingOnScreen = 0;
+
   void _onChar(String ch) {
+    // Any non-hangul input during composition flushes the pending
+    // syllable first — otherwise it would be stuck on screen while the
+    // user types ASCII next to it.
+    _commitHangul();
     final out = _shift && _layer == KeyboardLayer.letters
         ? ch.toUpperCase()
         : ch;
@@ -44,11 +57,89 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
     if (_shift) setState(() => _shift = false);
   }
 
+  void _onJamo(String baseJamo) {
+    final jamo = _shiftedJamo(baseJamo, _shift);
+    final result = _composer.feed(jamo);
+    // Remove the previous in-progress syllable, then write committed +
+    // new composing. Backspace + insert is simpler than splicing the
+    // controller value by hand and keeps the cursor at the end.
+    for (var i = 0; i < _composingOnScreen; i++) {
+      TextInputBridge.backspace();
+    }
+    if (result.committed.isNotEmpty) {
+      TextInputBridge.insert(result.committed);
+    }
+    if (result.composing.isNotEmpty) {
+      TextInputBridge.insert(result.composing);
+    }
+    _composingOnScreen = result.composing.length;
+    if (_shift) setState(() => _shift = false);
+  }
+
+  /// Backspace while in the Hangul layer — peel one jamo at a time when
+  /// composing, otherwise delete one character in the text field.
+  void _onHangulBackspace() {
+    if (!_composer.isComposing) {
+      TextInputBridge.backspace();
+      return;
+    }
+    final result = _composer.backspace();
+    for (var i = 0; i < _composingOnScreen; i++) {
+      TextInputBridge.backspace();
+    }
+    if (result.committed.isNotEmpty) {
+      TextInputBridge.insert(result.committed);
+    }
+    if (result.composing.isNotEmpty) {
+      TextInputBridge.insert(result.composing);
+    }
+    _composingOnScreen = result.composing.length;
+  }
+
+  /// Finalise the current syllable without changing the visible text —
+  /// the composing glyph already sits in the buffer as-is.
+  void _commitHangul() {
+    if (_composer.isComposing) _composer.commit();
+    _composingOnScreen = 0;
+  }
+
+  void _onHangulSpace() {
+    _commitHangul();
+    TextInputBridge.insert(' ');
+  }
+
+  void _onHangulSubmit() {
+    _commitHangul();
+    TextInputBridge.submit();
+  }
+
   void _setLayer(KeyboardLayer layer) {
+    // Leaving the Hangul layer without committing would strand a partial
+    // syllable whose state the next layer can't progress.
+    if (_layer == KeyboardLayer.hangul && layer != KeyboardLayer.hangul) {
+      _commitHangul();
+    }
     setState(() {
       _layer = layer;
       _shift = false;
     });
+  }
+
+  /// Map a 두벌식 base jamo to its shift variant. Most rows have no
+  /// shifted form — only consonants with a double form (ㅃ, ㅉ, ㄸ, ㄲ,
+  /// ㅆ) and the two vowels ㅐ / ㅔ have shifts.
+  static String _shiftedJamo(String base, bool shift) {
+    if (!shift) return base;
+    const map = {
+      'ㅂ': 'ㅃ',
+      'ㅈ': 'ㅉ',
+      'ㄷ': 'ㄸ',
+      'ㄱ': 'ㄲ',
+      'ㅅ': 'ㅆ',
+      'ㅐ': 'ㅒ',
+      'ㅔ': 'ㅖ',
+    };
+    return map[base] ?? base;
   }
 
   @override
@@ -79,6 +170,7 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
           onBackspace: TextInputBridge.backspace,
           onSubmit: TextInputBridge.submit,
           onSwitchNumbers: () => _setLayer(KeyboardLayer.numbers),
+          onSwitchHangul: () => _setLayer(KeyboardLayer.hangul),
           onClose: widget.onDismiss,
         );
       case KeyboardLayer.numbers:
@@ -99,6 +191,18 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
           onSwitchNumbers: () => _setLayer(KeyboardLayer.numbers),
           onClose: widget.onDismiss,
         );
+      case KeyboardLayer.hangul:
+        return _HangulLayer(
+          shift: _shift,
+          onJamo: _onJamo,
+          onShift: () => setState(() => _shift = !_shift),
+          onBackspace: _onHangulBackspace,
+          onSpace: _onHangulSpace,
+          onSubmit: _onHangulSubmit,
+          onSwitchEnglish: () => _setLayer(KeyboardLayer.letters),
+          onSwitchNumbers: () => _setLayer(KeyboardLayer.numbers),
+          onClose: widget.onDismiss,
+        );
     }
   }
 }
@@ -113,6 +217,7 @@ class _LettersLayer extends StatelessWidget {
     required this.onBackspace,
     required this.onSubmit,
     required this.onSwitchNumbers,
+    required this.onSwitchHangul,
     required this.onClose,
   });
 
@@ -122,6 +227,7 @@ class _LettersLayer extends StatelessWidget {
   final VoidCallback onBackspace;
   final VoidCallback onSubmit;
   final VoidCallback onSwitchNumbers;
+  final VoidCallback onSwitchHangul;
   final VoidCallback onClose;
 
   @override
@@ -164,7 +270,7 @@ class _LettersLayer extends StatelessWidget {
         Expanded(child: Row(
           children: [
             _SpecialKey(label: '123', flex: 2, onTap: onSwitchNumbers),
-            _CharKey(label: ',', onTap: () => onChar(',')),
+            _SpecialKey(label: '한', flex: 2, onTap: onSwitchHangul),
             _SpecialKey(
               label: 'space',
               flex: 5,
@@ -448,4 +554,109 @@ class _SpecialKeyState extends State<_SpecialKey> {
       ),
     );
   }
+}
+
+/// ─── Hangul layer ────────────────────────────────────────────────────
+/// Standard 두벌식 layout. Each key emits its *base* jamo; the shift
+/// variant (ㅃ/ㅉ/ㄸ/ㄲ/ㅆ and ㅒ/ㅖ) is resolved in the keyboard's
+/// [_VirtualKeyboardState._shiftedJamo]. Consonant rows show their shift
+/// form as a secondary glyph when Shift is armed.
+class _HangulLayer extends StatelessWidget {
+  const _HangulLayer({
+    required this.shift,
+    required this.onJamo,
+    required this.onShift,
+    required this.onBackspace,
+    required this.onSpace,
+    required this.onSubmit,
+    required this.onSwitchEnglish,
+    required this.onSwitchNumbers,
+    required this.onClose,
+  });
+
+  final bool shift;
+  final ValueChanged<String> onJamo;
+  final VoidCallback onShift;
+  final VoidCallback onBackspace;
+  final VoidCallback onSpace;
+  final VoidCallback onSubmit;
+  final VoidCallback onSwitchEnglish;
+  final VoidCallback onSwitchNumbers;
+  final VoidCallback onClose;
+
+  static const List<List<String>> _rows = [
+    ['ㅂ', 'ㅈ', 'ㄷ', 'ㄱ', 'ㅅ', 'ㅛ', 'ㅕ', 'ㅑ', 'ㅐ', 'ㅔ'],
+    ['ㅁ', 'ㄴ', 'ㅇ', 'ㄹ', 'ㅎ', 'ㅗ', 'ㅓ', 'ㅏ', 'ㅣ'],
+    ['ㅋ', 'ㅌ', 'ㅊ', 'ㅍ', 'ㅠ', 'ㅜ', 'ㅡ'],
+  ];
+
+  static const Map<String, String> _shiftedLabel = {
+    'ㅂ': 'ㅃ',
+    'ㅈ': 'ㅉ',
+    'ㄷ': 'ㄸ',
+    'ㄱ': 'ㄲ',
+    'ㅅ': 'ㅆ',
+    'ㅐ': 'ㅒ',
+    'ㅔ': 'ㅖ',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(child: _row(_rows[0])),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: _row(_rows[1]),
+          ),
+        ),
+        Expanded(child: Row(
+          children: [
+            _SpecialKey(
+              label: 'shift',
+              highlighted: shift,
+              flex: 2,
+              onTap: onShift,
+            ),
+            ..._rows[2].map(
+              (j) => Expanded(child: _CharKey(
+                label: _renderLabel(j),
+                onTap: () => onJamo(j),
+              )),
+            ),
+            _SpecialKey(label: '⌫', flex: 2, onTap: onBackspace),
+          ],
+        )),
+        Expanded(child: Row(
+          children: [
+            _SpecialKey(label: '123', flex: 2, onTap: onSwitchNumbers),
+            _SpecialKey(
+              label: 'ABC',
+              flex: 2,
+              onTap: onSwitchEnglish,
+            ),
+            _SpecialKey(label: 'space', flex: 5, onTap: onSpace),
+            _SpecialKey(label: '↵', flex: 2, onTap: onSubmit, primary: true),
+            _SpecialKey(label: '✕', flex: 1, onTap: onClose),
+          ],
+        )),
+      ],
+    );
+  }
+
+  Widget _row(List<String> jamos) => Row(
+        children: [
+          for (final j in jamos)
+            Expanded(
+              child: _CharKey(
+                label: _renderLabel(j),
+                onTap: () => onJamo(j),
+              ),
+            ),
+        ],
+      );
+
+  String _renderLabel(String base) =>
+      shift ? (_shiftedLabel[base] ?? base) : base;
 }

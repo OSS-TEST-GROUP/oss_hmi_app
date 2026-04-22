@@ -102,5 +102,67 @@ void main() {
       await tester.pump();
       expect(controller.text, '7a');
     });
+
+    testWidgets('한 toggle switches to the Hangul layer and composes "한"',
+        (tester) async {
+      final controller = await _pumpHost(tester);
+      await tester.tap(find.byKey(const Key('target_field')));
+      await tester.pumpAndSettle();
+
+      // Enter Hangul mode.
+      await tester.tap(find.text('한'));
+      await tester.pump();
+
+      // Type ㅎ ㅏ ㄴ  → "한"
+      await tester.tap(find.text('ㅎ'));
+      await tester.pump();
+      await tester.tap(find.text('ㅏ'));
+      await tester.pump();
+      await tester.tap(find.text('ㄴ'));
+      await tester.pump();
+
+      expect(controller.text, '한');
+    });
+
+    testWidgets('Hangul layer composes "한글"',
+        (tester) async {
+      final controller = await _pumpHost(tester);
+      await tester.tap(find.byKey(const Key('target_field')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('한'));
+      await tester.pump();
+
+      for (final j in ['ㅎ', 'ㅏ', 'ㄴ', 'ㄱ', 'ㅡ', 'ㄹ']) {
+        await tester.tap(find.text(j));
+        await tester.pump();
+      }
+
+      expect(controller.text, '한글');
+    });
+
+    testWidgets('ABC toggle from Hangul commits the pending syllable',
+        (tester) async {
+      final controller = await _pumpHost(tester);
+      await tester.tap(find.byKey(const Key('target_field')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('한'));
+      await tester.pump();
+
+      // Partial syllable 하 (ㅎ + ㅏ).
+      await tester.tap(find.text('ㅎ'));
+      await tester.pump();
+      await tester.tap(find.text('ㅏ'));
+      await tester.pump();
+      expect(controller.text, '하');
+
+      // Switch back to English — the 하 should remain as-is.
+      await tester.tap(find.text('ABC'));
+      await tester.pump();
+      await tester.tap(find.text('a'));
+      await tester.pump();
+      expect(controller.text, '하a');
+    });
   });
 }
