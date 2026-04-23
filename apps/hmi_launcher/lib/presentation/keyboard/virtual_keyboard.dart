@@ -144,18 +144,25 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('virtual_keyboard'),
-      height: VirtualKeyboard.height,
-      decoration: const BoxDecoration(
-        color: LauncherTokens.bg2,
-        border: Border(top: BorderSide(color: LauncherTokens.b1)),
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      child: Column(
-        children: [
-          Expanded(child: _buildRows()),
-        ],
+    // TextFieldTapRegion marks this subtree as part of the focused
+    // EditableText's "not outside" group. Without it, every key tap
+    // counts as a tap outside the TextField on desktop, which immediately
+    // unfocuses the editor — so TextInputBridge.insert() finds no focused
+    // editor and KeyboardHost debounces the keyboard away.
+    return TextFieldTapRegion(
+      child: Container(
+        key: const Key('virtual_keyboard'),
+        height: VirtualKeyboard.height,
+        decoration: const BoxDecoration(
+          color: LauncherTokens.bg2,
+          border: Border(top: BorderSide(color: LauncherTokens.b1)),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          children: [
+            Expanded(child: _buildRows()),
+          ],
+        ),
       ),
     );
   }
