@@ -19,7 +19,11 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.0
+  # Match ota_monitor / adsw_monitor: the AGL Yocto SDK's Flutter
+  # (engine 3.32.2) ships an older Dart, so keeping ^3.5.2 lets the
+  # same sources compile both under host Flutter 3.41 and the AGL
+  # cross-toolchain.
+  sdk: ^3.5.2
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions

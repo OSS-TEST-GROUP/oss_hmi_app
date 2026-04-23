@@ -87,7 +87,10 @@ class _LauncherPromptBarState extends State<LauncherPromptBar> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: widget.chips.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                // Wildcard pattern (_, _) needs Dart 3.7+; the AGL SDK
+                // currently ships Dart 3.5, so keep the traditional
+                // double-underscore alias.
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (_, i) {
                   final c = widget.chips[i];
                   return _Chip(
