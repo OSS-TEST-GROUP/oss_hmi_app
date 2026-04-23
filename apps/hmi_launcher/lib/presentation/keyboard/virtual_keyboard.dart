@@ -486,7 +486,7 @@ class _CharKeyState extends State<_CharKey> {
           child: Text(
             widget.label,
             style: const TextStyle(
-              fontSize: 16,
+              fontSize: 22,
               fontWeight: FontWeight.w500,
               color: LauncherTokens.t1,
             ),
@@ -551,7 +551,7 @@ class _SpecialKeyState extends State<_SpecialKey> {
             child: Text(
               widget.label,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 16,
                 fontWeight: FontWeight.w500,
                 color: fg,
               ),
