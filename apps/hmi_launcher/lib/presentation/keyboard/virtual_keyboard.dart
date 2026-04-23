@@ -256,7 +256,7 @@ class _LettersLayer extends StatelessWidget {
         Expanded(child: Row(
           children: [
             _SpecialKey(
-              label: shift ? '⇧' : '⇧',
+              label: 'Shift',
               highlighted: shift,
               flex: 2,
               onTap: onShift,
@@ -268,7 +268,7 @@ class _LettersLayer extends StatelessWidget {
               )),
             ),
             _SpecialKey(
-              label: '⌫',
+              label: 'Back',
               flex: 2,
               onTap: onBackspace,
             ),
@@ -279,13 +279,13 @@ class _LettersLayer extends StatelessWidget {
             _SpecialKey(label: '123', flex: 2, onTap: onSwitchNumbers),
             _SpecialKey(label: '한', flex: 2, onTap: onSwitchHangul),
             _SpecialKey(
-              label: 'space',
+              label: 'Space',
               flex: 5,
               onTap: () => onChar(' '),
             ),
             _CharKey(label: '.', onTap: () => onChar('.')),
-            _SpecialKey(label: '↵', flex: 2, onTap: onSubmit, primary: true),
-            _SpecialKey(label: '✕', flex: 1, onTap: onClose),
+            _SpecialKey(label: 'Enter', flex: 2, onTap: onSubmit, primary: true),
+            _SpecialKey(label: 'Close', flex: 1, onTap: onClose),
           ],
         )),
       ],
@@ -334,19 +334,19 @@ class _NumbersLayer extends StatelessWidget {
                         onTap: () => onChar(c),
                       )),
                 ),
-            _SpecialKey(label: '⌫', flex: 2, onTap: onBackspace),
+            _SpecialKey(label: 'Back', flex: 2, onTap: onBackspace),
           ],
         )),
         Expanded(child: Row(
           children: [
             _SpecialKey(label: 'ABC', flex: 2, onTap: onSwitchLetters),
             _SpecialKey(
-              label: 'space',
+              label: 'Space',
               flex: 5,
               onTap: () => onChar(' '),
             ),
-            _SpecialKey(label: '↵', flex: 2, onTap: onSubmit, primary: true),
-            _SpecialKey(label: '✕', flex: 1, onTap: onClose),
+            _SpecialKey(label: 'Enter', flex: 2, onTap: onSubmit, primary: true),
+            _SpecialKey(label: 'Close', flex: 1, onTap: onClose),
           ],
         )),
       ],
@@ -392,19 +392,19 @@ class _SymbolsLayer extends StatelessWidget {
                         onTap: () => onChar(c),
                       )),
                 ),
-            _SpecialKey(label: '⌫', flex: 2, onTap: onBackspace),
+            _SpecialKey(label: 'Back', flex: 2, onTap: onBackspace),
           ],
         )),
         Expanded(child: Row(
           children: [
             _SpecialKey(label: 'ABC', flex: 2, onTap: onSwitchLetters),
             _SpecialKey(
-              label: 'space',
+              label: 'Space',
               flex: 5,
               onTap: () => onChar(' '),
             ),
-            _SpecialKey(label: '↵', flex: 2, onTap: onSubmit, primary: true),
-            _SpecialKey(label: '✕', flex: 1, onTap: onClose),
+            _SpecialKey(label: 'Enter', flex: 2, onTap: onSubmit, primary: true),
+            _SpecialKey(label: 'Close', flex: 1, onTap: onClose),
           ],
         )),
       ],
@@ -551,7 +551,7 @@ class _SpecialKeyState extends State<_SpecialKey> {
             child: Text(
               widget.label,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 18,
                 fontWeight: FontWeight.w500,
                 color: fg,
               ),
@@ -621,7 +621,7 @@ class _HangulLayer extends StatelessWidget {
         Expanded(child: Row(
           children: [
             _SpecialKey(
-              label: 'shift',
+              label: 'Shift',
               highlighted: shift,
               flex: 2,
               onTap: onShift,
@@ -632,7 +632,7 @@ class _HangulLayer extends StatelessWidget {
                 onTap: () => onJamo(j),
               )),
             ),
-            _SpecialKey(label: '⌫', flex: 2, onTap: onBackspace),
+            _SpecialKey(label: 'Back', flex: 2, onTap: onBackspace),
           ],
         )),
         Expanded(child: Row(
@@ -643,9 +643,9 @@ class _HangulLayer extends StatelessWidget {
               flex: 2,
               onTap: onSwitchEnglish,
             ),
-            _SpecialKey(label: 'space', flex: 5, onTap: onSpace),
-            _SpecialKey(label: '↵', flex: 2, onTap: onSubmit, primary: true),
-            _SpecialKey(label: '✕', flex: 1, onTap: onClose),
+            _SpecialKey(label: 'Space', flex: 5, onTap: onSpace),
+            _SpecialKey(label: 'Enter', flex: 2, onTap: onSubmit, primary: true),
+            _SpecialKey(label: 'Close', flex: 1, onTap: onClose),
           ],
         )),
       ],

@@ -58,7 +58,7 @@ void main() {
 
       // Arm shift — letter labels now render in uppercase. Tap "A" for
       // the shifted glyph, then confirm the next tap falls back to "b".
-      await tester.tap(find.text('⇧'));
+      await tester.tap(find.text('Shift'));
       await tester.pump();
       await tester.tap(find.text('A'));
       await tester.pump();
@@ -75,7 +75,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Caret is at end after focus; backspace removes "c".
-      await tester.tap(find.text('⌫'));
+      await tester.tap(find.text('Back'));
       await tester.pump();
 
       expect(controller.text, 'ab');
