@@ -7,7 +7,9 @@ FROM ubuntu:22.04
 #   docker build -f docker/Dockerfile --build-arg APP_NAME=ota_monitor \
 #                -t ota_monitor:x86_64 .
 ARG APP_NAME=adsw_monitor
+ARG CONFIG_FILE=config.json
 ENV APP_NAME=${APP_NAME}
+ENV CONFIG_FILE=${CONFIG_FILE}
 
 # Install GTK, Wayland, OpenGL runtime libraries.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,8 +45,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 ADD output/${APP_NAME}-x86_64-release.tar.gz /app/
 
-# Copy config.json next to the binary (config/ — path #5 in config_loader_io.dart).
-COPY ${APP_NAME}/config/config.json /app/config/config.json
+# Copy config next to the binary (config/ — path #5 in config_loader_io.dart).
+# CONFIG_FILE defaults to config.json for adsw / ota; hmi_launcher passes
+# launcher_config.json.
+COPY ${APP_NAME}/config/${CONFIG_FILE} /app/config/${CONFIG_FILE}
 
 # Set executable bit + stable entrypoint name (the exec-form ENTRYPOINT
 # does not expand variables, so use a symlink).
