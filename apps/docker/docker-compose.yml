@@ -326,9 +326,12 @@ services:
       - /run/user/1000:/run/user/1000
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ../hmi_launcher/config/launcher_config.json:/app/config/launcher_config.json
+      # NVIDIA NV-GLX on DISPLAY=:1 requires Xauthority for DRI authentication.
+      - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
       - DISPLAY=:1
+      - XAUTHORITY=/root/.Xauthority
       - XDG_RUNTIME_DIR=/run/user/1000
 
     network_mode: host
