@@ -34,8 +34,11 @@ WESTON_HEIGHT=${WESTON_HEIGHT:-720}
 if [ "${VNC_PORT}" -gt 0 ] 2>/dev/null; then
     # LISTEN 상태 포트만 확인 (TIME_WAIT 등 제외)
     if ss -tlnH 2>/dev/null | awk '{print $4}' | grep -q ":${VNC_PORT}$"; then
-        echo "[ERROR] 포트 ${VNC_PORT}이 이미 사용 중입니다. 기존 컨테이너를 먼저 중지하세요:"
-        echo "        docker stop adsw_monitor_arm64_test"
+        echo "[ERROR] 포트 ${VNC_PORT}이 이미 사용 중입니다."
+        echo "        실행 중인 arm64 테스트 컨테이너 확인:"
+        echo "          docker ps | grep arm64_test"
+        echo "        중지 예시:"
+        echo "          docker rm -f hmi_launcher_arm64_test"
         exit 1
     fi
     echo "[INFO] Weston VNC 백엔드 시작 (포트 ${VNC_PORT}, ${WESTON_WIDTH}x${WESTON_HEIGHT})..."
