@@ -56,13 +56,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Flutter SDK 설치
+#
+# The container runs with the host user's UID/GID, so every path Flutter
+# writes to at runtime (its own cache under FLUTTER_ROOT, PUB_CACHE,
+# HOME) must be writable by any UID. `chmod -R go+rwX` preserves
+# existing executable bits while opening write access.
 RUN git clone --depth 1 \
       --branch ${FLUTTER_VERSION} \
       https://github.com/flutter/flutter.git \
       ${FLUTTER_ROOT} && \
     flutter config --no-analytics && \
     flutter precache --linux && \
-    flutter doctor -v
+    flutter doctor -v && \
+    chmod -R go+rwX ${FLUTTER_ROOT}
 
 # AGL SDK 다운로드 및 설치
 # 내부 Nexus 저장소 인증 필요: --build-arg AGL_SDK_USER / AGL_SDK_PASSWORD 로 전달

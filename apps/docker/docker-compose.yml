@@ -10,6 +10,15 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.build
     image: adsw_monitor_builder:x86_64
+    # Run as the host user so artifacts written into bind-mounted source
+    # directories (./adsw_monitor/.dart_tool, build/, etc.) are owned by
+    # the invoking user instead of root. Override via USER_UID/USER_GID
+    # env vars when the host user is not 1000:1000.
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
     volumes:
       - ../adsw_monitor:/workspace/app
       - ../output:/workspace/output
@@ -25,6 +34,11 @@ services:
         AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
         AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
     image: adsw_monitor_builder:arm64
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
     volumes:
       - ../adsw_monitor:/workspace/app
       - ../output:/workspace/output
@@ -147,6 +161,11 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.build
     image: ota_monitor_builder:x86_64
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
     volumes:
       - ../ota_monitor:/workspace/app
       - ../output:/workspace/output
@@ -162,6 +181,11 @@ services:
         AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
         AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
     image: ota_monitor_builder:arm64
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
     volumes:
       - ../ota_monitor:/workspace/app
       - ../output:/workspace/output
@@ -279,6 +303,11 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.build
     image: hmi_launcher_builder:x86_64
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
     volumes:
       - ../hmi_launcher:/workspace/apps/hmi_launcher
       - ../ota_monitor:/workspace/apps/ota_monitor
@@ -299,6 +328,11 @@ services:
         AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
         AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
     image: hmi_launcher_builder:arm64
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
     volumes:
       - ../hmi_launcher:/workspace/apps/hmi_launcher
       - ../ota_monitor:/workspace/apps/ota_monitor
