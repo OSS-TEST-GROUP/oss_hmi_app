@@ -38,6 +38,8 @@ ENV CONFIG_FILE=${CONFIG_FILE}
 ENV BUNDLE_PATH=/usr/share/flutter/${APP_NAME}/${APP_VERSION}/release
 ENV XDG_RUNTIME_DIR=/run/user/1001
 ENV WAYLAND_DISPLAY=wayland-0
+# hmi_launcher discovers plugins by scanning HMI_APPS_ROOT for manifest.json files.
+ENV HMI_APPS_ROOT=/apps
 
 # flutter-auto runtime deps + Weston headless compositor.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -120,6 +122,12 @@ ADD output/${APP_NAME}-arm64-release.tar.gz /
 # to config.json for adsw / ota; hmi_launcher passes launcher_config.json.
 RUN mkdir -p /etc/${APP_NAME}
 COPY ${APP_NAME}/config/${CONFIG_FILE} /etc/${APP_NAME}/${CONFIG_FILE}
+
+# Plugin manifests: hmi_launcher scans HMI_APPS_ROOT for <app>/manifest.json.
+# Bake them in so the launcher sidebar shows ota_monitor + adsw_monitor.
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor
+COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
+COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
 
 # Weston headless + flutter-auto launcher script.
 COPY docker/agl-run-test.sh /usr/local/bin/agl-run-test.sh
