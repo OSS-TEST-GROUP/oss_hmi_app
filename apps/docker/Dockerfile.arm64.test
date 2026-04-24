@@ -67,6 +67,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-xcb1 \
     # neatvnc PAM auth
     libpam-runtime \
+    # Mesa DRI swrast driver: enables llvmpipe (LLVM JIT rasterizer, ~10x faster
+    # than softpipe) for both flutter-auto EGL rendering and Weston GL compositor.
+    libgl1-mesa-dri \
     # misc
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
