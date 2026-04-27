@@ -137,7 +137,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
 
     _settingsController = SettingsController(
       initialConfig: appConfig,
@@ -212,9 +212,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
             ),
           ),
           const Spacer(),
-          // F011 / F020 §2: live connection indicator. AnimatedBuilder on
-          // the holder ensures we re-listen if the keeper itself is swapped
-          // (e.g. after a SettingsController.applyUrl flip).
+          // F011 / F020 §2: live connection indicator.
           AnimatedBuilder(
             animation: widget.keeperHolder,
             builder: (_, __) {
@@ -242,6 +240,14 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
                       );
                     },
                   ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    key: const Key('btn_settings'),
+                    icon: const Icon(Icons.settings, size: 24),
+                    tooltip: 'Settings',
+                    color: const Color(0xFF9CA3AF),
+                    onPressed: () => _showSettingsDialog(context),
+                  ),
                 ],
               );
             },
@@ -263,7 +269,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
           Tab(key: Key('tab_apps'), text: 'Apps'),
           Tab(key: Key('tab_actor'), text: 'Actor'),
           Tab(key: Key('tab_client'), text: 'Client'),
-          Tab(key: Key('tab_settings'), text: 'Settings'),
         ],
       ),
     );
@@ -281,6 +286,54 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
       _clientController!.setup();
     }
     return ClientPage(controller: _clientController!);
+  }
+
+  void _showSettingsDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 8, 0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.settings, color: Color(0xFF60A5FA), size: 22),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Settings',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Color(0xFF9CA3AF)),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Color(0xFF374151)),
+              Flexible(
+                child: SettingsPage(
+                  controller: _settingsController,
+                  currentUrlProvider: () =>
+                      widget.keeperHolder.current.cfg.rosUrl.toString(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _placeholder(String label, String featureId) => Center(
@@ -339,11 +392,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
                 OtaViewPage(truncateLength: widget.truncateLength),
                 ActorPage(collector: Get.find<OtaCollector>()),
                 _buildClientTab(),
-                SettingsPage(
-                  controller: _settingsController,
-                  currentUrlProvider: () =>
-                      widget.keeperHolder.current.cfg.rosUrl.toString(),
-                ),
               ],
             ),
           ),
