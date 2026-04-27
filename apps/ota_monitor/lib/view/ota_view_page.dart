@@ -5,9 +5,17 @@ import 'package:get/get.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 
 class OtaViewPage extends StatefulWidget {
-  const OtaViewPage({super.key, this.truncateLength = 100});
+  const OtaViewPage({
+    super.key,
+    this.truncateLength = 100,
+    this.selectedApp,
+  });
 
   final int truncateLength;
+
+  /// Shared notifier so Actor tab can pre-fill app_name when an app is
+  /// selected here (gap 1). Optional — tests omit it.
+  final ValueNotifier<String?>? selectedApp;
 
   @override
   State<OtaViewPage> createState() => _OtaViewPageState();
@@ -54,6 +62,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
 
   void _onAppSelected(String appName) {
     setState(() => _selectedAppName = appName);
+    widget.selectedApp?.value = appName; // gap 1: notify Actor tab
     _otaCollector.requestAppSettings(appName);
     _otaCollector.requestAppState(appName);
   }

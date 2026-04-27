@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:ota_monitor/controller/ota_collector.dart';
@@ -23,9 +24,18 @@ import 'package:ota_monitor/controller/ota_collector.dart';
 /// purposes (user-facing feedback vs pending-request hygiene). See
 /// docs/ux/ota-monitor-wireframe.md §4.
 class ActorPage extends StatelessWidget {
-  const ActorPage({super.key, required this.collector});
+  const ActorPage({
+    super.key,
+    required this.collector,
+    this.selectedApp,
+  });
 
   final OtaCollector collector;
+
+  /// Shared notifier from OtaMonitorHomePage. When the user selects an app
+  /// in the Apps tab, its name is pushed here and each _ActorCard pre-fills
+  /// its app_name field automatically (gap 1).
+  final ValueNotifier<String?>? selectedApp;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +51,7 @@ class ActorPage extends StatelessWidget {
             responseKey: 'text_actor_get_settings_response',
             kind: OtaRequestKind.getSettings,
             collector: collector,
+            selectedApp: selectedApp,
           ),
           const SizedBox(height: 16),
           _ActorCard(
@@ -58,6 +69,7 @@ class ActorPage extends StatelessWidget {
             responseKey: 'text_actor_set_settings_response',
             kind: OtaRequestKind.setSettings,
             collector: collector,
+            selectedApp: selectedApp,
           ),
           const SizedBox(height: 16),
           _ActorCard(
@@ -68,6 +80,7 @@ class ActorPage extends StatelessWidget {
             responseKey: 'text_actor_get_state_response',
             kind: OtaRequestKind.getState,
             collector: collector,
+            selectedApp: selectedApp,
           ),
           const SizedBox(height: 16),
           _ActorCard(
@@ -78,6 +91,7 @@ class ActorPage extends StatelessWidget {
             responseKey: 'text_actor_set_update_response',
             kind: OtaRequestKind.setUpdate,
             collector: collector,
+            selectedApp: selectedApp,
           ),
         ],
       ),
@@ -101,6 +115,7 @@ class _ActorCard extends StatefulWidget {
     required this.responseKey,
     required this.kind,
     required this.collector,
+    this.selectedApp,
   });
 
   final String cardKey;
@@ -110,6 +125,7 @@ class _ActorCard extends StatefulWidget {
   final String responseKey;
   final OtaRequestKind kind;
   final OtaCollector collector;
+  final ValueNotifier<String?>? selectedApp;
 
   @override
   State<_ActorCard> createState() => _ActorCardState();
@@ -132,19 +148,32 @@ class _ActorCardState extends State<_ActorCard> {
     _controllers =
         widget.fields.map((_) => TextEditingController()).toList(growable: false);
     _sub = widget.collector.responses.listen(_onResponse);
-    // F009 SHOULD #1 (rev 1): rebuild when the collector toggles ready →
-    // Send button enables/disables accordingly.
     widget.collector.readyNotifier.addListener(_onReadyChange);
+    // Gap 1: pre-fill app_name with currently selected app, then listen.
+    final initial = widget.selectedApp?.value;
+    if (initial != null && _controllers.isNotEmpty) {
+      _controllers[0].text = initial;
+    }
+    widget.selectedApp?.addListener(_onSelectedAppChange);
   }
 
   void _onReadyChange() {
     if (mounted) setState(() {});
   }
 
+  // Gap 1: when the user picks an app in the Apps tab, mirror it here.
+  void _onSelectedAppChange() {
+    final name = widget.selectedApp?.value;
+    if (name != null && _controllers.isNotEmpty && mounted) {
+      setState(() => _controllers[0].text = name);
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
     _sub?.cancel();
+    widget.selectedApp?.removeListener(_onSelectedAppChange);
     widget.collector.readyNotifier.removeListener(_onReadyChange);
     for (final c in _controllers) {
       c.dispose();

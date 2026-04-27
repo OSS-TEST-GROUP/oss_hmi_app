@@ -131,8 +131,17 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
   late final TabController _tabController;
   late final SettingsController _settingsController;
 
+  // Gap 1: shared app selection across Apps ↔ Actor tabs.
+  final ValueNotifier<String?> _selectedApp = ValueNotifier(null);
+
+  // Gap 2: listen to Ros status so _buildClientTab() retries after connect.
+  RosKeeper? _statusListenedKeeper;
+
   /// F021 — Client tab controller, lazy-built from the live RosKeeper.
   ClientServiceController? _clientController;
+
+  // Gap 3: track last known clientId to detect fresh registration.
+  int? _clientLastId;
 
   @override
   void initState() {
@@ -144,6 +153,11 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
       readKeeper: () => widget.keeperHolder.current,
       writeKeeper: widget.keeperHolder.replace,
     );
+
+    // Gap 2: rebuild when keeper is swapped or Ros connects/disconnects.
+    _statusListenedKeeper = widget.keeperHolder.current;
+    widget.keeperHolder.addListener(_onKeeperHolderChange);
+    _statusListenedKeeper!.statusNotifier.addListener(_onRosStatusChange);
 
     // F007: show a one-shot dialog if config.json failed to parse at startup.
     if (widget.configWarning != null) {
@@ -168,8 +182,40 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
 
   @override
   void dispose() {
+    _selectedApp.dispose();
+    widget.keeperHolder.removeListener(_onKeeperHolderChange);
+    _statusListenedKeeper?.statusNotifier.removeListener(_onRosStatusChange);
+    _clientController?.removeListener(_onClientControllerChange);
     _tabController.dispose();
     super.dispose();
+  }
+
+  // Gap 2: re-attach status listener when keeper is swapped.
+  void _onKeeperHolderChange() {
+    final newKeeper = widget.keeperHolder.current;
+    if (newKeeper != _statusListenedKeeper) {
+      _statusListenedKeeper?.statusNotifier.removeListener(_onRosStatusChange);
+      _statusListenedKeeper = newKeeper;
+      newKeeper.statusNotifier.addListener(_onRosStatusChange);
+    }
+    if (mounted) setState(() {});
+  }
+
+  // Gap 2: Ros connection state changed — rebuild so Client tab can retry.
+  void _onRosStatusChange() {
+    if (mounted) setState(() {});
+  }
+
+  // Gap 3: when clientId arrives for the first time, refresh the Manager's
+  // app list so the Apps tab immediately reflects registered apps.
+  void _onClientControllerChange() {
+    final cid = _clientController?.clientId;
+    if (cid != null && cid != _clientLastId) {
+      _clientLastId = cid;
+      if (Get.isRegistered<OtaCollector>()) {
+        Get.find<OtaCollector>().requestAppList();
+      }
+    }
   }
 
   void quitApp() {
@@ -275,15 +321,17 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
   }
 
   /// F021 — lazily build the Client tab once a Ros instance is registered
-  /// in GetX. Falls back to the placeholder before the first connection.
+  /// in GetX. Falls back to the placeholder; _onRosStatusChange triggers
+  /// setState so this retries automatically after Ros connects (gap 2).
   Widget _buildClientTab() {
     if (_clientController == null) {
       if (!Get.isRegistered<Ros>()) {
         return _placeholder('Client tab waiting for ROS', 'F021');
       }
-      _clientController =
-          ClientServiceController(ros: Get.find<Ros>());
+      _clientController = ClientServiceController(ros: Get.find<Ros>());
       _clientController!.setup();
+      // Gap 3: detect fresh registration to auto-refresh the app list.
+      _clientController!.addListener(_onClientControllerChange);
     }
     return ClientPage(controller: _clientController!);
   }
@@ -389,8 +437,15 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
             child: TabBarView(
               controller: _tabController,
               children: [
-                OtaViewPage(truncateLength: widget.truncateLength),
-                ActorPage(collector: Get.find<OtaCollector>()),
+                // Gap 1: selectedApp notifier shared across Apps/Actor tabs.
+                OtaViewPage(
+                  truncateLength: widget.truncateLength,
+                  selectedApp: _selectedApp,
+                ),
+                ActorPage(
+                  collector: Get.find<OtaCollector>(),
+                  selectedApp: _selectedApp,
+                ),
                 _buildClientTab(),
               ],
             ),
