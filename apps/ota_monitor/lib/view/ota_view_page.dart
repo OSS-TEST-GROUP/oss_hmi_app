@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
+import 'package:ota_monitor/theme/app_palette.dart';
 
 class OtaViewPage extends StatefulWidget {
   const OtaViewPage({
@@ -51,7 +52,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: const Color(0xFFB45309),
+        backgroundColor: palette.errorBg,
         duration: const Duration(seconds: 3),
       ),
     );
@@ -67,7 +68,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
 
   void _onAppSelected(String appName) {
     setState(() => _selectedAppName = appName);
-    widget.selectedApp?.value = appName; // gap 1: notify Actor tab
+    widget.selectedApp?.value = appName;
     _otaCollector.requestAppSettings(appName);
     _otaCollector.requestAppState(appName);
   }
@@ -121,16 +122,18 @@ class _OtaViewPageState extends State<OtaViewPage> {
 
   void _onSetSettings() {
     if (_selectedAppName == null) return;
+    final p = palette;
     final current =
         _otaCollector.topicData['${_selectedAppName}_settings'] as String? ?? '';
     final controller = TextEditingController(text: current);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         title: Text(
           'Set Settings: $_selectedAppName',
-          style: const TextStyle(color: Colors.white, fontSize: 18),
+          style: TextStyle(color: p.textPrimary, fontSize: 18),
         ),
         content: SizedBox(
           width: 480,
@@ -139,18 +142,18 @@ class _OtaViewPageState extends State<OtaViewPage> {
             controller: controller,
             maxLines: 8,
             minLines: 4,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: p.textPrimary,
               fontFamily: 'monospace',
               fontSize: 13,
             ),
             decoration: InputDecoration(
               hintText: '{"interval": 5, ...}',
-              hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+              hintStyle: TextStyle(color: p.textPlaceholder),
               filled: true,
-              fillColor: const Color(0xFF0F172A),
+              fillColor: p.surfaceAlt,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(4),
                 borderSide: BorderSide.none,
               ),
             ),
@@ -166,8 +169,11 @@ class _OtaViewPageState extends State<OtaViewPage> {
             icon: const Icon(Icons.check, size: 18),
             label: const Text('Apply'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF3B82F6),
-              foregroundColor: Colors.white,
+              backgroundColor: p.primary,
+              foregroundColor: p.onPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
             ),
             onPressed: () {
               _otaCollector.setAppSettings(_selectedAppName!, controller.text);
@@ -210,19 +216,21 @@ class _OtaViewPageState extends State<OtaViewPage> {
   }
 
   void _showFullTextDialog(String title, String content) {
+    final p = palette;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        title: Text(title, style: TextStyle(color: p.textPrimary)),
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
             child: SelectableText(
               content,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: Color(0xFFCBD5E1),
+                color: p.textSecondary,
                 fontFamily: 'monospace',
               ),
             ),
@@ -241,31 +249,30 @@ class _OtaViewPageState extends State<OtaViewPage> {
   // ─── Left panel: scrollable app list ──────────────────────────────────────
 
   Widget _buildAppListPanel() {
+    final p = palette;
     return _Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title with live count — kept as a single Text for findability.
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                _iconBadge(Icons.apps, const Color(0xFF60A5FA)),
+                _iconBadge(Icons.apps, p.accentBlue),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Obx(() => Text(
                         'App List (${_otaCollector.appList.length})',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                          color: p.textPrimary,
                         ),
                       )),
                 ),
               ],
             ),
           ),
-          // Refresh row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
@@ -275,33 +282,32 @@ class _OtaViewPageState extends State<OtaViewPage> {
                   icon: const Icon(Icons.refresh, size: 18),
                   tooltip: 'Manager 에서 App List 다시 조회',
                   onPressed: _onRefreshAppList,
-                  color: const Color(0xFF60A5FA),
+                  color: p.accentBlue,
                 ),
                 Obx(() => Text(
                       'source: ${_otaCollector.appListSource}',
                       key: const Key('text_apps_list_source'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF9CA3AF),
+                        color: p.textTertiary,
                         fontFamily: 'monospace',
                       ),
                     )),
               ],
             ),
           ),
-          const Divider(color: Color(0xFF374151), height: 1),
-          // Scrollable list
+          Divider(color: p.divider, height: 1),
           Expanded(
             child: Obx(() {
               if (_otaCollector.appList.isEmpty) {
-                return const Center(
+                return Center(
                   child: Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(24),
                     child: Text(
                       '앱 없음\nRefresh 또는 테스트 앱 추가',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Color(0xFF9CA3AF),
+                        color: p.textTertiary,
                         fontSize: 14,
                       ),
                     ),
@@ -325,7 +331,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
               );
             }),
           ),
-          const Divider(color: Color(0xFF374151), height: 1),
+          Divider(color: p.divider, height: 1),
           Padding(
             padding: const EdgeInsets.all(12),
             child: SizedBox(
@@ -335,8 +341,11 @@ class _OtaViewPageState extends State<OtaViewPage> {
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('테스트 앱 추가'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
-                  foregroundColor: Colors.white,
+                  backgroundColor: p.primary,
+                  foregroundColor: p.onPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ),
             ),
@@ -359,16 +368,17 @@ class _OtaViewPageState extends State<OtaViewPage> {
   }
 
   Widget _buildAppDetailsSection() {
+    final p = palette;
     if (_selectedAppName == null) {
       return _Panel(
         child: Column(
           children: [
-            _sectionHeader('App Details', Icons.info_outline, const Color(0xFF34D399)),
-            const Expanded(
+            _sectionHeader('App Details', Icons.info_outline, p.success),
+            Expanded(
               child: Center(
                 child: Text(
                   '← 앱을 선택하세요',
-                  style: TextStyle(fontSize: 16, color: Color(0xFF9CA3AF)),
+                  style: TextStyle(fontSize: 16, color: p.textTertiary),
                 ),
               ),
             ),
@@ -395,17 +405,17 @@ class _OtaViewPageState extends State<OtaViewPage> {
             _sectionHeader(
               'App Details',
               Icons.info_outline,
-              const Color(0xFF34D399),
+              p.success,
               trailing: Text(
                 _selectedAppName!,
-                style: const TextStyle(
-                  color: Color(0xFF60A5FA),
+                style: TextStyle(
+                  color: p.accentBlue,
                   fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            const Divider(color: Color(0xFF374151), height: 1),
+            Divider(color: p.divider, height: 1),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -437,32 +447,27 @@ class _OtaViewPageState extends State<OtaViewPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: ElevatedButton.icon(
-                            key: const Key('btn_app_get_settings'),
+                          child: _actionButton(
+                            keyName: 'btn_app_get_settings',
+                            label: 'Get Settings',
+                            icon: Icons.download,
+                            color: p.actionGet,
                             onPressed: () {
                               if (_selectedAppName != null) {
-                                _otaCollector.requestAppSettings(_selectedAppName!);
+                                _otaCollector
+                                    .requestAppSettings(_selectedAppName!);
                               }
                             },
-                            icon: const Icon(Icons.download, size: 16),
-                            label: const Text('Get Settings'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF6366F1),
-                              foregroundColor: Colors.white,
-                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: ElevatedButton.icon(
-                            key: const Key('btn_app_set_settings'),
+                          child: _actionButton(
+                            keyName: 'btn_app_set_settings',
+                            label: 'Set Settings',
+                            icon: Icons.upload,
+                            color: p.actionSet,
                             onPressed: _onSetSettings,
-                            icon: const Icon(Icons.upload, size: 16),
-                            label: const Text('Set Settings'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0EA5E9),
-                              foregroundColor: Colors.white,
-                            ),
                           ),
                         ),
                       ],
@@ -471,32 +476,27 @@ class _OtaViewPageState extends State<OtaViewPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: ElevatedButton.icon(
-                            key: const Key('btn_app_get_state'),
+                          child: _actionButton(
+                            keyName: 'btn_app_get_state',
+                            label: 'Get State',
+                            icon: Icons.refresh,
+                            color: p.actionRefresh,
                             onPressed: () {
                               if (_selectedAppName != null) {
-                                _otaCollector.requestAppState(_selectedAppName!);
+                                _otaCollector
+                                    .requestAppState(_selectedAppName!);
                               }
                             },
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text('Get State'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B5CF6),
-                              foregroundColor: Colors.white,
-                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: ElevatedButton.icon(
-                            key: const Key('btn_app_request_update'),
+                          child: _actionButton(
+                            keyName: 'btn_app_request_update',
+                            label: 'Request Update',
+                            icon: Icons.system_update_alt,
+                            color: p.actionDanger,
                             onPressed: _onRequestUpdate,
-                            icon: const Icon(Icons.system_update_alt, size: 16),
-                            label: const Text('Request Update'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFEF4444),
-                              foregroundColor: Colors.white,
-                            ),
                           ),
                         ),
                       ],
@@ -511,7 +511,28 @@ class _OtaViewPageState extends State<OtaViewPage> {
     });
   }
 
+  Widget _actionButton({
+    required String keyName,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton.icon(
+      key: Key(keyName),
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: palette.onPrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      ),
+    );
+  }
+
   Widget _buildUpdateHistorySection() {
+    final p = palette;
     return Obx(() {
       final history = _otaCollector.updateHistory;
       return _Panel(
@@ -521,21 +542,21 @@ class _OtaViewPageState extends State<OtaViewPage> {
             _sectionHeader(
               'Update History',
               Icons.history,
-              const Color(0xFFF59E0B),
+              p.warning,
               trailing: Text(
                 '${history.length}',
-                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
+                style: TextStyle(color: p.textTertiary, fontSize: 14),
               ),
             ),
-            const Divider(color: Color(0xFF374151), height: 1),
+            Divider(color: p.divider, height: 1),
             Expanded(
               child: history.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         '히스토리 없음',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Color(0xFF9CA3AF),
+                          color: p.textTertiary,
                         ),
                       ),
                     )
@@ -560,17 +581,21 @@ class _OtaViewPageState extends State<OtaViewPage> {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  Widget _iconBadge(IconData icon, Color color) => Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: color, size: 20),
-      );
+  Widget _iconBadge(IconData icon, Color color) {
+    final p = palette;
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Icon(icon, color: color, size: 20),
+    );
+  }
 
   Widget _sectionHeader(String title, IconData icon, Color iconColor,
       {Widget? trailing}) {
+    final p = palette;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -579,10 +604,10 @@ class _OtaViewPageState extends State<OtaViewPage> {
           const SizedBox(width: 12),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              color: p.textPrimary,
             ),
           ),
           if (trailing != null) ...[
@@ -595,6 +620,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
   }
 
   Widget _detailField(String label, String value, {VoidCallback? onViewFull}) {
+    final p = palette;
     final display =
         value.length > _truncate ? '${value.substring(0, _truncate)}...' : value;
     return Column(
@@ -602,9 +628,9 @@ class _OtaViewPageState extends State<OtaViewPage> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
-            color: Color(0xFF9CA3AF),
+            color: p.textTertiary,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -613,30 +639,30 @@ class _OtaViewPageState extends State<OtaViewPage> {
           width: double.infinity,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFF111827).withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(8),
+            color: p.surfaceAlt,
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 display,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: Color(0xFFCBD5E1),
+                  color: p.textSecondary,
                   fontFamily: 'monospace',
                 ),
               ),
               if (onViewFull != null)
                 GestureDetector(
                   onTap: onViewFull,
-                  child: const Padding(
-                    padding: EdgeInsets.only(top: 4),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       '전체 보기 →',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF60A5FA),
+                        color: p.accentBlue,
                       ),
                     ),
                   ),
@@ -649,30 +675,31 @@ class _OtaViewPageState extends State<OtaViewPage> {
   }
 
   Widget _statusBadge(String status) {
+    final p = palette;
     final color = status.contains('complete') || status == 'Synced'
-        ? const Color(0xFF34D399)
+        ? p.success
         : status.contains('fail') || status.contains('error')
-            ? const Color(0xFFEF4444)
-            : const Color(0xFFF59E0B);
+            ? p.error
+            : p.warning;
     return Row(
       children: [
-        const Text(
+        Text(
           'Status: ',
-          style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+          style: TextStyle(fontSize: 12, color: p.textTertiary),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.5)),
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: color.withValues(alpha: 0.4)),
           ),
           child: Text(
             status,
             style: TextStyle(
               fontSize: 13,
               color: color,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -705,11 +732,12 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF374151).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0xFF374151), width: 0.5),
+        color: p.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: p.divider, width: 1),
       ),
       child: child,
     );
@@ -731,36 +759,33 @@ class _AppListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette;
     final statusColor = status.contains('complete') || status == 'Synced'
-        ? const Color(0xFF34D399)
+        ? p.success
         : status.contains('fail') || status.contains('error')
-            ? const Color(0xFFEF4444)
-            : const Color(0xFF9CA3AF);
+            ? p.error
+            : p.textTertiary;
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(4),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF3B82F6).withValues(alpha: 0.2)
-              : const Color(0xFF374151).withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(8),
+          color: isSelected ? p.selectionBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
           border: Border.all(
-            color: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
-            width: 2,
+            color: isSelected ? p.selectionBorder : Colors.transparent,
+            width: 1,
           ),
         ),
         child: Row(
           children: [
             Icon(
               Icons.app_settings_alt,
-              color: isSelected
-                  ? const Color(0xFF60A5FA)
-                  : const Color(0xFF9CA3AF),
+              color: isSelected ? p.primary : p.textTertiary,
               size: 20,
             ),
             const SizedBox(width: 12),
@@ -773,8 +798,8 @@ class _AppListTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: Colors.white,
+                          isSelected ? FontWeight.w500 : FontWeight.normal,
+                      color: p.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -786,8 +811,7 @@ class _AppListTile extends StatelessWidget {
               ),
             ),
             if (isSelected)
-              const Icon(Icons.chevron_right,
-                  color: Color(0xFF60A5FA), size: 20),
+              Icon(Icons.chevron_right, color: p.primary, size: 20),
           ],
         ),
       ),
@@ -803,6 +827,7 @@ class _HistoryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette;
     final timestamp = entry['timestamp'] as String;
     final appName = entry['app_name'] as String;
     final message = entry['message'] as String;
@@ -817,23 +842,20 @@ class _HistoryItem extends StatelessWidget {
             ? Icons.error
             : Icons.info;
     final iconColor = retCode == 1
-        ? const Color(0xFF34D399)
+        ? p.success
         : retCode == 2
-            ? const Color(0xFFEF4444)
-            : const Color(0xFF60A5FA);
+            ? p.error
+            : p.accentBlue;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: isMine
-            ? const Color(0xFF1E40AF).withValues(alpha: 0.25)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        color: isMine ? p.selectionBg : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(
-          color: isMine
-              ? const Color(0xFF60A5FA).withValues(alpha: 0.4)
-              : Colors.transparent,
+          color: isMine ? p.selectionBorder : Colors.transparent,
+          width: 1,
         ),
       ),
       child: Row(
@@ -843,10 +865,8 @@ class _HistoryItem extends StatelessWidget {
             isMine ? '▣' : '□',
             style: TextStyle(
               fontSize: 14,
-              color: isMine
-                  ? const Color(0xFF60A5FA)
-                  : const Color(0xFF6B7280),
-              fontWeight: FontWeight.bold,
+              color: isMine ? p.primary : p.textPlaceholder,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(width: 6),
@@ -862,17 +882,16 @@ class _HistoryItem extends StatelessWidget {
                       : '$appName — $message',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.white,
+                    color: p.textPrimary,
                     fontWeight:
-                        isMine ? FontWeight.bold : FontWeight.normal,
+                        isMine ? FontWeight.w500 : FontWeight.normal,
                   ),
                 ),
                 Text(
                   timestamp.length >= 19
                       ? timestamp.substring(0, 19)
                       : timestamp,
-                  style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF9CA3AF)),
+                  style: TextStyle(fontSize: 12, color: p.textTertiary),
                 ),
               ],
             ),

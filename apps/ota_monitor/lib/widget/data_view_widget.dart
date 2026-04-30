@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-// import 'package:get/get.dart';
+
+import 'package:ota_monitor/theme/app_palette.dart';
 import 'package:ota_monitor/widget/key_value_item.dart';
 
 class DataViewWidget extends StatelessWidget {
@@ -24,17 +25,18 @@ class DataViewWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF374151).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0xFF374151), width: 0.5),
+        color: p.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: p.divider, width: 1),
       ),
       child: Column(
         children: [
           InkWell(
             onTap: onTap,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
             child: Container(
               padding: const EdgeInsets.all(20),
               child: Row(
@@ -48,8 +50,8 @@ class DataViewWidget extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
+                            color: p.surfaceAlt,
+                            borderRadius: BorderRadius.circular(4),
                           ),
                           child: Icon(icon, color: iconColor, size: 23),
                         ),
@@ -58,22 +60,22 @@ class DataViewWidget extends StatelessWidget {
                           fit: FlexFit.loose,
                           child: Text(
                             title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 23,
                               fontWeight: FontWeight.w500,
-                              color: Colors.white,
+                              color: p.textPrimary,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        //const SizedBox(width: 12),
-                        //_buildStatusIndicator(status),
                       ],
                     ),
                   ),
                   Icon(
-                    isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
-                    color: const Color(0xFF9CA3AF),
+                    isExpanded
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_right,
+                    color: p.textTertiary,
                     size: 22,
                   ),
                 ],
@@ -84,14 +86,15 @@ class DataViewWidget extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(15),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFF374151), width: 0.3)),
+              decoration: BoxDecoration(
+                border:
+                    Border(top: BorderSide(color: p.divider, width: 1)),
               ),
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111827).withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(10),
+                  color: p.surfaceAlt,
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

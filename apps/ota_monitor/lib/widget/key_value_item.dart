@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:ota_monitor/theme/app_palette.dart';
+
 class KeyValueItem extends StatelessWidget {
   final String label;
   final String value;
@@ -18,6 +20,7 @@ class KeyValueItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
@@ -27,32 +30,29 @@ class KeyValueItem extends StatelessWidget {
           Flexible(
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 19,
-                color: Color(0xFF9CA3AF),
+                color: p.textTertiary,
               ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(width: 12),
-          // Right-side value + (optional) subtitle
           Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1) main value (single line)
                 Text(
                   value,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
-                    color: Colors.white,
+                    color: p.textPrimary,
                     fontFamily: 'monospace',
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
-                // 2) optional subtitle: smaller font, multi-line allowed
                 if (subtitle != null && subtitle!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -62,9 +62,9 @@ class KeyValueItem extends StatelessWidget {
                             child: Text(
                               subtitle!,
                               textAlign: TextAlign.right,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
-                                color: Color(0xFF60A5FA),
+                                color: p.accentBlue,
                                 height: 1.25,
                                 decoration: TextDecoration.underline,
                               ),
@@ -74,9 +74,9 @@ class KeyValueItem extends StatelessWidget {
                         : Text(
                             subtitle!,
                             textAlign: TextAlign.right,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
-                              color: Color(0xFF9CA3AF),
+                              color: p.textTertiary,
                               height: 1.25,
                             ),
                             softWrap: true,

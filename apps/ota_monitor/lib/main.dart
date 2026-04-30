@@ -18,6 +18,7 @@ import 'package:ota_monitor/view/client_page.dart';
 import 'package:ota_monitor/view/ota_view_page.dart';
 import 'package:ota_monitor/view/settings_page.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
+import 'package:ota_monitor/theme/app_palette.dart';
 
 late AppConfig appConfig;
 String? startupConfigWarning;
@@ -44,6 +45,8 @@ void main(List<String> args) {
     appConfig = await loadConfig(args);
     // F007: surface any config-parse failure so the UI can warn the user.
     startupConfigWarning = lastConfigLoadWarning;
+    // Apply persisted theme (default 'light' → Tesla) before runApp.
+    paletteNotifier.value = Palette.fromName(appConfig.theme);
     rosKeeperHolder = RosKeeperHolder(RosKeeper(appConfig));
 
     // Register OtaCollector before starting RosKeeper so the watchdog
@@ -86,22 +89,19 @@ class OtaMonitorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'OTA Monitor App',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0F172A),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF3B82F6),
-          secondary: Color(0xFF64748B),
+    return ValueListenableBuilder<Palette>(
+      valueListenable: paletteNotifier,
+      builder: (_, p, __) => MaterialApp(
+        title: 'OTA Monitor App',
+        theme: p.toThemeData(),
+        home: OtaMonitorHomePage(
+          title: 'OTA Monitor',
+          truncateLength: truncateLength,
+          configWarning: configWarning,
+          keeperHolder: keeperHolder ?? rosKeeperHolder,
         ),
+        debugShowCheckedModeBanner: false,
       ),
-      home: OtaMonitorHomePage(
-        title: 'OTA Monitor',
-        truncateLength: truncateLength,
-        configWarning: configWarning,
-        keeperHolder: keeperHolder ?? rosKeeperHolder,
-      ),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -238,35 +238,30 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   }
 
   Widget _buildHeader() {
+    final p = palette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: p.surface,
+        border: Border(bottom: BorderSide(color: p.divider, width: 1)),
       ),
       child: Row(
         children: [
           IconButton(
             key: const Key('btn_quit'),
-            icon: const Icon(Icons.arrow_back, size: 28),
+            icon: Icon(Icons.arrow_back, size: 28, color: p.textPrimary),
             onPressed: quitApp,
             tooltip: '종료',
           ),
           const SizedBox(width: 16),
-          const Icon(Icons.system_update, size: 32, color: Color(0xFF3B82F6)),
+          Icon(Icons.system_update, size: 32, color: p.primary),
           const SizedBox(width: 12),
-          const Text(
+          Text(
             'OTA Monitor',
             style: TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w500,
+              color: p.textPrimary,
             ),
           ),
           const Spacer(),
@@ -289,10 +284,10 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
                       if (failures < _failureThreshold) return const SizedBox();
                       return Tooltip(
                         message: 'ROS 재연결 $failures회 실패',
-                        child: const Icon(
+                        child: Icon(
                           Icons.warning_amber_rounded,
-                          key: Key('icon_ros_warning'),
-                          color: Color(0xFFF59E0B),
+                          key: const Key('icon_ros_warning'),
+                          color: p.warning,
                           size: 28,
                         ),
                       );
@@ -306,7 +301,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
                     icon: const Icon(Icons.build_circle_outlined, size: 20),
                     label: const Text('Actor'),
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFCBD5E1),
+                      foregroundColor: p.textSecondary,
                     ),
                     onPressed: () => _showActorDialog(context),
                   ),
@@ -316,7 +311,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
                     icon: const Icon(Icons.settings, size: 20),
                     label: const Text('Settings'),
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFCBD5E1),
+                      foregroundColor: p.textSecondary,
                     ),
                     onPressed: () => _showSettingsDialog(context),
                   ),
@@ -330,13 +325,14 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   }
 
   Widget _buildManagerReadyButton() {
+    final p = palette;
     final controller = _clientController;
     if (controller == null) {
       return TextButton.icon(
         key: const Key('btn_client'),
         icon: const Icon(Icons.account_circle_outlined, size: 20),
         label: const Text('Client'),
-        style: TextButton.styleFrom(foregroundColor: const Color(0xFF6B7280)),
+        style: TextButton.styleFrom(foregroundColor: p.textPlaceholder),
         onPressed: null,
       );
     }
@@ -361,9 +357,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
             ),
             label: Text(label),
             style: TextButton.styleFrom(
-              foregroundColor: ready
-                  ? const Color(0xFF34D399)
-                  : const Color(0xFFCBD5E1),
+              foregroundColor: ready ? p.success : p.textSecondary,
             ),
             onPressed: () => _showClientDialog(context),
           ),
@@ -373,11 +367,12 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   }
 
   void _showActorDialog(BuildContext context) {
+    final p = palette;
     showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF0F172A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720, maxHeight: 720),
           child: Column(
@@ -386,10 +381,10 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
               _dialogHeader(
                 ctx,
                 icon: Icons.build_circle_outlined,
-                color: const Color(0xFF60A5FA),
+                color: p.accentBlue,
                 title: 'Raw Actor (debug)',
               ),
-              const Divider(color: Color(0xFF374151)),
+              Divider(color: p.divider, height: 1),
               Flexible(
                 child: ActorPage(
                   collector: Get.find<OtaCollector>(),
@@ -406,11 +401,12 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   void _showClientDialog(BuildContext context) {
     final controller = _clientController;
     if (controller == null) return;
+    final p = palette;
     showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF0F172A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600, maxHeight: 720),
           child: Column(
@@ -419,10 +415,10 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
               _dialogHeader(
                 ctx,
                 icon: Icons.account_circle,
-                color: const Color(0xFF34D399),
+                color: p.success,
                 title: 'Client',
               ),
-              const Divider(color: Color(0xFF374151)),
+              Divider(color: p.divider, height: 1),
               Flexible(child: ClientPage(controller: controller)),
             ],
           ),
@@ -437,6 +433,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
     required Color color,
     required String title,
   }) {
+    final p = palette;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 8, 0),
       child: Row(
@@ -445,15 +442,15 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
           const SizedBox(width: 12),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: p.textPrimary,
             ),
           ),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.close, color: Color(0xFF9CA3AF)),
+            icon: Icon(Icons.close, color: p.textTertiary),
             onPressed: () => Navigator.of(ctx).pop(),
           ),
         ],
@@ -462,39 +459,24 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   }
 
   void _showSettingsDialog(BuildContext context) {
+    final p = palette;
     showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF0F172A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 420),
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 520),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 8, 0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.settings, color: Color(0xFF60A5FA), size: 22),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Settings',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Color(0xFF9CA3AF)),
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                  ],
-                ),
+              _dialogHeader(
+                ctx,
+                icon: Icons.settings,
+                color: p.accentBlue,
+                title: 'Settings',
               ),
-              const Divider(color: Color(0xFF374151)),
+              Divider(color: p.divider, height: 1),
               Flexible(
                 child: SettingsPage(
                   controller: _settingsController,
@@ -539,12 +521,13 @@ class _ConnIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette;
     final ({Color color, String label}) view = switch (status) {
-      Status.connected     => (color: const Color(0xFF34D399), label: 'connected'),
-      Status.connecting    => (color: const Color(0xFFFBBF24), label: 'connecting'),
-      Status.errored       => (color: const Color(0xFFEF4444), label: 'disconnected'),
-      Status.closed        => (color: const Color(0xFFEF4444), label: 'disconnected'),
-      Status.none          => (color: const Color(0xFF9CA3AF), label: 'disconnected'),
+      Status.connected     => (color: p.success, label: 'connected'),
+      Status.connecting    => (color: p.warning, label: 'connecting'),
+      Status.errored       => (color: p.error, label: 'disconnected'),
+      Status.closed        => (color: p.error, label: 'disconnected'),
+      Status.none          => (color: p.textTertiary, label: 'disconnected'),
     };
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -559,9 +542,9 @@ class _ConnIndicator extends StatelessWidget {
         Text(
           view.label,
           key: const Key('text_conn_status'),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
-            color: Color(0xFFCBD5E1),
+            color: p.textSecondary,
           ),
         ),
       ],

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:ota_monitor/controller/settings_controller.dart';
+import 'package:ota_monitor/theme/app_palette.dart';
 
-/// F008: rosbridge WebSocket URL settings tab.
+/// F008: rosbridge WebSocket URL settings + theme picker.
 ///
 /// Widget keys follow the F020 spec at docs/ux/widget-keys.md §7.
 class SettingsPage extends StatefulWidget {
@@ -40,9 +41,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   bool get _isValid {
-    // CONSIDER #1: trim whitespace so a copy-pasted URL with a stray
-    // trailing newline still enables Apply. Controller.applyUrl trims
-    // again — both layers stay in sync.
     final v = _urlField.text.trim();
     return v.isNotEmpty && SettingsController.isValidUrl(v);
   }
@@ -64,7 +62,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('적용 실패: $e'),
-          backgroundColor: const Color(0xFFB45309),
+          backgroundColor: palette.errorBg,
         ),
       );
     } finally {
@@ -86,14 +84,11 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
     } catch (e) {
-      // SHOULD #2: resetToDefault also performs file I/O and keeper
-      // restart, both of which can throw. Surface failures as a SnackBar
-      // exactly like _onApply so the user is never left guessing.
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('리셋 실패: $e'),
-          backgroundColor: const Color(0xFFB45309),
+          backgroundColor: palette.errorBg,
         ),
       );
     } finally {
@@ -101,112 +96,250 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// Update the live palette immediately and persist asynchronously.
+  void _onThemeChanged(String? next) {
+    if (next == null || next == palette.name) return;
+    paletteNotifier.value = Palette.fromName(next);
+    widget.controller.applyTheme(next).catchError((e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('테마 저장 실패: $e'),
+          backgroundColor: palette.errorBg,
+        ),
+      );
+      return false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final p = palette;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Container(
-        key: const Key('card_settings_ws_url'),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildUrlCard(p),
+          const SizedBox(height: 16),
+          _buildThemeCard(p),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUrlCard(Palette p) {
+    return Container(
+      key: const Key('card_settings_ws_url'),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: p.divider, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cable, color: p.accentBlue),
+              const SizedBox(width: 12),
+              Text(
+                'rosbridge WebSocket URL',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: p.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Current: ${widget.currentUrlProvider()}',
+            key: const Key('text_settings_current_url'),
+            style: TextStyle(
+              fontSize: 14,
+              color: p.textTertiary,
+              fontFamily: 'monospace',
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.cable, color: Color(0xFF60A5FA)),
-                SizedBox(width: 12),
-                Text(
-                  'rosbridge WebSocket URL',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('field_settings_ws_url'),
+            controller: _urlField,
+            enabled: !_busy,
+            decoration: InputDecoration(
+              hintText: 'ws://host:9090',
+              hintStyle: TextStyle(color: p.textPlaceholder),
+              filled: true,
+              fillColor: p.surfaceAlt,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: BorderSide.none,
+              ),
+              suffixIcon: _urlField.text.isEmpty
+                  ? null
+                  : (_isValid
+                      ? null
+                      : Icon(
+                          Icons.error_outline,
+                          key: const Key('icon_settings_invalid'),
+                          color: p.error,
+                        )),
+            ),
+            style: TextStyle(
+              color: p.textPrimary,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'ⓘ ws:// 또는 wss:// 로 시작해야 합니다',
+            style: TextStyle(fontSize: 12, color: p.textTertiary),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                key: const Key('btn_settings_apply'),
+                onPressed: _isValid && !_busy ? _onApply : null,
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('Apply'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: p.primary,
+                  foregroundColor: p.onPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Current: ${widget.currentUrlProvider()}',
-              key: const Key('text_settings_current_url'),
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF9CA3AF),
-                fontFamily: 'monospace',
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const Key('field_settings_ws_url'),
-              controller: _urlField,
-              enabled: !_busy,
-              decoration: InputDecoration(
-                hintText: 'ws://host:9090',
-                hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                suffixIcon: _urlField.text.isEmpty
-                    ? null
-                    : (_isValid
-                        ? null
-                        : const Icon(
-                            Icons.error_outline,
-                            key: Key('icon_settings_invalid'),
-                            color: Color(0xFFEF4444),
-                          )),
-              ),
-              style: const TextStyle(
-                color: Colors.white,
-                fontFamily: 'monospace',
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'ⓘ ws:// 또는 wss:// 로 시작해야 합니다',
-              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  key: const Key('btn_settings_apply'),
-                  onPressed: _isValid && !_busy ? _onApply : null,
-                  icon: const Icon(Icons.check, size: 18),
-                  label: const Text('Apply'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
-                    foregroundColor: Colors.white,
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                key: const Key('btn_settings_reset'),
+                onPressed: _busy ? null : _onReset,
+                icon: const Icon(Icons.restart_alt, size: 18),
+                label: const Text('Reset to default'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: p.textPrimary,
+                  side: BorderSide(color: p.divider),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
                   ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '💾 변경값은 config.json 에 저장되어 다음 실행 시 유지됨',
+            key: const Key('text_settings_persistence_note'),
+            style: TextStyle(fontSize: 12, color: p.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThemeCard(Palette p) {
+    return Container(
+      key: const Key('card_settings_theme'),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: p.divider, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.palette_outlined, color: p.accentBlue),
+              const SizedBox(width: 12),
+              Text(
+                'Theme',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: p.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder<Palette>(
+            valueListenable: paletteNotifier,
+            builder: (_, current, __) => Row(
+              children: [
+                _ThemeOption(
+                  keyName: 'btn_theme_light',
+                  label: 'Light',
+                  selected: current.name == 'light',
+                  onTap: () => _onThemeChanged('light'),
                 ),
                 const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  key: const Key('btn_settings_reset'),
-                  onPressed: _busy ? null : _onReset,
-                  icon: const Icon(Icons.restart_alt, size: 18),
-                  label: const Text('Reset to default'),
+                _ThemeOption(
+                  keyName: 'btn_theme_dark',
+                  label: 'Dark',
+                  selected: current.name == 'dark',
+                  onTap: () => _onThemeChanged('dark'),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '💾 변경값은 config.json 에 저장되어 다음 실행 시 유지됨',
-              key: Key('text_settings_persistence_note'),
-              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  const _ThemeOption({
+    required this.keyName,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String keyName;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = palette;
+    return InkWell(
+      key: Key(keyName),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? p.selectionBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: selected ? p.selectionBorder : p.divider,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected ? p.primary : p.textTertiary,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: p.textPrimary,
+                fontSize: 14,
+                fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+              ),
             ),
           ],
         ),
