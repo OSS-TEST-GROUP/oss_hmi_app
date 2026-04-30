@@ -52,6 +52,13 @@ class RosKeeper {
   // a warning badge after repeated failures.
   final ValueNotifier<int> consecutiveFailures = ValueNotifier<int>(0);
 
+  // F011 (oss-agent3): live ROS connection status mirrored from
+  // statusStream. The header connection indicator (icon_conn_status /
+  // text_conn_status, F020 §2) listens to this so smoke tests can read
+  // the UI side after `await waitForRosbridge()`.
+  final ValueNotifier<Status> statusNotifier =
+      ValueNotifier<Status>(Status.none);
+
   Future<void> start() async {
     await stop();
     _stopping = false;
@@ -68,6 +75,7 @@ class RosKeeper {
     _statusSub = _ros!.statusStream.listen(
       (s) async {
         appLog('[ROS] status=$s');
+        statusNotifier.value = s;   // F011 — mirror to UI listener
         if (s == Status.connected) {
           await _onConnected();
         } else {
@@ -155,6 +163,7 @@ class RosKeeper {
     _statusSub = _ros!.statusStream.listen(
       (s) async {
         appLog('[ROS] status=$s');
+        statusNotifier.value = s;   // F011 — mirror to UI listener
         if (s == Status.connected) {
           await _onConnected();
         } else {

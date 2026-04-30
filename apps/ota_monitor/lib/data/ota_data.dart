@@ -37,6 +37,15 @@ const List<String> otaRosRequestTypes = [
   '$_pkg/SetAppUpdate',
 ];
 
+// F023 — GetAppList query topics (Manager 진실 소스).
+// Provided by F022 IDL (OtamClientServiceMsg.idl).
+const String otaGetAppListReqTopic =
+    '/mmf/otamanager/otaclient_service/GetAppList';
+const String otaGetAppListResTopic =
+    '/mmf/otamanager/otaclient_service/GetAppListResponse';
+const String otaGetAppListReqType = '$_pkg/GetAppList';
+const String otaGetAppListResType = '$_pkg/GetAppListResponse';
+
 // ReturnValue enum (matches mmf_interfaces/msg/ReturnValue)
 enum ReturnValue {
   unknown(0),
