@@ -336,13 +336,15 @@ class OtaCollector extends GetxController {
     appLog('[OTA] NotifyAppUpdateStatus: $msg');
     final appName = msg['app_name'] as String?;
     final status = msg['status'] as String?;
+    final clientId = (msg['client_id'] as num?)?.toInt();
 
     // NotifyStatus is unsolicited — no pending request to match. Intentionally
     // skip _matchAndRemove() here.
     if (appName != null && status != null) {
       topicData['${appName}_status'] = status;
       _updateAppList(appName, status: status);
-      _addUpdateHistory(appName, 'Status: $status', null);
+      _addUpdateHistory(appName, 'Status: $status', null,
+          clientId: clientId);
     }
   }
 
@@ -553,13 +555,15 @@ class OtaCollector extends GetxController {
     }
   }
 
-  void _addUpdateHistory(String appName, String message, int? retCode) {
+  void _addUpdateHistory(String appName, String message, int? retCode,
+      {int? clientId}) {
     final timestamp = DateTime.now().toIso8601String();
     updateHistory.insert(0, {
       'timestamp': timestamp,
       'app_name': appName,
       'message': message,
       'ret_code': retCode,
+      'client_id': clientId,
     });
     if (updateHistory.length > historySize) {
       updateHistory.removeRange(historySize, updateHistory.length);

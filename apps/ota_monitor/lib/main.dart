@@ -124,29 +124,31 @@ class OtaMonitorHomePage extends StatefulWidget {
   State<OtaMonitorHomePage> createState() => _OtaMonitorHomePageState();
 }
 
-class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
-    with SingleTickerProviderStateMixin {
+class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   static const int _failureThreshold = 3;
 
-  late final TabController _tabController;
   late final SettingsController _settingsController;
 
-  // Gap 1: shared app selection across Apps ↔ Actor tabs.
+  // Shared notifier so Apps tab → Actor modal can pre-fill app_name.
   final ValueNotifier<String?> _selectedApp = ValueNotifier(null);
 
-  // Gap 2: listen to Ros status so _buildClientTab() retries after connect.
+  // Surfaces our own client_id once Client modal registers — used by the
+  // unified Apps view to highlight "mine vs others" in the history.
+  final ValueNotifier<int?> _clientIdNotifier = ValueNotifier(null);
+
+  // Listen to Ros status so we can eagerly create _clientController when
+  // the connection comes up (no longer hidden behind a tab).
   RosKeeper? _statusListenedKeeper;
 
-  /// F021 — Client tab controller, lazy-built from the live RosKeeper.
+  /// Client controller is created the moment Ros becomes available so
+  /// the header Manager-Ready indicator and Client modal both work.
   ClientServiceController? _clientController;
 
-  // Gap 3: track last known clientId to detect fresh registration.
   int? _clientLastId;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
 
     _settingsController = SettingsController(
       initialConfig: appConfig,
@@ -154,12 +156,12 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
       writeKeeper: widget.keeperHolder.replace,
     );
 
-    // Gap 2: rebuild when keeper is swapped or Ros connects/disconnects.
     _statusListenedKeeper = widget.keeperHolder.current;
     widget.keeperHolder.addListener(_onKeeperHolderChange);
     _statusListenedKeeper!.statusNotifier.addListener(_onRosStatusChange);
+    // Try eagerly in case Ros is already up at startup.
+    _ensureClientController();
 
-    // F007: show a one-shot dialog if config.json failed to parse at startup.
     if (widget.configWarning != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -183,14 +185,13 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
   @override
   void dispose() {
     _selectedApp.dispose();
+    _clientIdNotifier.dispose();
     widget.keeperHolder.removeListener(_onKeeperHolderChange);
     _statusListenedKeeper?.statusNotifier.removeListener(_onRosStatusChange);
     _clientController?.removeListener(_onClientControllerChange);
-    _tabController.dispose();
     super.dispose();
   }
 
-  // Gap 2: re-attach status listener when keeper is swapped.
   void _onKeeperHolderChange() {
     final newKeeper = widget.keeperHolder.current;
     if (newKeeper != _statusListenedKeeper) {
@@ -201,21 +202,32 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
     if (mounted) setState(() {});
   }
 
-  // Gap 2: Ros connection state changed — rebuild so Client tab can retry.
   void _onRosStatusChange() {
+    _ensureClientController();
     if (mounted) setState(() {});
   }
 
-  // Gap 3: when clientId arrives for the first time, refresh the Manager's
-  // app list so the Apps tab immediately reflects registered apps.
+  /// Create _clientController as soon as Ros is registered in GetX.
+  /// Called from initState (eager attempt) and from _onRosStatusChange
+  /// (retry after connect).
+  void _ensureClientController() {
+    if (_clientController != null) return;
+    if (!Get.isRegistered<Ros>()) return;
+    _clientController = ClientServiceController(ros: Get.find<Ros>());
+    _clientController!.setup();
+    _clientController!.addListener(_onClientControllerChange);
+  }
+
   void _onClientControllerChange() {
     final cid = _clientController?.clientId;
     if (cid != null && cid != _clientLastId) {
       _clientLastId = cid;
+      _clientIdNotifier.value = cid;
       if (Get.isRegistered<OtaCollector>()) {
         Get.find<OtaCollector>().requestAppList();
       }
     }
+    if (mounted) setState(() {});
   }
 
   void quitApp() {
@@ -286,7 +298,17 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
                       );
                     },
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
+                  // Manager Ready dot — green when NotifyOtaManagerReady
+                  // received, grey otherwise. Tap → Client modal.
+                  _buildManagerReadyButton(),
+                  IconButton(
+                    key: const Key('btn_actor_raw'),
+                    icon: const Icon(Icons.build_circle_outlined, size: 24),
+                    tooltip: 'Raw Actor (debug)',
+                    color: const Color(0xFF9CA3AF),
+                    onPressed: () => _showActorDialog(context),
+                  ),
                   IconButton(
                     key: const Key('btn_settings'),
                     icon: const Icon(Icons.settings, size: 24),
@@ -303,37 +325,131 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
     );
   }
 
-  Widget _buildTabBar() {
-    return Material(
-      color: const Color(0xFF1E293B),
-      child: TabBar(
-        controller: _tabController,
-        labelColor: const Color(0xFF60A5FA),
-        unselectedLabelColor: const Color(0xFF9CA3AF),
-        indicatorColor: const Color(0xFF3B82F6),
-        tabs: const [
-          Tab(key: Key('tab_apps'), text: 'Apps'),
-          Tab(key: Key('tab_actor'), text: 'Actor'),
-          Tab(key: Key('tab_client'), text: 'Client'),
-        ],
+  Widget _buildManagerReadyButton() {
+    final controller = _clientController;
+    if (controller == null) {
+      // Ros not yet up — render a disabled grey dot button.
+      return IconButton(
+        key: const Key('btn_client'),
+        icon: const Icon(Icons.account_circle_outlined, size: 24),
+        tooltip: 'Client (Ros not connected)',
+        color: const Color(0xFF6B7280),
+        onPressed: null,
+      );
+    }
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (_, __) {
+        final ready = controller.managerReady;
+        final cid = controller.clientId;
+        final tooltip = cid != null
+            ? 'Client (id=$cid, ${ready ? 'manager ready' : 'waiting'})'
+            : 'Client (not registered, ${ready ? 'manager ready' : 'waiting'})';
+        return IconButton(
+          key: const Key('btn_client'),
+          icon: Icon(
+            cid != null
+                ? Icons.account_circle
+                : Icons.account_circle_outlined,
+            size: 24,
+          ),
+          tooltip: tooltip,
+          color: ready
+              ? const Color(0xFF34D399)
+              : const Color(0xFF9CA3AF),
+          onPressed: () => _showClientDialog(context),
+        );
+      },
+    );
+  }
+
+  void _showActorDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720, maxHeight: 720),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _dialogHeader(
+                ctx,
+                icon: Icons.build_circle_outlined,
+                color: const Color(0xFF60A5FA),
+                title: 'Raw Actor (debug)',
+              ),
+              const Divider(color: Color(0xFF374151)),
+              Flexible(
+                child: ActorPage(
+                  collector: Get.find<OtaCollector>(),
+                  selectedApp: _selectedApp,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  /// F021 — lazily build the Client tab once a Ros instance is registered
-  /// in GetX. Falls back to the placeholder; _onRosStatusChange triggers
-  /// setState so this retries automatically after Ros connects (gap 2).
-  Widget _buildClientTab() {
-    if (_clientController == null) {
-      if (!Get.isRegistered<Ros>()) {
-        return _placeholder('Client tab waiting for ROS', 'F021');
-      }
-      _clientController = ClientServiceController(ros: Get.find<Ros>());
-      _clientController!.setup();
-      // Gap 3: detect fresh registration to auto-refresh the app list.
-      _clientController!.addListener(_onClientControllerChange);
-    }
-    return ClientPage(controller: _clientController!);
+  void _showClientDialog(BuildContext context) {
+    final controller = _clientController;
+    if (controller == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600, maxHeight: 720),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _dialogHeader(
+                ctx,
+                icon: Icons.account_circle,
+                color: const Color(0xFF34D399),
+                title: 'Client',
+              ),
+              const Divider(color: Color(0xFF374151)),
+              Flexible(child: ClientPage(controller: controller)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dialogHeader(
+    BuildContext ctx, {
+    required IconData icon,
+    required Color color,
+    required String title,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 8, 0),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(width: 12),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.close, color: Color(0xFF9CA3AF)),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSettingsDialog(BuildContext context) {
@@ -384,36 +500,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
     );
   }
 
-  Widget _placeholder(String label, String featureId) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(48),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.construction,
-                  size: 56, color: Color(0xFF6B7280)),
-              const SizedBox(height: 16),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Coming in $featureId',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF9CA3AF),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -432,22 +518,11 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage>
       body: Column(
         children: [
           _buildHeader(),
-          _buildTabBar(),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // Gap 1: selectedApp notifier shared across Apps/Actor tabs.
-                OtaViewPage(
-                  truncateLength: widget.truncateLength,
-                  selectedApp: _selectedApp,
-                ),
-                ActorPage(
-                  collector: Get.find<OtaCollector>(),
-                  selectedApp: _selectedApp,
-                ),
-                _buildClientTab(),
-              ],
+            child: OtaViewPage(
+              truncateLength: widget.truncateLength,
+              selectedApp: _selectedApp,
+              clientIdNotifier: _clientIdNotifier,
             ),
           ),
         ],

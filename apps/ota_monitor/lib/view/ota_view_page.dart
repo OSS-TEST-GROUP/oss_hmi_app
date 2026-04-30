@@ -9,13 +9,18 @@ class OtaViewPage extends StatefulWidget {
     super.key,
     this.truncateLength = 100,
     this.selectedApp,
+    this.clientIdNotifier,
   });
 
   final int truncateLength;
 
-  /// Shared notifier so Actor tab can pre-fill app_name when an app is
-  /// selected here (gap 1). Optional — tests omit it.
+  /// Shared notifier so Actor modal can pre-fill app_name when an app is
+  /// selected here. Optional — tests omit it.
   final ValueNotifier<String?>? selectedApp;
+
+  /// Our own client_id once Client modal registers. Update History uses
+  /// this to highlight "mine vs others" entries. Optional.
+  final ValueNotifier<int?>? clientIdNotifier;
 
   @override
   State<OtaViewPage> createState() => _OtaViewPageState();
@@ -111,6 +116,68 @@ class _OtaViewPageState extends State<OtaViewPage> {
           ],
         );
       },
+    );
+  }
+
+  void _onSetSettings() {
+    if (_selectedAppName == null) return;
+    final current =
+        _otaCollector.topicData['${_selectedAppName}_settings'] as String? ?? '';
+    final controller = TextEditingController(text: current);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text(
+          'Set Settings: $_selectedAppName',
+          style: const TextStyle(color: Colors.white, fontSize: 18),
+        ),
+        content: SizedBox(
+          width: 480,
+          child: TextField(
+            key: const Key('field_set_settings_json'),
+            controller: controller,
+            maxLines: 8,
+            minLines: 4,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+            decoration: InputDecoration(
+              hintText: '{"interval": 5, ...}',
+              hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+              filled: true,
+              fillColor: const Color(0xFF0F172A),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('취소'),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          ElevatedButton.icon(
+            key: const Key('btn_set_settings_apply'),
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text('Apply'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3B82F6),
+            ),
+            onPressed: () {
+              _otaCollector.setAppSettings(_selectedAppName!, controller.text);
+              Navigator.of(ctx).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('SetSettings 요청됨: $_selectedAppName')),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -369,13 +436,14 @@ class _OtaViewPageState extends State<OtaViewPage> {
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
+                            key: const Key('btn_app_get_settings'),
                             onPressed: () {
                               if (_selectedAppName != null) {
                                 _otaCollector.requestAppSettings(_selectedAppName!);
                               }
                             },
-                            icon: const Icon(Icons.settings, size: 16),
-                            label: const Text('Refresh Settings'),
+                            icon: const Icon(Icons.download, size: 16),
+                            label: const Text('Get Settings'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF6366F1),
                             ),
@@ -384,31 +452,48 @@ class _OtaViewPageState extends State<OtaViewPage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              if (_selectedAppName != null) {
-                                _otaCollector.requestAppState(_selectedAppName!);
-                              }
-                            },
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text('Refresh State'),
+                            key: const Key('btn_app_set_settings'),
+                            onPressed: _onSetSettings,
+                            icon: const Icon(Icons.upload, size: 16),
+                            label: const Text('Set Settings'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B5CF6),
+                              backgroundColor: const Color(0xFF0EA5E9),
                             ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _onRequestUpdate,
-                        icon: const Icon(Icons.system_update_alt, size: 16),
-                        label: const Text('Request Update'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFEF4444),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            key: const Key('btn_app_get_state'),
+                            onPressed: () {
+                              if (_selectedAppName != null) {
+                                _otaCollector.requestAppState(_selectedAppName!);
+                              }
+                            },
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('Get State'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF8B5CF6),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            key: const Key('btn_app_request_update'),
+                            onPressed: _onRequestUpdate,
+                            icon: const Icon(Icons.system_update_alt, size: 16),
+                            label: const Text('Request Update'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEF4444),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -448,10 +533,17 @@ class _OtaViewPageState extends State<OtaViewPage> {
                         ),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: history.length,
-                      itemBuilder: (_, i) => _HistoryItem(entry: history[i]),
+                  : ValueListenableBuilder<int?>(
+                      valueListenable:
+                          widget.clientIdNotifier ?? ValueNotifier<int?>(null),
+                      builder: (_, myId, __) => ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: history.length,
+                        itemBuilder: (_, i) => _HistoryItem(
+                          entry: history[i],
+                          myClientId: myId,
+                        ),
+                      ),
                     ),
             ),
           ],
@@ -698,9 +790,10 @@ class _AppListTile extends StatelessWidget {
 }
 
 class _HistoryItem extends StatelessWidget {
-  const _HistoryItem({required this.entry});
+  const _HistoryItem({required this.entry, this.myClientId});
 
   final Map<String, dynamic> entry;
+  final int? myClientId;
 
   @override
   Widget build(BuildContext context) {
@@ -708,32 +801,65 @@ class _HistoryItem extends StatelessWidget {
     final appName = entry['app_name'] as String;
     final message = entry['message'] as String;
     final retCode = entry['ret_code'] as int?;
+    final entryClientId = entry['client_id'] as int?;
+    final isMine =
+        myClientId != null && entryClientId != null && entryClientId == myClientId;
 
     final icon = retCode == 1
         ? Icons.check_circle
         : retCode == 2
             ? Icons.error
             : Icons.info;
-    final color = retCode == 1
+    final iconColor = retCode == 1
         ? const Color(0xFF34D399)
         : retCode == 2
             ? const Color(0xFFEF4444)
             : const Color(0xFF60A5FA);
 
-    return Padding(
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: isMine
+            ? const Color(0xFF1E40AF).withValues(alpha: 0.25)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isMine
+              ? const Color(0xFF60A5FA).withValues(alpha: 0.4)
+              : Colors.transparent,
+        ),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 10),
+          Text(
+            isMine ? '▣' : '□',
+            style: TextStyle(
+              fontSize: 14,
+              color: isMine
+                  ? const Color(0xFF60A5FA)
+                  : const Color(0xFF6B7280),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Icon(icon, color: iconColor, size: 18),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$appName — $message',
-                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                  entryClientId != null
+                      ? '$appName — $message  (cid=$entryClientId)'
+                      : '$appName — $message',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white,
+                    fontWeight:
+                        isMine ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
                 Text(
                   timestamp.length >= 19
