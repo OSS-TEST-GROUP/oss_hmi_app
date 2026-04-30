@@ -63,9 +63,11 @@ services:
       - /run/user/1000:/run/user/1000          # Wayland socket
       - /tmp/.X11-unix:/tmp/.X11-unix          # X11 fallback
       - ../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge config override
+      - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
-      - DISPLAY=:1
+      - DISPLAY=${DISPLAY:-:2}
+      - XAUTHORITY=/root/.Xauthority
       - XDG_RUNTIME_DIR=/run/user/1000
 
     # host network for DDS/ROS2 communication
@@ -208,9 +210,11 @@ services:
       - /run/user/1000:/run/user/1000
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ../ota_monitor/config/config.json:/app/config/config.json
+      - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
-      - DISPLAY=:1
+      - DISPLAY=${DISPLAY:-:2}
+      - XAUTHORITY=/root/.Xauthority
       - XDG_RUNTIME_DIR=/run/user/1000
 
     network_mode: host
@@ -360,11 +364,12 @@ services:
       - /run/user/1000:/run/user/1000
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ../hmi_launcher/config/launcher_config.json:/app/config/launcher_config.json
-      # NVIDIA NV-GLX on DISPLAY=:1 requires Xauthority for DRI authentication.
+      # NVIDIA NV-GLX requires Xauthority for DRI authentication.
+      # DISPLAY is read from the calling shell (default :2 for GDM sessions).
       - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
-      - DISPLAY=:1
+      - DISPLAY=${DISPLAY:-:2}
       - XAUTHORITY=/root/.Xauthority
       - XDG_RUNTIME_DIR=/run/user/1000
 
