@@ -118,6 +118,7 @@ class _ClientPageState extends State<ClientPage> {
                 label: const Text('Register'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
                 ),
               ),
               const SizedBox(width: 16),

@@ -347,6 +347,7 @@ class _ActorCardState extends State<_ActorCard> {
                 label: const Text('Send'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
                 ),
               ),
               if (_inflightId != null) ...[

@@ -190,6 +190,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   label: const Text('Apply'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF3B82F6),
+                    foregroundColor: Colors.white,
                   ),
                 ),
                 const SizedBox(width: 12),

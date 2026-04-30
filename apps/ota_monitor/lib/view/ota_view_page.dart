@@ -167,6 +167,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
             label: const Text('Apply'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF3B82F6),
+              foregroundColor: Colors.white,
             ),
             onPressed: () {
               _otaCollector.setAppSettings(_selectedAppName!, controller.text);
@@ -335,6 +336,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                 label: const Text('테스트 앱 추가'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
                 ),
               ),
             ),
@@ -446,6 +448,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                             label: const Text('Get Settings'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF6366F1),
+                              foregroundColor: Colors.white,
                             ),
                           ),
                         ),
@@ -458,6 +461,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                             label: const Text('Set Settings'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF0EA5E9),
+                              foregroundColor: Colors.white,
                             ),
                           ),
                         ),
@@ -478,6 +482,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                             label: const Text('Get State'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF8B5CF6),
+                              foregroundColor: Colors.white,
                             ),
                           ),
                         ),
@@ -490,6 +495,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
                             label: const Text('Request Update'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFEF4444),
+                              foregroundColor: Colors.white,
                             ),
                           ),
                         ),

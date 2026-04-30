@@ -299,21 +299,25 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
                     },
                   ),
                   const SizedBox(width: 12),
-                  // Manager Ready dot — green when NotifyOtaManagerReady
-                  // received, grey otherwise. Tap → Client modal.
                   _buildManagerReadyButton(),
-                  IconButton(
+                  const SizedBox(width: 4),
+                  TextButton.icon(
                     key: const Key('btn_actor_raw'),
-                    icon: const Icon(Icons.build_circle_outlined, size: 24),
-                    tooltip: 'Raw Actor (debug)',
-                    color: const Color(0xFF9CA3AF),
+                    icon: const Icon(Icons.build_circle_outlined, size: 20),
+                    label: const Text('Actor'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFCBD5E1),
+                    ),
                     onPressed: () => _showActorDialog(context),
                   ),
-                  IconButton(
+                  const SizedBox(width: 4),
+                  TextButton.icon(
                     key: const Key('btn_settings'),
-                    icon: const Icon(Icons.settings, size: 24),
-                    tooltip: 'Settings',
-                    color: const Color(0xFF9CA3AF),
+                    icon: const Icon(Icons.settings, size: 20),
+                    label: const Text('Settings'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFCBD5E1),
+                    ),
                     onPressed: () => _showSettingsDialog(context),
                   ),
                 ],
@@ -328,12 +332,11 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   Widget _buildManagerReadyButton() {
     final controller = _clientController;
     if (controller == null) {
-      // Ros not yet up — render a disabled grey dot button.
-      return IconButton(
+      return TextButton.icon(
         key: const Key('btn_client'),
-        icon: const Icon(Icons.account_circle_outlined, size: 24),
-        tooltip: 'Client (Ros not connected)',
-        color: const Color(0xFF6B7280),
+        icon: const Icon(Icons.account_circle_outlined, size: 20),
+        label: const Text('Client'),
+        style: TextButton.styleFrom(foregroundColor: const Color(0xFF6B7280)),
         onPressed: null,
       );
     }
@@ -343,21 +346,27 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
         final ready = controller.managerReady;
         final cid = controller.clientId;
         final tooltip = cid != null
-            ? 'Client (id=$cid, ${ready ? 'manager ready' : 'waiting'})'
-            : 'Client (not registered, ${ready ? 'manager ready' : 'waiting'})';
-        return IconButton(
-          key: const Key('btn_client'),
-          icon: Icon(
-            cid != null
-                ? Icons.account_circle
-                : Icons.account_circle_outlined,
-            size: 24,
+            ? 'id=$cid, ${ready ? 'manager ready' : 'waiting for manager'}'
+            : 'not registered, ${ready ? 'manager ready' : 'waiting for manager'}';
+        final label = cid != null ? 'Client (id=$cid)' : 'Client';
+        return Tooltip(
+          message: tooltip,
+          child: TextButton.icon(
+            key: const Key('btn_client'),
+            icon: Icon(
+              cid != null
+                  ? Icons.account_circle
+                  : Icons.account_circle_outlined,
+              size: 20,
+            ),
+            label: Text(label),
+            style: TextButton.styleFrom(
+              foregroundColor: ready
+                  ? const Color(0xFF34D399)
+                  : const Color(0xFFCBD5E1),
+            ),
+            onPressed: () => _showClientDialog(context),
           ),
-          tooltip: tooltip,
-          color: ready
-              ? const Color(0xFF34D399)
-              : const Color(0xFF9CA3AF),
-          onPressed: () => _showClientDialog(context),
         );
       },
     );
@@ -503,18 +512,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        key: const Key('btn_log_overlay'),
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            backgroundColor: const Color(0xFF1E293B),
-            builder: (_) => const LogBottomSheet(),
-          );
-        },
-        backgroundColor: const Color(0xFF3B82F6),
-        child: const Icon(Icons.terminal),
-      ),
       body: Column(
         children: [
           _buildHeader(),
