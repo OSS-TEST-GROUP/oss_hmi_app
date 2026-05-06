@@ -19,6 +19,10 @@ class AppConfig {
   /// Character count at which settings/state strings are truncated in UI (F005).
   final int truncateLength;
 
+  /// UI theme name. Either 'light' (Tesla-inspired, default) or 'dark'
+  /// (the original OTA Monitor palette). Persisted in config.json.
+  final String theme;
+
   AppConfig({
     required this.rosUrl,
     required this.statusTopic,
@@ -27,6 +31,7 @@ class AppConfig {
     this.heartbeatIntervalSec = 1,
     this.historySize = 20,
     this.truncateLength = 100,
+    this.theme = 'light',
   });
 
   factory AppConfig.defaults() => AppConfig(
@@ -45,6 +50,7 @@ class AppConfig {
     int? heartbeatIntervalSec,
     int? historySize,
     int? truncateLength,
+    String? theme,
   }) =>
       AppConfig(
         rosUrl: rosUrl ?? this.rosUrl,
@@ -56,6 +62,7 @@ class AppConfig {
             heartbeatIntervalSec ?? this.heartbeatIntervalSec,
         historySize: historySize ?? this.historySize,
         truncateLength: truncateLength ?? this.truncateLength,
+        theme: theme ?? this.theme,
       );
 
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
@@ -70,7 +77,13 @@ class AppConfig {
         heartbeatIntervalSec: _asPositiveInt(j['heartbeatIntervalSec'], 1),
         historySize: _asPositiveInt(j['historySize'], 20),
         truncateLength: _asPositiveInt(j['truncateLength'], 100),
+        theme: _parseTheme(j['theme']),
       );
+
+  static String _parseTheme(dynamic v) {
+    if (v is String && (v == 'dark' || v == 'light')) return v;
+    return 'light';
+  }
 
   static List<String> _parseStringList(dynamic v) {
     if (v is! List) return const [];

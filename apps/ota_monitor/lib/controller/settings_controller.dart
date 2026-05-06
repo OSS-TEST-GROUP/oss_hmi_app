@@ -67,6 +67,46 @@ class SettingsController {
   /// Reset to the URL that was loaded from config.json at startup.
   Future<bool> resetToDefault() => applyUrl(initialConfig.rosUrl.toString());
 
+  /// Persist the chosen UI theme name ('light' or 'dark') to config.json
+  /// using the same priority chain as URL persistence. The live
+  /// `paletteNotifier` is updated by the caller (UI) so the swap is
+  /// instant; this method only handles the on-disk record.
+  Future<bool> applyTheme(String name) async {
+    if (name != 'light' && name != 'dark') {
+      appLog('[settings] reject invalid theme: $name', level: 'warn');
+      return false;
+    }
+    await _persistTheme(name);
+    return true;
+  }
+
+  Future<void> _persistTheme(String name) async {
+    final file = await _configFilePathResolver();
+
+    Map<String, dynamic> existing = {};
+    if (await file.exists()) {
+      try {
+        existing = json.decode(await file.readAsString())
+            as Map<String, dynamic>;
+      } catch (e) {
+        appLog('[settings] existing config unparseable, overwriting: $e',
+            level: 'warn');
+      }
+    } else {
+      await file.parent.create(recursive: true);
+    }
+
+    existing['theme'] = name;
+
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(existing),
+      flush: true,
+    );
+    await tmp.rename(file.path);
+    appLog('[settings] persisted theme=$name to ${file.path}');
+  }
+
   Future<void> _persistUrl(String newUrl) async {
     final file = await _configFilePathResolver();
 

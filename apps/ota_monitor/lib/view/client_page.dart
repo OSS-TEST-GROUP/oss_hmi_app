@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ota_monitor/controller/client_service_controller.dart';
+import 'package:ota_monitor/theme/app_palette.dart';
 
 /// F021 — Client tab. Three cards:
 ///   1. Self Registration (card_client_register)
@@ -11,10 +12,6 @@ import 'package:ota_monitor/controller/client_service_controller.dart';
 ///        NotifyAppUpdateStatus 수신 리스트
 ///
 /// All widget keys follow F020 widget-keys.md §6.
-///
-/// The page is a [StatefulWidget] that listens to the controller's
-/// ChangeNotifier so test code can verify reactive updates without
-/// pumping a real Ros connection (see ClientServiceController.injectXxx).
 class ClientPage extends StatefulWidget {
   const ClientPage({super.key, required this.controller});
 
@@ -76,26 +73,34 @@ class _ClientPageState extends State<ClientPage> {
     );
   }
 
-  // ── card 1 ───────────────────────────────────────────────────────────
-  Widget _buildRegistrationCard(ClientServiceController c) {
+  Widget _card({required Key key, required Widget child}) {
+    final p = palette;
     return Container(
-      key: const Key('card_client_register'),
+      key: key,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
+        color: p.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: p.divider, width: 1),
       ),
+      child: child,
+    );
+  }
+
+  TextStyle _titleStyle() => TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w500,
+        color: palette.textPrimary,
+      );
+
+  Widget _buildRegistrationCard(ClientServiceController c) {
+    final p = palette;
+    return _card(
+      key: const Key('card_client_register'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Self Registration',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
+          Text('Self Registration', style: _titleStyle()),
           const SizedBox(height: 12),
           _input(
             label: 'client_name',
@@ -117,8 +122,11 @@ class _ClientPageState extends State<ClientPage> {
                 icon: const Icon(Icons.app_registration, size: 18),
                 label: const Text('Register'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
-                  foregroundColor: Colors.white,
+                  backgroundColor: p.primary,
+                  foregroundColor: p.onPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -127,8 +135,8 @@ class _ClientPageState extends State<ClientPage> {
                     ? 'client_id: (not registered)'
                     : 'client_id: ${c.clientId}',
                 key: const Key('text_client_id'),
-                style: const TextStyle(
-                  color: Color(0xFFCBD5E1),
+                style: TextStyle(
+                  color: p.textSecondary,
                   fontFamily: 'monospace',
                 ),
               ),
@@ -139,107 +147,80 @@ class _ClientPageState extends State<ClientPage> {
     );
   }
 
-  // ── card 2 ───────────────────────────────────────────────────────────
   Widget _buildManagerStatusCard(ClientServiceController c) {
-    return Container(
+    final p = palette;
+    return _card(
       key: const Key('card_client_manager_status'),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Manager Status',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
+          Text('Manager Status', style: _titleStyle()),
           const SizedBox(height: 12),
           Row(
             children: [
-              const Text(
+              Text(
                 'Ready: ',
-                style: TextStyle(color: Color(0xFFCBD5E1)),
+                style: TextStyle(color: p.textSecondary),
               ),
               Icon(
                 Icons.circle,
                 key: const Key('icon_manager_ready'),
                 size: 14,
-                color: c.managerReady
-                    ? const Color(0xFF34D399)   // green when ready
-                    : const Color(0xFF6B7280),  // grey otherwise
+                color: c.managerReady ? p.success : p.textPlaceholder,
               ),
               const SizedBox(width: 8),
               Text(
                 c.managerReady ? 'received' : 'waiting',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: Color(0xFFCBD5E1),
+                  color: p.textSecondary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          // Heartbeat fields are owned by the smoke/error scenarios
-          // (F011 / F019); the Client tab just exposes the keys so
-          // those tests can find them, even though the values aren't
-          // wired here yet (see also docs/ux/widget-keys.md §6-2).
-          const Text(
+          Text(
             'seq=—',
-            key: Key('text_heartbeat_seq'),
-            style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+            key: const Key('text_heartbeat_seq'),
+            style: TextStyle(fontSize: 13, color: p.textTertiary),
           ),
-          const Text(
+          Text(
             'ts=—',
-            key: Key('text_heartbeat_timestamp'),
-            style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+            key: const Key('text_heartbeat_timestamp'),
+            style: TextStyle(fontSize: 13, color: p.textTertiary),
           ),
-          const SizedBox(width: 0, height: 0,
-              child: Icon(
-                Icons.timer,
-                key: Key('icon_heartbeat_stale'),
-                size: 0,        // hidden; F019 will style it on stale
-                color: Color(0x00000000),
-              )),
+          const SizedBox(
+            width: 0,
+            height: 0,
+            child: Icon(
+              Icons.timer,
+              key: Key('icon_heartbeat_stale'),
+              size: 0,
+              color: Color(0x00000000),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // ── card 3 ───────────────────────────────────────────────────────────
   Widget _buildAppStatusCard(ClientServiceController c) {
+    final p = palette;
     final myId = c.clientId;
-    return Container(
+    return _card(
       key: const Key('card_client_app_status'),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'App Update Status (${c.statuses.length})',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
+          Text('App Update Status (${c.statuses.length})', style: _titleStyle()),
           const SizedBox(height: 12),
           if (c.statuses.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
                 child: Text(
                   'no NotifyAppUpdateStatus messages yet',
-                  style: TextStyle(color: Color(0xFF9CA3AF)),
+                  style: TextStyle(color: p.textTertiary),
                 ),
               ),
             )
@@ -259,20 +240,20 @@ class _ClientPageState extends State<ClientPage> {
                       vertical: 6, horizontal: 8),
                   margin: const EdgeInsets.symmetric(vertical: 2),
                   decoration: BoxDecoration(
-                    color: isMine
-                        ? const Color(0xFF1E40AF).withValues(alpha: 0.4)
-                        : const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(6),
+                    color: isMine ? p.selectionBg : p.surfaceAlt,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isMine ? p.selectionBorder : Colors.transparent,
+                      width: 1,
+                    ),
                   ),
                   child: Row(
                     children: [
                       Text(
                         isMine ? '▣' : '□',
                         style: TextStyle(
-                          color: isMine
-                              ? const Color(0xFF60A5FA)
-                              : const Color(0xFF6B7280),
-                          fontWeight: FontWeight.bold,
+                          color: isMine ? p.primary : p.textPlaceholder,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -283,9 +264,9 @@ class _ClientPageState extends State<ClientPage> {
                           'status=${m['status']}',
                           style: TextStyle(
                             fontSize: 13,
-                            color: Colors.white,
+                            color: p.textPrimary,
                             fontWeight:
-                                isMine ? FontWeight.bold : FontWeight.normal,
+                                isMine ? FontWeight.w500 : FontWeight.normal,
                             fontFamily: 'monospace',
                           ),
                         ),
@@ -300,26 +281,27 @@ class _ClientPageState extends State<ClientPage> {
     );
   }
 
-  // ── small helper ─────────────────────────────────────────────────────
   Widget _input({
     required String label,
     required String keyName,
     required TextEditingController controller,
   }) {
+    final p = palette;
     return TextField(
       key: Key(keyName),
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: TextStyle(color: p.textTertiary),
         filled: true,
-        fillColor: const Color(0xFF0F172A),
+        fillColor: p.surfaceAlt,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(4),
           borderSide: BorderSide.none,
         ),
       ),
-      style: const TextStyle(
-        color: Colors.white,
+      style: TextStyle(
+        color: p.textPrimary,
         fontFamily: 'monospace',
       ),
     );

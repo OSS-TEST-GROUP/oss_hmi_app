@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:ota_monitor/controller/ota_collector.dart';
+import 'package:ota_monitor/theme/app_palette.dart';
 
 /// F009: OTA Manager Actor-service raw request/response UI.
 ///
@@ -278,14 +279,14 @@ class _ActorCardState extends State<_ActorCard> {
     });
   }
 
-  Color? _displayColor(ThemeData theme) {
+  Color? _displayColor() {
     switch (_displayKind) {
       case _DisplayKind.ok:
-        return const Color(0xFF34D399);
+        return palette.success;
       case _DisplayKind.businessError:
-        return const Color(0xFFEF4444);
+        return palette.error;
       case _DisplayKind.timeout:
-        return const Color(0xFFF59E0B);
+        return palette.warning;
       case _DisplayKind.pending:
       case _DisplayKind.idle:
         return null;
@@ -294,23 +295,24 @@ class _ActorCardState extends State<_ActorCard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final p = palette;
     return Container(
       key: Key(widget.cardKey),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
+        color: p.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: p.divider, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             widget.title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              color: p.textPrimary,
             ),
           ),
           const SizedBox(height: 12),
@@ -324,15 +326,16 @@ class _ActorCardState extends State<_ActorCard> {
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: widget.fields[i].label,
+                labelStyle: TextStyle(color: p.textTertiary),
                 filled: true,
-                fillColor: const Color(0xFF0F172A),
+                fillColor: p.surfaceAlt,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(4),
                   borderSide: BorderSide.none,
                 ),
               ),
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: p.textPrimary,
                 fontFamily: 'monospace',
               ),
             ),
@@ -346,8 +349,11 @@ class _ActorCardState extends State<_ActorCard> {
                 icon: const Icon(Icons.send, size: 18),
                 label: const Text('Send'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
-                  foregroundColor: Colors.white,
+                  backgroundColor: p.primary,
+                  foregroundColor: p.onPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ),
               if (_inflightId != null) ...[
@@ -361,17 +367,17 @@ class _ActorCardState extends State<_ActorCard> {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Response:',
-            style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+            style: TextStyle(fontSize: 13, color: p.textTertiary),
           ),
           const SizedBox(height: 6),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(8),
+              color: p.surfaceAlt,
+              borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
               _display.isEmpty ? '(no response yet)' : _display,
@@ -379,10 +385,8 @@ class _ActorCardState extends State<_ActorCard> {
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13,
-                color: _displayColor(theme) ??
-                    (_display.isEmpty
-                        ? const Color(0xFF6B7280)
-                        : Colors.white),
+                color: _displayColor() ??
+                    (_display.isEmpty ? p.textPlaceholder : p.textPrimary),
               ),
             ),
           ),
