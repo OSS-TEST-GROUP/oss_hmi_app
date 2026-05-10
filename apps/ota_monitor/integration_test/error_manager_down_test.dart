@@ -71,7 +71,7 @@ void main() {
       final hbTopic = Topic(
         ros: ros,
         name: _heartbeatTopic,
-        type: 'mmf_interfaces/NotifyOtaMgrHeartbeat',
+        type: 'otamanager/NotifyOtaMgrHeartbeat',
       );
       await hbTopic.subscribe((Map<String, dynamic> msg) async {
         if (!firstHb.isCompleted) firstHb.complete(msg);

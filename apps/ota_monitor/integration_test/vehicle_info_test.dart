@@ -70,12 +70,12 @@ void main() {
       final reqTopic = Topic(
         ros: ros,
         name: _topicReq,
-        type: 'mmf_interfaces/GetVehicleInfo',
+        type: 'otamanager/GetVehicleInfo',
       );
       final resTopic = Topic(
         ros: ros,
         name: _topicRes,
-        type: 'mmf_interfaces/GetVehicleInfoResponse',
+        type: 'otamanager/GetVehicleInfoResponse',
       );
 
       // Subscribe FIRST so we don't miss a fast-returning response.

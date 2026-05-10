@@ -2,7 +2,7 @@
 // OTA Manager publishes responses and subscribes requests on rt/mmf/... DDS topics
 // which correspond to /mmf/... ROS2 topic names used by rosbridge.
 
-const String _pkg = 'mmf_interfaces/msg';
+const String _pkg = 'otamanager/msg';
 
 // Response topics (subscribe via rosbridge)
 const List<String> otaResponseTopics = [
@@ -21,7 +21,7 @@ const List<String> otaRequestTopics = [
   '/mmf/otamanager/otaactor_service/SetAppUpdate',
 ];
 
-// ROS2 message type names (mmf_interfaces/msg/TypeName)
+// ROS2 message type names (otamanager/msg/TypeName)
 const List<String> otaRosResponseTypes = [
   '$_pkg/GetAppUpdateSettingsResponse',
   '$_pkg/SetAppUpdateSettingsResponse',
@@ -46,7 +46,7 @@ const String otaGetAppListResTopic =
 const String otaGetAppListReqType = '$_pkg/GetAppList';
 const String otaGetAppListResType = '$_pkg/GetAppListResponse';
 
-// ReturnValue enum (matches mmf_interfaces/msg/ReturnValue)
+// ReturnValue enum (matches otamanager/msg/ReturnValue)
 enum ReturnValue {
   unknown(0),
   success(1),

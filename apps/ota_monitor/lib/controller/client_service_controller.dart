@@ -45,13 +45,13 @@ class ClientServiceController extends ChangeNotifier {
       '/mmf/otamanager/otaclient_service/NotifyAppUpdateStatus';
 
   static const String _typeReg =
-      'mmf_interfaces/SetOtaClientRegistration';
+      'otamanager/SetOtaClientRegistration';
   static const String _typeRegRes =
-      'mmf_interfaces/SetOtaClientRegistrationResponse';
+      'otamanager/SetOtaClientRegistrationResponse';
   static const String _typeReady =
-      'mmf_interfaces/NotifyOtaManagerReady';
+      'otamanager/NotifyOtaManagerReady';
   static const String _typeStatus =
-      'mmf_interfaces/NotifyAppUpdateStatus';
+      'otamanager/NotifyAppUpdateStatus';
 
   // ── observable state (read by the Client tab) ───────────────────────
   /// Most recent client_id returned by the Manager, or null if we have

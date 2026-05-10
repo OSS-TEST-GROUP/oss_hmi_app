@@ -102,7 +102,7 @@ static bool json_get_int(const std::string& json, const std::string& key,
 // ============================================================================
 
 // Return the unqualified type name (strip any C++ namespace prefix).
-// "OtaManager::GetAppUpdateSettings"   → "GetAppUpdateSettings"
+// "otamanager::GetAppUpdateSettings"   → "GetAppUpdateSettings"
 // "ota_manager::msg::GetAppUpdateSettings" → "GetAppUpdateSettings"
 static std::string type_base_name(const std::string& type_name) {
     size_t pos = type_name.rfind("::");
