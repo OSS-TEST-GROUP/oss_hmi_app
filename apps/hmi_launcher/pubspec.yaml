@@ -74,6 +74,8 @@ flutter:
   assets:
     - assets/FONT_LICENSES.txt
     - config/launcher_config.json
+    - assets/config/
+    - assets/audio/
 
   fonts:
     - family: Orbitron

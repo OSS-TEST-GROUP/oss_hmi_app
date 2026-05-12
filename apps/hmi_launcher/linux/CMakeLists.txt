@@ -57,6 +57,84 @@ pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+set(OBIGO_OASIS_CANDIDATE_DIRS
+  "${CMAKE_SOURCE_DIR}/../third_party/obigo-oasis"
+  "${CMAKE_SOURCE_DIR}/../../oss_launcher_bot/third_party/obigo-oasis"
+)
+set(OBIGO_OASIS_DIR "")
+foreach(candidate ${OBIGO_OASIS_CANDIDATE_DIRS})
+  if(EXISTS "${candidate}/include" AND EXISTS "${candidate}/lib")
+    set(OBIGO_OASIS_DIR "${candidate}")
+    break()
+  endif()
+endforeach()
+
+set(CHATBOT_BRIDGE_ENABLED FALSE)
+if(NOT "${OBIGO_OASIS_DIR}" STREQUAL "")
+  set(OBIGO_OASIS_INCLUDE_DIR "${OBIGO_OASIS_DIR}/include")
+  set(OBIGO_OASIS_LIB_DIR "${OBIGO_OASIS_DIR}/lib")
+  set(OBIGO_SERVICE_LLM_LIB "${OBIGO_OASIS_LIB_DIR}/libservice_llm.so")
+  set(OBIGO_SERVICE_RAG_LIB "${OBIGO_OASIS_LIB_DIR}/libservice_rag.so")
+  set(OBIGO_ENGINE_ONNX_LIB "${OBIGO_OASIS_LIB_DIR}/libengine_onnx.so")
+  set(OBIGO_ENGINE_SLLM_LIB "${OBIGO_OASIS_LIB_DIR}/libengine_sllm.so")
+  set(OBIGO_ONNXRUNTIME_LIB "${OBIGO_OASIS_LIB_DIR}/libonnxruntime.so")
+  set(OBIGO_ONNXRUNTIME_GENAI_LIB "${OBIGO_OASIS_LIB_DIR}/libonnxruntime-genai.so")
+
+  if(EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/llm_provider.hpp" AND
+     EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/llm_provider_llamacpp.hpp" AND
+     EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/multimodal_types.hpp" AND
+     EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/rag_engine.hpp" AND
+     EXISTS "${OBIGO_SERVICE_LLM_LIB}" AND
+     EXISTS "${OBIGO_SERVICE_RAG_LIB}" AND
+     EXISTS "${OBIGO_ENGINE_ONNX_LIB}" AND
+     EXISTS "${OBIGO_ENGINE_SLLM_LIB}" AND
+     EXISTS "${OBIGO_ONNXRUNTIME_LIB}" AND
+     EXISTS "${OBIGO_ONNXRUNTIME_GENAI_LIB}")
+    add_library(chatbot_bridge SHARED
+      "${CMAKE_SOURCE_DIR}/../native/chatbot_bridge.cpp"
+    )
+
+    APPLY_STANDARD_SETTINGS(chatbot_bridge)
+    target_compile_features(chatbot_bridge PRIVATE cxx_std_17)
+
+    target_include_directories(chatbot_bridge SYSTEM PRIVATE
+      "${OBIGO_OASIS_INCLUDE_DIR}"
+    )
+
+    target_compile_options(chatbot_bridge PRIVATE
+      -Wno-error=unused-variable
+    )
+
+    target_link_options(chatbot_bridge PRIVATE
+      "LINKER:--no-as-needed"
+    )
+
+    target_link_libraries(chatbot_bridge PRIVATE
+      "${OBIGO_ONNXRUNTIME_LIB}"
+      "${OBIGO_ONNXRUNTIME_GENAI_LIB}"
+      "${OBIGO_ENGINE_ONNX_LIB}"
+      "${OBIGO_ENGINE_SLLM_LIB}"
+      "${OBIGO_SERVICE_LLM_LIB}"
+      "${OBIGO_SERVICE_RAG_LIB}"
+    )
+
+    set_target_properties(chatbot_bridge
+      PROPERTIES
+      BUILD_RPATH "$ORIGIN"
+      INSTALL_RPATH "$ORIGIN"
+    )
+
+    set(CHATBOT_BRIDGE_ENABLED TRUE)
+  endif()
+endif()
+
+if(NOT CHATBOT_BRIDGE_ENABLED)
+  message(WARNING
+    "chatbot_bridge is disabled. Add Obigo Oasis headers and libraries under "
+    "apps/hmi_launcher/third_party/obigo-oasis or keep apps/oss_launcher_bot/"
+    "third_party/obigo-oasis available to enable Gemma.")
+endif()
+
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
 
@@ -105,6 +183,35 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endforeach(bundled_library)
+
+if(CHATBOT_BRIDGE_ENABLED)
+  install(TARGETS chatbot_bridge
+    LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+  install(DIRECTORY "${OBIGO_OASIS_LIB_DIR}/"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime
+    FILES_MATCHING PATTERN "*.so*")
+  install(CODE "
+    if(EXISTS \"${INSTALL_BUNDLE_LIB_DIR}/libonnxruntime.so\")
+      execute_process(
+        COMMAND \"${CMAKE_COMMAND}\" -E create_symlink
+          libonnxruntime.so
+          \"${INSTALL_BUNDLE_LIB_DIR}/libonnxruntime.so.1\"
+      )
+    endif()
+    " COMPONENT Runtime)
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/../models")
+  install(DIRECTORY "${CMAKE_SOURCE_DIR}/../models"
+    DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
+    COMPONENT Runtime)
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/../../oss_launcher_bot/models")
+  install(DIRECTORY "${CMAKE_SOURCE_DIR}/../../oss_launcher_bot/models"
+    DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
+    COMPONENT Runtime)
+endif()
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
