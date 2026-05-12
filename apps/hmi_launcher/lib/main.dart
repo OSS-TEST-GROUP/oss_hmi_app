@@ -8,6 +8,7 @@ import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
 import 'presentation/keyboard/keyboard_host.dart';
 import 'presentation/shell/launcher_app_area.dart';
+import 'presentation/shell/launcher_bot_shell.dart';
 import 'presentation/shell/launcher_shell.dart';
 import 'presentation/theme/launcher_tokens.dart';
 import 'ros/launcher_ros_keeper.dart';
@@ -44,9 +45,8 @@ String resolveAppsRoot() {
     final hasManifest = dir
         .listSync(followLinks: false)
         .whereType<Directory>()
-        .any((sub) =>
-            File('${sub.path}${Platform.pathSeparator}manifest.json')
-                .existsSync());
+        .any((sub) => File('${sub.path}${Platform.pathSeparator}manifest.json')
+            .existsSync());
     if (hasManifest) return c;
   }
   return 'apps';
@@ -172,7 +172,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return LauncherShell(
+    return LauncherBotShell(
       registry: _registry,
       panelBuilder: widget.panelBuilder,
     );
