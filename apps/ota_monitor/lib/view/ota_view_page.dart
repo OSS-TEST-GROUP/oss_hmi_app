@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:ota_monitor/controller/client_service_controller.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 import 'package:ota_monitor/theme/app_palette.dart';
+import 'package:ota_monitor/view/client_page.dart';
 import 'package:ota_monitor/view/widgets/actor_card.dart';
 
 class OtaViewPage extends StatefulWidget {
@@ -11,6 +13,7 @@ class OtaViewPage extends StatefulWidget {
     super.key,
     this.truncateLength = 100,
     this.selectedApp,
+    this.clientController,
   });
 
   final int truncateLength;
@@ -19,6 +22,12 @@ class OtaViewPage extends StatefulWidget {
   /// app_name when an app is selected on the left list. Optional —
   /// tests omit it.
   final ValueNotifier<String?>? selectedApp;
+
+  /// Wired up by OtaMonitorHomePage once Ros is available so the bottom
+  /// half of the left panel can render the Client section
+  /// (Self Registration / Manager Status / App Update Status). When
+  /// null, the bottom half shows a "Ros connecting…" placeholder.
+  final ClientServiceController? clientController;
 
   @override
   State<OtaViewPage> createState() => _OtaViewPageState();
@@ -254,6 +263,28 @@ class _OtaViewPageState extends State<OtaViewPage> {
     );
   }
 
+  // ─── Left panel bottom: Client section ────────────────────────────────────
+
+  Widget _buildClientSection() {
+    final p = palette;
+    final c = widget.clientController;
+    if (c == null) {
+      return _Panel(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Ros connecting…\nClient 정보 대기 중',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: p.textTertiary, fontSize: 14),
+            ),
+          ),
+        ),
+      );
+    }
+    return _Panel(child: ClientPage(controller: c));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -261,9 +292,18 @@ class _OtaViewPageState extends State<OtaViewPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 1, child: _buildAppListPanel()),
+          Expanded(
+            flex: 1,
+            child: Column(
+              children: [
+                Expanded(child: _buildAppListPanel()),
+                const SizedBox(height: 16),
+                Expanded(child: _buildClientSection()),
+              ],
+            ),
+          ),
           const SizedBox(width: 24),
-          Expanded(flex: 2, child: _buildActorPanel()),
+          Expanded(flex: 1, child: _buildActorPanel()),
         ],
       ),
     );

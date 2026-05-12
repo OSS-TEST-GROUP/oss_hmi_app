@@ -9,6 +9,7 @@ import 'package:ota_monitor/config/config_loader.dart';
 import 'package:ota_monitor/config/app_config.dart';
 import 'package:ota_monitor/logging/app_log.dart';
 import 'package:ota_monitor/ros/ros_keeper.dart';
+import 'package:ota_monitor/controller/client_service_controller.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 import 'package:ota_monitor/controller/settings_controller.dart';
 
@@ -127,6 +128,15 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   // app_name.
   final ValueNotifier<String?> _selectedApp = ValueNotifier(null);
 
+  // Listen to Ros status so we can eagerly create _clientController when
+  // the connection comes up.
+  RosKeeper? _statusListenedKeeper;
+
+  /// Client controller is created the moment Ros becomes available so
+  /// the left-panel Client section can render registration / manager
+  /// status / app status without waiting for user interaction.
+  ClientServiceController? _clientController;
+
   @override
   void initState() {
     super.initState();
@@ -137,7 +147,11 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
       writeKeeper: widget.keeperHolder.replace,
     );
 
+    _statusListenedKeeper = widget.keeperHolder.current;
     widget.keeperHolder.addListener(_onKeeperHolderChange);
+    _statusListenedKeeper!.statusNotifier.addListener(_onRosStatusChange);
+    // Try eagerly in case Ros is already up at startup.
+    _ensureClientController();
 
     if (widget.configWarning != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -163,10 +177,33 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   void dispose() {
     _selectedApp.dispose();
     widget.keeperHolder.removeListener(_onKeeperHolderChange);
+    _statusListenedKeeper?.statusNotifier.removeListener(_onRosStatusChange);
     super.dispose();
   }
 
   void _onKeeperHolderChange() {
+    final newKeeper = widget.keeperHolder.current;
+    if (newKeeper != _statusListenedKeeper) {
+      _statusListenedKeeper?.statusNotifier.removeListener(_onRosStatusChange);
+      _statusListenedKeeper = newKeeper;
+      newKeeper.statusNotifier.addListener(_onRosStatusChange);
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _onRosStatusChange() {
+    _ensureClientController();
+    if (mounted) setState(() {});
+  }
+
+  /// Create _clientController as soon as Ros is registered in GetX.
+  /// Called from initState (eager attempt) and from _onRosStatusChange
+  /// (retry after connect).
+  void _ensureClientController() {
+    if (_clientController != null) return;
+    if (!Get.isRegistered<Ros>()) return;
+    _clientController = ClientServiceController(ros: Get.find<Ros>());
+    _clientController!.setup();
     if (mounted) setState(() {});
   }
 
@@ -325,6 +362,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
             child: OtaViewPage(
               truncateLength: widget.truncateLength,
               selectedApp: _selectedApp,
+              clientController: _clientController,
             ),
           ),
         ],
