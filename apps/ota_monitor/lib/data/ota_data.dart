@@ -37,12 +37,13 @@ const List<String> otaRosRequestTypes = [
   '$_pkg/SetAppUpdate',
 ];
 
-// F023 — GetAppList query topics (Manager 진실 소스).
-// Provided by F022 IDL (OtamClientServiceMsg.idl).
+// GetAppList query topics. Relocated from otaclient_service to
+// otaactor_service so ota_monitor talks to actor exclusively for
+// these queries. IDL definition now lives in OtamActorServiceMsg.idl.
 const String otaGetAppListReqTopic =
-    '/mmf/otamanager/otaclient_service/GetAppList';
+    '/mmf/otamanager/otaactor_service/GetAppList';
 const String otaGetAppListResTopic =
-    '/mmf/otamanager/otaclient_service/GetAppListResponse';
+    '/mmf/otamanager/otaactor_service/GetAppListResponse';
 const String otaGetAppListReqType = '$_pkg/GetAppList';
 const String otaGetAppListResType = '$_pkg/GetAppListResponse';
 
