@@ -21,11 +21,10 @@ void _suppressOverflow() {
   addTearDown(() => FlutterError.onError = original);
 }
 
-/// F008: widget tests for OtaViewPage.
+/// Widget tests for the refactored OtaViewPage. The right panel is now
+/// 4 inline ActorCards (was App Details + Update History before).
 Future<OtaCollector> _putCollector({
   List<Map<String, dynamic>> seedApps = const [],
-  List<Map<String, dynamic>> seedHistory = const [],
-  int historySize = 20,
 }) async {
   Get.reset();
   Get.put<Ros>(_MockRos());
@@ -39,7 +38,6 @@ Future<OtaCollector> _putCollector({
   int i = 0;
   final collector = OtaCollector(
     topicFactory: (ros, name, type) => topics[i++ % topics.length],
-    historySize: historySize,
     autoStartTimers: false,
   );
   Get.put<OtaCollector>(collector);
@@ -51,11 +49,7 @@ Future<OtaCollector> _putCollector({
     collector.topicData['${name}_state'] = a['state'] ?? '';
     collector.topicData['${name}_status'] = a['status'] ?? 'Unknown';
   }
-  for (final h in seedHistory) {
-    collector.updateHistory.add(h);
-  }
 
-  // Destroy the collector before the framework checks for pending timers.
   addTearDown(() async {
     Get.delete<OtaCollector>(force: true);
     Get.reset();
@@ -98,105 +92,26 @@ void main() {
     expect(find.textContaining('App List (2)'), findsOneWidget);
   });
 
-  testWidgets('tapping an app selects it and shows detail panel',
+  testWidgets('right panel exposes the four Actor cards by key',
       (tester) async {
-    await _putCollector(seedApps: [
-      {
-        'name': 'NavigationApp',
-        'settings': '{"interval":5}',
-        'state': 'idle',
-        'status': 'Ready',
-      },
-    ]);
-    await _pumpView(tester);
-
-    // The detail panel is empty before selection.
-    expect(find.text('App Name'), findsNothing);
-
-    await tester.tap(find.text('NavigationApp'));
-    await tester.pump();
-
-    expect(find.text('App Name'), findsOneWidget);
-    // status row value should render the seeded status.
-    expect(find.text('Ready'), findsWidgets);
-  });
-
-  testWidgets('shows "전체 보기" affordance when settings exceed truncateLength',
-      (tester) async {
-    final longJson = 'x' * 150; // > 100 default
-    await _putCollector(seedApps: [
-      {
-        'name': 'NavigationApp',
-        'settings': longJson,
-        'state': 'ok',
-        'status': 'Ready',
-      },
-    ]);
-    await _pumpView(tester);
-    await tester.tap(find.text('NavigationApp'));
-    await tester.pump();
-
-    expect(find.text('전체 보기 →'), findsWidgets);
-  });
-
-  testWidgets('hides "전체 보기" when settings length ≤ truncateLength',
-      (tester) async {
-    await _putCollector(seedApps: [
-      {
-        'name': 'NavigationApp',
-        'settings': 'short',
-        'state': 'short-state',
-        'status': 'Ready',
-      },
-    ]);
-    await _pumpView(tester);
-    await tester.tap(find.text('NavigationApp'));
-    await tester.pump();
-
-    expect(find.text('전체 보기 →'), findsNothing);
-  });
-
-  testWidgets('"테스트 앱 추가" button opens a dialog', (tester) async {
     await _putCollector();
     await _pumpView(tester);
 
-    expect(find.byType(AlertDialog), findsNothing);
-    // Use a robust ancestor finder since there are multiple texts on screen.
-    await tester.tap(find.widgetWithText(ElevatedButton, '테스트 앱 추가'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.text('테스트 앱 추가'), findsWidgets);
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byKey(const Key('card_actor_get_settings')), findsOneWidget);
+    expect(find.byKey(const Key('card_actor_set_settings')), findsOneWidget);
+    expect(find.byKey(const Key('card_actor_get_state')), findsOneWidget);
+    expect(find.byKey(const Key('card_actor_set_update')), findsOneWidget);
   });
 
-  testWidgets('updateHistory shows entries up to historySize', (tester) async {
-    final seeded = List.generate(
-      7,
-      (i) => {
-        'timestamp': DateTime(2026, 4, 18, 10, i).toIso8601String(),
-        'app_name': 'App$i',
-        'message': 'Update requested',
-        'ret_code': 1,
-      },
-    );
-    final collector = await _putCollector(
-      seedHistory: seeded,
-      historySize: 5,
-    );
-    // Trim in the controller mirrors what _addUpdateHistory would do; the
-    // widget renders whatever is in the list. Here we simulate overflow by
-    // removing to historySize so the rendered count equals 5.
-    if (collector.updateHistory.length > collector.historySize) {
-      collector.updateHistory.removeRange(
-          collector.historySize, collector.updateHistory.length);
-    }
-
+  testWidgets('removed UI (테스트 앱 추가, App Details, Update History) is gone',
+      (tester) async {
+    await _putCollector(seedApps: [
+      {'name': 'NavigationApp', 'settings': '', 'state': '', 'status': 'Ready'},
+    ]);
     await _pumpView(tester);
 
-    // At most `historySize` history items should render. Not every entry
-    // must be in the visible viewport, but the collector state must match.
-    expect(collector.updateHistory.length, 5);
-    expect(find.textContaining('Update History'), findsOneWidget);
+    expect(find.text('테스트 앱 추가'), findsNothing);
+    expect(find.text('App Details'), findsNothing);
+    expect(find.text('Update History'), findsNothing);
   });
 }

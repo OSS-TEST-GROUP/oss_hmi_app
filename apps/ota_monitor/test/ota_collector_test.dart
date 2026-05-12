@@ -12,7 +12,7 @@ class MockTopic extends Mock implements Topic {}
 void main() {
   late MockRos mockRos;
   late OtaCollector collector;
-  late List<MockTopic> respTopics; // 5 response topics
+  late List<MockTopic> respTopics; // 4 response topics (NotifyAppUpdateStatus removed)
   late List<MockTopic> reqTopics;  // 4 request topics
 
   setUp(() {
@@ -21,11 +21,11 @@ void main() {
     mockRos = MockRos();
     Get.put<Ros>(mockRos);
 
-    // F023: OtaCollector now also wires GetAppList request + response —
+    // F023: OtaCollector also wires the GetAppList request + response —
     // reserve mock slots for both. respTopics now also covers
-    // GetAppListResponse (resp idx 5) and reqTopics covers GetAppList
+    // GetAppListResponse (resp idx 4) and reqTopics covers GetAppList
     // (req idx 4).
-    respTopics = List.generate(6, (_) => MockTopic());
+    respTopics = List.generate(5, (_) => MockTopic());
     reqTopics  = List.generate(5, (_) => MockTopic());
 
     for (final t in [...respTopics, ...reqTopics]) {
@@ -58,17 +58,16 @@ void main() {
   // ── Initial state ────────────────────────────────────────────────────────
 
   group('initial state', () {
-    test('topicData / appList / updateHistory are empty at creation', () {
+    test('topicData and appList are empty at creation', () {
       expect(collector.topicData, isEmpty);
       expect(collector.appList, isEmpty);
-      expect(collector.updateHistory, isEmpty);
     });
   });
 
   // ── startTopics ──────────────────────────────────────────────────────────
 
   group('startTopics', () {
-    test('subscribes 5 response topics and advertises 4 request topics',
+    test('subscribes 4 response topics and advertises 4 request topics',
         () async {
       await initTopics();
 
@@ -146,64 +145,11 @@ void main() {
   // ── onUpdateResponse ─────────────────────────────────────────────────────
 
   group('onUpdateResponse', () {
-    test('updates topicData and adds history entry', () {
+    test('updates topicData', () {
       collector.onUpdateResponse(
           <String, dynamic>{'app_name': 'AppB', 'ret_code': 2});
 
       expect(collector.topicData['AppB_update_result'], ReturnValue.fail);
-      expect(collector.updateHistory, isNotEmpty);
-      expect(collector.updateHistory.first['app_name'], 'AppB');
-      expect(collector.updateHistory.first['message'], 'Update requested');
-      expect(collector.updateHistory.first['ret_code'], 2);
-    });
-  });
-
-  // ── onNotifyStatus ───────────────────────────────────────────────────────
-
-  group('onNotifyStatus', () {
-    test('updates topicData, appList status, and history', () {
-      collector.onNotifyStatus(
-          <String, dynamic>{'app_name': 'AppC', 'status': 'downloading'});
-
-      expect(collector.topicData['AppC_status'], 'downloading');
-      final app = collector.appList.firstWhere((a) => a['name'] == 'AppC');
-      expect(app['status'], 'downloading');
-      expect(collector.updateHistory.first['message'], 'Status: downloading');
-    });
-
-    test('ignores when app_name or status is null', () {
-      collector.onNotifyStatus(
-          <String, dynamic>{'app_name': null, 'status': null});
-      expect(collector.appList, isEmpty);
-      expect(collector.updateHistory, isEmpty);
-    });
-  });
-
-  // ── updateHistory capped at historySize (F005) ──────────────────────────
-
-  group('updateHistory', () {
-    test('defaults cap to 20 entries', () {
-      for (int i = 0; i < 25; i++) {
-        collector.onUpdateResponse(
-            <String, dynamic>{'app_name': 'App$i', 'ret_code': 0});
-      }
-      expect(collector.updateHistory.length, 20);
-    });
-
-    test('respects custom historySize from constructor', () {
-      Get.reset();
-      Get.put<Ros>(mockRos);
-      final small = OtaCollector(
-        topicFactory: (ros, name, type) => MockTopic(),
-        historySize: 5,
-      );
-      for (int i = 0; i < 12; i++) {
-        small.onUpdateResponse(
-            <String, dynamic>{'app_name': 'App$i', 'ret_code': 0});
-      }
-      expect(small.updateHistory.length, 5);
-      // Most recent entry (inserted at index 0) should be App11.
-      expect(small.updateHistory.first['app_name'], 'App11');
     });
   });
 

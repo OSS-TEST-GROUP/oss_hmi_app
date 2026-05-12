@@ -10,7 +10,6 @@ const List<String> otaResponseTopics = [
   '/mmf/otamanager/otaactor_service/SetAppUpdateSettingsResponse',
   '/mmf/otamanager/otaactor_service/GetAppUpdateStateResponse',
   '/mmf/otamanager/otaactor_service/SetAppUpdateResponse',
-  '/mmf/otamanager/otaclient_service/NotifyAppUpdateStatus',
 ];
 
 // Request topics (publish via rosbridge)
@@ -27,7 +26,6 @@ const List<String> otaRosResponseTypes = [
   '$_pkg/SetAppUpdateSettingsResponse',
   '$_pkg/GetAppUpdateStateResponse',
   '$_pkg/SetAppUpdateResponse',
-  '$_pkg/NotifyAppUpdateStatus',
 ];
 
 const List<String> otaRosRequestTypes = [

@@ -61,9 +61,6 @@ class OtaCollector extends GetxController {
   /// Sweep interval for [pendingRequests] expiration. Exposed for testing.
   final Duration timeoutSweepInterval;
 
-  /// Maximum number of entries retained in [updateHistory] (F005).
-  final int historySize;
-
   /// App names to seed the UI with at startup (F004). Settings and state
   /// requests are issued automatically for each entry once topics are
   /// advertised.
@@ -82,14 +79,13 @@ class OtaCollector extends GetxController {
     this.requestTimeout = const Duration(seconds: 30),
     this.timeoutSweepInterval = const Duration(seconds: 5),
     this.watchdogInterval = const Duration(seconds: 1),
-    this.historySize = 20,
     this.initialApps = const [],
     this.autoStartTimers = true,
   }) : topicFactory = topicFactory ??
             ((ros, name, type) => Topic(ros: ros, name: name, type: type)) {
     // Seed the app list immediately so the UI has something to show while
     // responses are still in flight. The entries' status stays 'Unknown'
-    // until the first GetAppUpdateStateResponse / NotifyAppUpdateStatus.
+    // until the first GetAppUpdateStateResponse arrives.
     for (final name in initialApps) {
       _updateAppList(name);
     }
@@ -100,8 +96,6 @@ class OtaCollector extends GetxController {
   // State data
   final RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   final RxList<Map<String, dynamic>> appList = <Map<String, dynamic>>[].obs;
-  final RxList<Map<String, dynamic>> updateHistory =
-      <Map<String, dynamic>>[].obs;
 
   // Request ID tracking
   int _nextRequestId = 1000;
@@ -118,7 +112,6 @@ class OtaCollector extends GetxController {
   Topic? _setSettingsRespSub;
   Topic? _stateRespSub;
   Topic? _updateRespSub;
-  Topic? _notifyStatusSub;
 
   Topic? _settingsReqPub;
   Topic? _setSettingsReqPub;
@@ -221,14 +214,11 @@ class OtaCollector extends GetxController {
           r, otaResponseTopics[2], otaRosResponseTypes[2]);
       _updateRespSub = topicFactory(
           r, otaResponseTopics[3], otaRosResponseTypes[3]);
-      _notifyStatusSub = topicFactory(
-          r, otaResponseTopics[4], otaRosResponseTypes[4]);
 
       await _settingsRespSub?.subscribe((m) async => onSettingsResponse(m));
       await _setSettingsRespSub?.subscribe((m) async => onSetSettingsResponse(m));
       await _stateRespSub?.subscribe((m) async => onStateResponse(m));
       await _updateRespSub?.subscribe((m) async => onUpdateResponse(m));
-      await _notifyStatusSub?.subscribe((m) async => onNotifyStatus(m));
 
       // ── Advertise: request topics ────────────────────────────────────────
       _settingsReqPub = topicFactory(
@@ -326,26 +316,9 @@ class OtaCollector extends GetxController {
 
     if (appName != null) {
       topicData['${appName}_update_result'] = ReturnValue.fromInt(retCode);
-      _addUpdateHistory(appName, 'Update requested', retCode);
     }
     _emitResponse(OtaRequestKind.setUpdate, msg, matched?.id, appName,
         retCode);
-  }
-
-  void onNotifyStatus(Map<String, dynamic> msg) {
-    appLog('[OTA] NotifyAppUpdateStatus: $msg');
-    final appName = msg['app_name'] as String?;
-    final status = msg['status'] as String?;
-    final clientId = (msg['client_id'] as num?)?.toInt();
-
-    // NotifyStatus is unsolicited — no pending request to match. Intentionally
-    // skip _matchAndRemove() here.
-    if (appName != null && status != null) {
-      topicData['${appName}_status'] = status;
-      _updateAppList(appName, status: status);
-      _addUpdateHistory(appName, 'Status: $status', null,
-          clientId: clientId);
-    }
   }
 
   // ── F023: GetAppList query ───────────────────────────────────────────────
@@ -555,18 +528,4 @@ class OtaCollector extends GetxController {
     }
   }
 
-  void _addUpdateHistory(String appName, String message, int? retCode,
-      {int? clientId}) {
-    final timestamp = DateTime.now().toIso8601String();
-    updateHistory.insert(0, {
-      'timestamp': timestamp,
-      'app_name': appName,
-      'message': message,
-      'ret_code': retCode,
-      'client_id': clientId,
-    });
-    if (updateHistory.length > historySize) {
-      updateHistory.removeRange(historySize, updateHistory.length);
-    }
-  }
 }

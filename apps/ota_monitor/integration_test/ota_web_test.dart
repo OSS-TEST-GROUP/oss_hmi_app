@@ -95,25 +95,4 @@ void main() {
     });
   });
 
-  testWidgets('web: opening "테스트 앱 추가" dialog works in browser',
-      (tester) async {
-    _suppressOverflow();
-    await _seedCollector(const []);
-
-    await tester.pumpWidget(const MaterialApp(
-      home: Scaffold(body: OtaViewPage()),
-    ));
-    await tester.pump();
-
-    await tester.tap(find.widgetWithText(ElevatedButton, '테스트 앱 추가'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
-
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox.shrink());
-      Get.reset();
-    });
-  });
 }
