@@ -1,0 +1,2 @@
+# Remove REQUIRED_DISTRO_FEATURES check for RViz2 build (Issue 3 Fix)
+REQUIRED_DISTRO_FEATURES = ""

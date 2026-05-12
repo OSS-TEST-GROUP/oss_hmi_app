@@ -1,0 +1,47 @@
+# AGL Trout 20.0.3 + RViz2 Wayland bblayers.conf sample
+#
+# Usage:
+#   1. Copy this file to your build directory:
+#      cp <PROJECT_ROOT>/yocto/bblayers.conf.sample build/conf/bblayers.conf
+#   2. Replace <PROJECT_ROOT> with your actual project path
+#   3. Adjust layer paths according to your AGL build environment
+#
+# Layer paths assume standard AGL Trout directory structure:
+#   agl-workspace/
+#   ├── build/
+#   ├── poky/
+#   ├── meta-openembedded/
+#   ├── meta-agl/
+#   ├── meta-flutter/
+#   ├── meta-qt5/
+#   ├── meta-ros/
+#   └── <PROJECT_ROOT>/yocto/meta-rviz2-agl/
+
+LCONF_VERSION = "7"
+
+BBPATH = "${TOPDIR}"
+BBFILES ?= ""
+
+BBLAYERS ?= " \
+    ${TOPDIR}/../poky/meta \
+    ${TOPDIR}/../poky/meta-poky \
+    ${TOPDIR}/../meta-openembedded/meta-oe \
+    ${TOPDIR}/../meta-openembedded/meta-python \
+    ${TOPDIR}/../meta-openembedded/meta-networking \
+    ${TOPDIR}/../meta-openembedded/meta-filesystems \
+    ${TOPDIR}/../meta-agl/meta-agl-core \
+    ${TOPDIR}/../meta-agl/meta-agl-bsp \
+    ${TOPDIR}/../meta-agl/meta-app-framework \
+    ${TOPDIR}/../meta-flutter \
+    ${TOPDIR}/../meta-qt5 \
+    ${TOPDIR}/../meta-ros/meta-ros-common \
+    ${TOPDIR}/../meta-ros/meta-ros2 \
+    ${TOPDIR}/../meta-ros/meta-ros2-humble \
+    <PROJECT_ROOT>/yocto/meta-rviz2-agl \
+"
+
+# Important notes:
+#   - meta-qt5 is required even if Flutter is the primary HMI framework
+#   - meta-ros2-humble must use the 'scarthgap' branch (best-effort support)
+#   - meta-rviz2-agl path should be absolute or relative to ${TOPDIR}
+#   - See yocto/README.md for detailed layer clone instructions

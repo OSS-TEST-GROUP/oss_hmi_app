@@ -1,0 +1,75 @@
+# R010 arm64 Cross-Compile bblayers.conf (Yocto Scarthgap + AGL Trout + ROS2 Humble)
+#
+# This configuration extends yocto/bblayers.conf.sample with arm64-specific
+# layer paths for Docker-based bitbake builds.
+#
+# Usage:
+#   1. Copy to build/conf/bblayers.conf:
+#      cp yocto/bblayers.conf.arm64.sample build/conf/bblayers.conf
+#   2. Adjust layer paths if needed (default assumes Docker /workdir layout)
+#
+# Reference: ADR-006 Section 5 Implementation Blueprint
+
+LCONF_VERSION = "7"
+
+BBPATH = "${TOPDIR}"
+BBFILES ?= ""
+
+# ===================================================================
+# Layer Paths (Docker /workdir Layout)
+# ===================================================================
+# Assumes sources cloned to /workdir/sources by yocto-fetch-layers.sh
+# Build directory: /workdir/build
+
+BBLAYERS ?= " \
+    /workdir/sources/poky/meta \
+    /workdir/sources/poky/meta-poky \
+    /workdir/sources/meta-openembedded/meta-oe \
+    /workdir/sources/meta-openembedded/meta-python \
+    /workdir/sources/meta-openembedded/meta-networking \
+    /workdir/sources/meta-openembedded/meta-filesystems \
+    /workdir/sources/meta-agl/meta-agl-core \
+    /workdir/sources/meta-flutter \
+    /workdir/sources/meta-qt5 \
+    /workdir/sources/meta-ros/meta-ros-common \
+    /workdir/sources/meta-ros/meta-ros2 \
+    /workdir/sources/meta-ros/meta-ros2-humble \
+    /workdir/sources/meta-rviz2-agl \
+"
+
+# ===================================================================
+# Layer Notes
+# ===================================================================
+#
+# 1. meta-agl-bsp: Omitted for qemuarm64 (included in meta-agl-core)
+#    For real hardware (e.g., Raspberry Pi 4), add:
+#      /workdir/sources/meta-agl/meta-agl-bsp
+#
+# 2. meta-flutter: Required for AGL image compatibility (even if RViz2-only)
+#
+# 3. meta-qt5: Required for qtwayland (R006 AC-1/AC-2 dependency)
+#
+# 4. meta-ros/meta-ros2-humble: Uses scarthgap branch (Risk R1)
+#    If build fails, check meta-ros2-humble commit compatibility
+#
+# 5. meta-rviz2-agl: Our custom layer with:
+#      - ogre_%.bbappend (R005: OGRE 14.5.2 override)
+#      - rviz2_%.bbappend (R007-R008: Wayland patch)
+#      - rviz_ogre_vendor_%.bbappend (R010 T4: CMake export patch)
+#
+# ===================================================================
+# Layer Dependency Verification
+# ===================================================================
+# Run after copying this file:
+#   bitbake-layers show-layers
+#
+# Expected output includes:
+#   meta-rviz2-agl   1     /workdir/sources/meta-rviz2-agl
+#   meta-ros2-humble ...   /workdir/sources/meta-ros/meta-ros2-humble
+#   meta-qt5         ...   /workdir/sources/meta-qt5
+#
+# ===================================================================
+# Risk R5 Mitigation: Layer Version Pinning
+# ===================================================================
+# If layer compatibility issues occur, pin to specific commits in
+# yocto-fetch-layers.sh LAYERS configuration (change HEAD to hash).
