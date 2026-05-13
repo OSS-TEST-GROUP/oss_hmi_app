@@ -13,8 +13,6 @@ import 'package:ota_monitor/controller/client_service_controller.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 import 'package:ota_monitor/controller/settings_controller.dart';
 
-import 'package:ota_monitor/view/actor_page.dart';
-import 'package:ota_monitor/view/client_page.dart';
 import 'package:ota_monitor/view/ota_view_page.dart';
 import 'package:ota_monitor/view/settings_page.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
@@ -23,7 +21,7 @@ import 'package:ota_monitor/theme/app_palette.dart';
 late AppConfig appConfig;
 String? startupConfigWarning;
 
-/// F008: mutable holder so SettingsController can swap the live RosKeeper
+/// Mutable holder so SettingsController can swap the live RosKeeper
 /// without forcing every reader to re-resolve a global. Also lets widget
 /// tests inject a mock keeper.
 class RosKeeperHolder extends ChangeNotifier {
@@ -43,9 +41,7 @@ late RosKeeperHolder rosKeeperHolder;
 void main(List<String> args) {
   runWithLogCapture(() async {
     appConfig = await loadConfig(args);
-    // F007: surface any config-parse failure so the UI can warn the user.
     startupConfigWarning = lastConfigLoadWarning;
-    // Apply persisted theme (default 'light' → Tesla) before runApp.
     paletteNotifier.value = Palette.fromName(appConfig.theme);
     rosKeeperHolder = RosKeeperHolder(RosKeeper(appConfig));
 
@@ -55,7 +51,6 @@ void main(List<String> args) {
       OtaCollector(
         topicFactory: (ros, name, type) =>
             Topic(ros: ros, name: name, type: type),
-        historySize: appConfig.historySize,
         initialApps: appConfig.initialApps,
       ),
       permanent: true,
@@ -82,9 +77,9 @@ class OtaMonitorApp extends StatelessWidget {
   final int truncateLength;
   final String? configWarning;
 
-  /// F008: when null, falls back to the global `rosKeeperHolder` set in
-  /// main(). Tests that pump OtaMonitorApp directly without providing a
-  /// holder rely on this fallback (see integration_test/).
+  /// When null, falls back to the global `rosKeeperHolder` set in main().
+  /// Tests that pump OtaMonitorApp directly without providing a holder
+  /// rely on this fallback (see integration_test/).
   final RosKeeperHolder? keeperHolder;
 
   @override
@@ -129,22 +124,18 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
 
   late final SettingsController _settingsController;
 
-  // Shared notifier so Apps tab → Actor modal can pre-fill app_name.
+  // Shared notifier so the left app list → right Actor cards can pre-fill
+  // app_name.
   final ValueNotifier<String?> _selectedApp = ValueNotifier(null);
 
-  // Surfaces our own client_id once Client modal registers — used by the
-  // unified Apps view to highlight "mine vs others" in the history.
-  final ValueNotifier<int?> _clientIdNotifier = ValueNotifier(null);
-
   // Listen to Ros status so we can eagerly create _clientController when
-  // the connection comes up (no longer hidden behind a tab).
+  // the connection comes up.
   RosKeeper? _statusListenedKeeper;
 
   /// Client controller is created the moment Ros becomes available so
-  /// the header Manager-Ready indicator and Client modal both work.
+  /// the left-panel Client section can render registration / manager
+  /// status / app status without waiting for user interaction.
   ClientServiceController? _clientController;
-
-  int? _clientLastId;
 
   @override
   void initState() {
@@ -185,10 +176,8 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   @override
   void dispose() {
     _selectedApp.dispose();
-    _clientIdNotifier.dispose();
     widget.keeperHolder.removeListener(_onKeeperHolderChange);
     _statusListenedKeeper?.statusNotifier.removeListener(_onRosStatusChange);
-    _clientController?.removeListener(_onClientControllerChange);
     super.dispose();
   }
 
@@ -215,18 +204,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
     if (!Get.isRegistered<Ros>()) return;
     _clientController = ClientServiceController(ros: Get.find<Ros>());
     _clientController!.setup();
-    _clientController!.addListener(_onClientControllerChange);
-  }
-
-  void _onClientControllerChange() {
-    final cid = _clientController?.clientId;
-    if (cid != null && cid != _clientLastId) {
-      _clientLastId = cid;
-      _clientIdNotifier.value = cid;
-      if (Get.isRegistered<OtaCollector>()) {
-        Get.find<OtaCollector>().requestAppList();
-      }
-    }
     if (mounted) setState(() {});
   }
 
@@ -265,7 +242,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
             ),
           ),
           const Spacer(),
-          // F011 / F020 §2: live connection indicator.
           AnimatedBuilder(
             animation: widget.keeperHolder,
             builder: (_, __) {
@@ -294,18 +270,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
                     },
                   ),
                   const SizedBox(width: 12),
-                  _buildManagerReadyButton(),
-                  const SizedBox(width: 4),
-                  TextButton.icon(
-                    key: const Key('btn_actor_raw'),
-                    icon: const Icon(Icons.build_circle_outlined, size: 20),
-                    label: const Text('Actor'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: p.textSecondary,
-                    ),
-                    onPressed: () => _showActorDialog(context),
-                  ),
-                  const SizedBox(width: 4),
                   TextButton.icon(
                     key: const Key('btn_settings'),
                     icon: const Icon(Icons.settings, size: 20),
@@ -320,109 +284,6 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
             },
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildManagerReadyButton() {
-    final p = palette;
-    final controller = _clientController;
-    if (controller == null) {
-      return TextButton.icon(
-        key: const Key('btn_client'),
-        icon: const Icon(Icons.account_circle_outlined, size: 20),
-        label: const Text('Client'),
-        style: TextButton.styleFrom(foregroundColor: p.textPlaceholder),
-        onPressed: null,
-      );
-    }
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (_, __) {
-        final ready = controller.managerReady;
-        final cid = controller.clientId;
-        final tooltip = cid != null
-            ? 'id=$cid, ${ready ? 'manager ready' : 'waiting for manager'}'
-            : 'not registered, ${ready ? 'manager ready' : 'waiting for manager'}';
-        final label = cid != null ? 'Client (id=$cid)' : 'Client';
-        return Tooltip(
-          message: tooltip,
-          child: TextButton.icon(
-            key: const Key('btn_client'),
-            icon: Icon(
-              cid != null
-                  ? Icons.account_circle
-                  : Icons.account_circle_outlined,
-              size: 20,
-            ),
-            label: Text(label),
-            style: TextButton.styleFrom(
-              foregroundColor: ready ? p.success : p.textSecondary,
-            ),
-            onPressed: () => _showClientDialog(context),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showActorDialog(BuildContext context) {
-    final p = palette;
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: p.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720, maxHeight: 720),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _dialogHeader(
-                ctx,
-                icon: Icons.build_circle_outlined,
-                color: p.accentBlue,
-                title: 'Raw Actor (debug)',
-              ),
-              Divider(color: p.divider, height: 1),
-              Flexible(
-                child: ActorPage(
-                  collector: Get.find<OtaCollector>(),
-                  selectedApp: _selectedApp,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showClientDialog(BuildContext context) {
-    final controller = _clientController;
-    if (controller == null) return;
-    final p = palette;
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: p.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600, maxHeight: 720),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _dialogHeader(
-                ctx,
-                icon: Icons.account_circle,
-                color: p.success,
-                title: 'Client',
-              ),
-              Divider(color: p.divider, height: 1),
-              Flexible(child: ClientPage(controller: controller)),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -501,7 +362,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
             child: OtaViewPage(
               truncateLength: widget.truncateLength,
               selectedApp: _selectedApp,
-              clientIdNotifier: _clientIdNotifier,
+              clientController: _clientController,
             ),
           ),
         ],
@@ -510,10 +371,10 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
   }
 }
 
-/// F011 / F020 §2 — header connection indicator.
-/// Renders an `icon_conn_status` dot + a `text_conn_status` label that
-/// integration_test (and the operator) can read to know whether ROS is
-/// connected, connecting, or disconnected.
+/// Header connection indicator. Renders an `icon_conn_status` dot + a
+/// `text_conn_status` label that integration_test (and the operator)
+/// can read to know whether ROS is connected, connecting, or
+/// disconnected.
 class _ConnIndicator extends StatelessWidget {
   const _ConnIndicator({required this.status});
 

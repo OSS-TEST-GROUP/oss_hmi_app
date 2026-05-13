@@ -4,7 +4,7 @@ import 'package:ota_monitor/controller/client_service_controller.dart';
 import 'package:ota_monitor/theme/app_palette.dart';
 
 /// F021 — Client tab. Three cards:
-///   1. Self Registration (card_client_register)
+///   1. New Client Registration (card_client_register)
 ///        SetOtaClientRegistration → client_id 표시
 ///   2. Manager Status (card_client_manager_status)
 ///        NotifyOtaManagerReady 수신 / heartbeat seq+ts
@@ -100,7 +100,7 @@ class _ClientPageState extends State<ClientPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Self Registration', style: _titleStyle()),
+          Text('New Client Registration', style: _titleStyle()),
           const SizedBox(height: 12),
           _input(
             label: 'client_name',
@@ -149,6 +149,12 @@ class _ClientPageState extends State<ClientPage> {
 
   Widget _buildManagerStatusCard(ClientServiceController c) {
     final p = palette;
+    final seq = c.heartbeatSeq;
+    final tsMs = c.heartbeatTimestampMs;
+    final tsLabel = tsMs == null
+        ? '—'
+        : _fmtTs(DateTime.fromMillisecondsSinceEpoch(tsMs, isUtc: false));
+    final stale = c.isHeartbeatStale;
     return _card(
       key: const Key('card_client_manager_status'),
       child: Column(
@@ -176,32 +182,53 @@ class _ClientPageState extends State<ClientPage> {
                   color: p.textSecondary,
                 ),
               ),
+              if (stale && seq != null) ...[
+                const SizedBox(width: 12),
+                Icon(
+                  Icons.timer,
+                  key: const Key('icon_heartbeat_stale'),
+                  size: 16,
+                  color: p.warning,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'stale',
+                  style: TextStyle(fontSize: 12, color: p.warning),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            'seq=—',
+            'seq=${seq ?? '—'}',
             key: const Key('text_heartbeat_seq'),
-            style: TextStyle(fontSize: 13, color: p.textTertiary),
+            style: TextStyle(
+              fontSize: 13,
+              color: stale ? p.warning : p.textSecondary,
+              fontFamily: 'monospace',
+            ),
           ),
           Text(
-            'ts=—',
+            'ts=$tsLabel',
             key: const Key('text_heartbeat_timestamp'),
-            style: TextStyle(fontSize: 13, color: p.textTertiary),
-          ),
-          const SizedBox(
-            width: 0,
-            height: 0,
-            child: Icon(
-              Icons.timer,
-              key: Key('icon_heartbeat_stale'),
-              size: 0,
-              color: Color(0x00000000),
+            style: TextStyle(
+              fontSize: 13,
+              color: stale ? p.warning : p.textSecondary,
+              fontFamily: 'monospace',
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// Compact display of a heartbeat timestamp. Mirrors the wireframe's
+  /// HH:mm:ss.SSS expectation; uses the local clock so the operator sees
+  /// "when did the Manager send this *in monitor time*".
+  String _fmtTs(DateTime t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    String three(int n) => n.toString().padLeft(3, '0');
+    return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.${three(t.millisecond)}';
   }
 
   Widget _buildAppStatusCard(ClientServiceController c) {

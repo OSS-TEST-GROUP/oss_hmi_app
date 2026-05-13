@@ -80,20 +80,26 @@ void main() {
       late _MockTopic regResTopic;
       late _MockTopic readyTopic;
       late _MockTopic statusTopic;
+      late _MockTopic heartbeatTopic;
       late ClientServiceController controller;
 
       setUp(() {
-        regTopic    = _MockTopic();
-        regResTopic = _MockTopic();
-        readyTopic  = _MockTopic();
-        statusTopic = _MockTopic();
-        for (final t in [regTopic, regResTopic, readyTopic, statusTopic]) {
+        regTopic       = _MockTopic();
+        regResTopic    = _MockTopic();
+        readyTopic     = _MockTopic();
+        statusTopic    = _MockTopic();
+        heartbeatTopic = _MockTopic();
+        for (final t in [regTopic, regResTopic, readyTopic, statusTopic, heartbeatTopic]) {
           when(() => t.subscribe(any())).thenAnswer((_) async {});
           when(() => t.advertise()).thenAnswer((_) async {});
           when(() => t.publish(any())).thenAnswer((_) async {});
         }
         controller = ClientServiceController(
           ros: ros,
+          // Push the stale-watchdog ticker out of the test's life so it
+          // never fires (would otherwise leave a pending Timer at
+          // tearDown).
+          heartbeatTickInterval: const Duration(days: 1),
           topicFactory: (r, name, type) {
             switch (name) {
               case ClientServiceController.topicRegistration:
@@ -104,6 +110,8 @@ void main() {
                 return readyTopic;
               case ClientServiceController.topicAppUpdateStatus:
                 return statusTopic;
+              case ClientServiceController.topicHeartbeat:
+                return heartbeatTopic;
               default:
                 throw StateError('unexpected topic: $name');
             }
@@ -111,12 +119,15 @@ void main() {
         );
       });
 
-      test('subscribes the three notify-style topics and advertises the request',
+      tearDown(() => controller.dispose());
+
+      test('subscribes the four notify-style topics and advertises the request',
           () async {
         await controller.setup();
         verify(() => regResTopic.subscribe(any())).called(1);
         verify(() => readyTopic.subscribe(any())).called(1);
         verify(() => statusTopic.subscribe(any())).called(1);
+        verify(() => heartbeatTopic.subscribe(any())).called(1);
         verify(() => regTopic.advertise()).called(1);
       });
 

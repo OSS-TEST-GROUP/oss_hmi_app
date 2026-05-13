@@ -12,8 +12,8 @@ class MockTopic extends Mock implements Topic {}
 void main() {
   late MockRos mockRos;
   late OtaCollector collector;
-  late List<MockTopic> respTopics; // 5 response topics
-  late List<MockTopic> reqTopics;  // 4 request topics
+  late List<MockTopic> respTopics; // 5 + GetAppListResponse + DeleteClientResponse = 7
+  late List<MockTopic> reqTopics;  // 4 + GetAppList + DeleteClient        = 6
 
   setUp(() {
     Get.reset();
@@ -21,12 +21,15 @@ void main() {
     mockRos = MockRos();
     Get.put<Ros>(mockRos);
 
-    // F023: OtaCollector now also wires GetAppList request + response —
-    // reserve mock slots for both. respTopics now also covers
-    // GetAppListResponse (resp idx 5) and reqTopics covers GetAppList
-    // (req idx 4).
-    respTopics = List.generate(6, (_) => MockTopic());
-    reqTopics  = List.generate(5, (_) => MockTopic());
+    // Mock slots cover everything OtaCollector subscribes / advertises:
+    //   - 5 otaResponseTopics
+    //   - GetAppListResponse (resp dedicated)
+    //   - DeleteOtaClientRegistrationResponse (resp dedicated)
+    //   - 4 otaRequestTopics
+    //   - GetAppList request (dedicated)
+    //   - DeleteOtaClientRegistration request (dedicated)
+    respTopics = List.generate(7, (_) => MockTopic());
+    reqTopics  = List.generate(6, (_) => MockTopic());
 
     for (final t in [...respTopics, ...reqTopics]) {
       when(() => t.subscribe(any())).thenAnswer((_) async {});
@@ -38,9 +41,10 @@ void main() {
     int reqIdx  = 0;
 
     Topic topicFactory(Ros ros, String name, String type) {
-      // F023 — GetAppList response is not in otaResponseTopics, route
-      // it explicitly so the dedicated subscription gets a real mock.
+      // Dedicated response subscriptions outside the otaResponseTopics
+      // array — route explicitly so each gets its own mock.
       if (name == otaGetAppListResTopic) return respTopics[respIdx++];
+      if (name == otaDeleteClientResTopic) return respTopics[respIdx++];
       if (otaResponseTopics.contains(name)) return respTopics[respIdx++];
       return reqTopics[reqIdx++];
     }
@@ -58,10 +62,9 @@ void main() {
   // ── Initial state ────────────────────────────────────────────────────────
 
   group('initial state', () {
-    test('topicData / appList / updateHistory are empty at creation', () {
+    test('topicData and appList are empty at creation', () {
       expect(collector.topicData, isEmpty);
       expect(collector.appList, isEmpty);
-      expect(collector.updateHistory, isEmpty);
     });
   });
 
@@ -146,64 +149,30 @@ void main() {
   // ── onUpdateResponse ─────────────────────────────────────────────────────
 
   group('onUpdateResponse', () {
-    test('updates topicData and adds history entry', () {
+    test('updates topicData', () {
       collector.onUpdateResponse(
           <String, dynamic>{'app_name': 'AppB', 'ret_code': 2});
 
       expect(collector.topicData['AppB_update_result'], ReturnValue.fail);
-      expect(collector.updateHistory, isNotEmpty);
-      expect(collector.updateHistory.first['app_name'], 'AppB');
-      expect(collector.updateHistory.first['message'], 'Update requested');
-      expect(collector.updateHistory.first['ret_code'], 2);
     });
   });
 
-  // ── onNotifyStatus ───────────────────────────────────────────────────────
+  // ── onNotifyStatus (status-only — no history) ────────────────────────────
 
   group('onNotifyStatus', () {
-    test('updates topicData, appList status, and history', () {
+    test('updates topicData and appList status', () {
       collector.onNotifyStatus(
           <String, dynamic>{'app_name': 'AppC', 'status': 'downloading'});
 
       expect(collector.topicData['AppC_status'], 'downloading');
       final app = collector.appList.firstWhere((a) => a['name'] == 'AppC');
       expect(app['status'], 'downloading');
-      expect(collector.updateHistory.first['message'], 'Status: downloading');
     });
 
     test('ignores when app_name or status is null', () {
       collector.onNotifyStatus(
           <String, dynamic>{'app_name': null, 'status': null});
       expect(collector.appList, isEmpty);
-      expect(collector.updateHistory, isEmpty);
-    });
-  });
-
-  // ── updateHistory capped at historySize (F005) ──────────────────────────
-
-  group('updateHistory', () {
-    test('defaults cap to 20 entries', () {
-      for (int i = 0; i < 25; i++) {
-        collector.onUpdateResponse(
-            <String, dynamic>{'app_name': 'App$i', 'ret_code': 0});
-      }
-      expect(collector.updateHistory.length, 20);
-    });
-
-    test('respects custom historySize from constructor', () {
-      Get.reset();
-      Get.put<Ros>(mockRos);
-      final small = OtaCollector(
-        topicFactory: (ros, name, type) => MockTopic(),
-        historySize: 5,
-      );
-      for (int i = 0; i < 12; i++) {
-        small.onUpdateResponse(
-            <String, dynamic>{'app_name': 'App$i', 'ret_code': 0});
-      }
-      expect(small.updateHistory.length, 5);
-      // Most recent entry (inserted at index 0) should be App11.
-      expect(small.updateHistory.first['app_name'], 'App11');
     });
   });
 
@@ -385,9 +354,10 @@ void main() {
         () async {
       Get.reset();
       Get.put<Ros>(mockRos);
-      // F023 — extra slots for GetAppList response + request mocks.
-      final respTopics2 = List.generate(6, (_) => MockTopic());
-      final reqTopics2 = List.generate(5, (_) => MockTopic());
+      // Extra slots for GetAppList + DeleteOtaClientRegistration mocks
+      // (response + request channels each).
+      final respTopics2 = List.generate(7, (_) => MockTopic());
+      final reqTopics2 = List.generate(6, (_) => MockTopic());
       for (final t in [...respTopics2, ...reqTopics2]) {
         when(() => t.subscribe(any())).thenAnswer((_) async {});
         when(() => t.advertise()).thenAnswer((_) async {});
@@ -397,6 +367,7 @@ void main() {
       final c = OtaCollector(
         topicFactory: (ros, name, type) {
           if (name == otaGetAppListResTopic) return respTopics2[ri++];
+          if (name == otaDeleteClientResTopic) return respTopics2[ri++];
           if (otaResponseTopics.contains(name)) return respTopics2[ri++];
           return reqTopics2[qi++];
         },

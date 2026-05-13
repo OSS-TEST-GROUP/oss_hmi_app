@@ -25,14 +25,20 @@ class ClientServiceController extends ChangeNotifier {
     required Ros ros,
     Topic Function(Ros, String, String)? topicFactory,
     int historyLimit = 50,
+    Duration heartbeatStaleAfter = const Duration(seconds: 9),
+    Duration heartbeatTickInterval = const Duration(seconds: 1),
   })  : _ros = ros,
         _topicFactory = topicFactory ??
             ((r, name, type) => Topic(ros: r, name: name, type: type)),
-        _historyLimit = historyLimit;
+        _historyLimit = historyLimit,
+        _heartbeatStaleAfter = heartbeatStaleAfter,
+        _heartbeatTickInterval = heartbeatTickInterval;
 
   final Ros _ros;
   final Topic Function(Ros, String, String) _topicFactory;
   final int _historyLimit;
+  final Duration _heartbeatStaleAfter;
+  final Duration _heartbeatTickInterval;
 
   // ── topic constants ─────────────────────────────────────────────────
   static const String topicRegistration =
@@ -43,6 +49,8 @@ class ClientServiceController extends ChangeNotifier {
       '/mmf/otamanager/otaclient_service/NotifyOtaManagerReady';
   static const String topicAppUpdateStatus =
       '/mmf/otamanager/otaclient_service/NotifyAppUpdateStatus';
+  static const String topicHeartbeat =
+      '/mmf/otamanager/diagnostic_service/NotifyOtaMgrHeartbeat';
 
   static const String _typeReg =
       'otamanager/SetOtaClientRegistration';
@@ -52,6 +60,8 @@ class ClientServiceController extends ChangeNotifier {
       'otamanager/NotifyOtaManagerReady';
   static const String _typeStatus =
       'otamanager/NotifyAppUpdateStatus';
+  static const String _typeHeartbeat =
+      'otamanager/NotifyOtaMgrHeartbeat';
 
   // ── observable state (read by the Client tab) ───────────────────────
   /// Most recent client_id returned by the Manager, or null if we have
@@ -70,11 +80,40 @@ class ClientServiceController extends ChangeNotifier {
   List<Map<String, dynamic>> get statuses => List.unmodifiable(_statuses);
   final List<Map<String, dynamic>> _statuses = [];
 
+  /// Last received NotifyOtaMgrHeartbeat.seq (monotonically increasing
+  /// starting at 1). null until the first heartbeat arrives.
+  int? get heartbeatSeq => _heartbeatSeq;
+  int? _heartbeatSeq;
+
+  /// Last received NotifyOtaMgrHeartbeat.timestamp_ms (Manager wall clock,
+  /// epoch ms). null until the first heartbeat arrives.
+  int? get heartbeatTimestampMs => _heartbeatTimestampMs;
+  int? _heartbeatTimestampMs;
+
+  /// Monotonic local time when the last heartbeat arrived. Used for the
+  /// stale-after-N×interval check below; deliberately NOT
+  /// `_heartbeatTimestampMs` because clock skew between Manager and
+  /// monitor host would distort the threshold.
+  DateTime? _lastHeartbeatLocal;
+
+  /// True when no heartbeat has been received for `heartbeatStaleAfter`
+  /// (default 9 s = 3 × 3 s publish interval). Also true before the
+  /// first heartbeat arrives (we consider unknown == stale so the UI
+  /// shows the warning, not a false-OK).
+  bool get isHeartbeatStale {
+    final t = _lastHeartbeatLocal;
+    if (t == null) return true;
+    return DateTime.now().difference(t) >= _heartbeatStaleAfter;
+  }
+
   // ── plumbing ────────────────────────────────────────────────────────
   Topic? _regPub;
   Topic? _regResSub;
   Topic? _readySub;
   Topic? _statusSub;
+  Topic? _heartbeatSub;
+  Timer? _staleTicker;
+  bool _lastStaleEmitted = true; // matches initial isHeartbeatStale == true
   bool _setup = false;
 
   /// Wire up the four topics. Idempotent — calling setup() twice is a
@@ -89,11 +128,28 @@ class ClientServiceController extends ChangeNotifier {
       _readySub = _topicFactory(_ros, topicManagerReady, _typeReady);
       _statusSub =
           _topicFactory(_ros, topicAppUpdateStatus, _typeStatus);
+      _heartbeatSub =
+          _topicFactory(_ros, topicHeartbeat, _typeHeartbeat);
 
       await _regResSub!.subscribe(_onRegistrationResponse);
       await _readySub!.subscribe(_onManagerReady);
       await _statusSub!.subscribe(_onStatus);
+      await _heartbeatSub!.subscribe(_onHeartbeat);
       await _regPub!.advertise();
+
+      // Re-evaluate stale-ness once a second so the Manager Status card
+      // flips to "stale" when heartbeats stop arriving without needing a
+      // separate trigger. We only notifyListeners when the bool actually
+      // flips to keep widget rebuilds cheap.
+      _staleTicker?.cancel();
+      _staleTicker = Timer.periodic(_heartbeatTickInterval, (_) {
+        final current = isHeartbeatStale;
+        if (current != _lastStaleEmitted) {
+          _lastStaleEmitted = current;
+          notifyListeners();
+        }
+      });
+
       _setup = true;
       appLog('[client] setup complete');
     } catch (e) {
@@ -146,6 +202,18 @@ class ClientServiceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _onHeartbeat(Map<String, dynamic> msg) async {
+    final seq = (msg['seq'] as num?)?.toInt();
+    final tsMs = (msg['timestamp_ms'] as num?)?.toInt();
+    if (seq == null && tsMs == null) return;
+    if (seq != null) _heartbeatSeq = seq;
+    if (tsMs != null) _heartbeatTimestampMs = tsMs;
+    _lastHeartbeatLocal = DateTime.now();
+    // The arrival itself ends staleness; broadcast that flip too.
+    _lastStaleEmitted = false;
+    notifyListeners();
+  }
+
   /// Test/debug helper: push a status directly into the local buffer
   /// without waiting for a real DDS message.
   @visibleForTesting
@@ -162,8 +230,19 @@ class ClientServiceController extends ChangeNotifier {
   void injectManagerReadyForTest() =>
       _onManagerReady(<String, dynamic>{});
 
+  /// Test/debug helper: simulate a heartbeat arrival with the given seq
+  /// + timestamp. Pass `tsMs: null` to fall back to local DateTime.now().
+  @visibleForTesting
+  void injectHeartbeatForTest({required int seq, int? tsMs}) {
+    _onHeartbeat({
+      'seq': seq,
+      'timestamp_ms': tsMs ?? DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
   @override
   void dispose() {
+    _staleTicker?.cancel();
     // We don't unsubscribe roslibdart topics here — the singleton Ros is
     // shared and may outlive this controller. Other listeners (Apps tab,
     // smoke test) keep working unaffected.

@@ -2,26 +2,32 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:ota_monitor/controller/client_service_controller.dart';
 import 'package:ota_monitor/controller/ota_collector.dart';
 import 'package:ota_monitor/theme/app_palette.dart';
+import 'package:ota_monitor/view/client_page.dart';
+import 'package:ota_monitor/view/widgets/actor_card.dart';
 
 class OtaViewPage extends StatefulWidget {
   const OtaViewPage({
     super.key,
     this.truncateLength = 100,
     this.selectedApp,
-    this.clientIdNotifier,
+    this.clientController,
   });
 
   final int truncateLength;
 
-  /// Shared notifier so Actor modal can pre-fill app_name when an app is
-  /// selected here. Optional — tests omit it.
+  /// Shared notifier so the Actor cards on the right can pre-fill
+  /// app_name when an app is selected on the left list. Optional —
+  /// tests omit it.
   final ValueNotifier<String?>? selectedApp;
 
-  /// Our own client_id once Client modal registers. Update History uses
-  /// this to highlight "mine vs others" entries. Optional.
-  final ValueNotifier<int?>? clientIdNotifier;
+  /// Wired up by OtaMonitorHomePage once Ros is available so the bottom
+  /// half of the left panel can render the Client section
+  /// (New Client Registration / Manager Status / App Update Status). When
+  /// null, the bottom half shows a "Ros connecting…" placeholder.
+  final ClientServiceController? clientController;
 
   @override
   State<OtaViewPage> createState() => _OtaViewPageState();
@@ -31,8 +37,6 @@ class _OtaViewPageState extends State<OtaViewPage> {
   late OtaCollector _otaCollector;
   String? _selectedAppName;
   StreamSubscription<String>? _errorSub;
-
-  int get _truncate => widget.truncateLength;
 
   @override
   void initState() {
@@ -88,164 +92,6 @@ class _OtaViewPageState extends State<OtaViewPage> {
     }
   }
 
-  void _onAddTestApp() {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        String appName = '';
-        return AlertDialog(
-          title: const Text('테스트 앱 추가'),
-          content: TextField(
-            decoration: const InputDecoration(hintText: '앱 이름 입력'),
-            onChanged: (v) => appName = v,
-          ),
-          actions: [
-            TextButton(
-              child: const Text('취소'),
-              onPressed: () => Navigator.of(ctx).pop(),
-            ),
-            TextButton(
-              child: const Text('추가'),
-              onPressed: () {
-                if (appName.isNotEmpty) {
-                  _otaCollector.requestAppSettings(appName);
-                  _otaCollector.requestAppState(appName);
-                  Navigator.of(ctx).pop();
-                }
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _onSetSettings() {
-    if (_selectedAppName == null) return;
-    final p = palette;
-    final current =
-        _otaCollector.topicData['${_selectedAppName}_settings'] as String? ?? '';
-    final controller = TextEditingController(text: current);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: p.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        title: Text(
-          'Set Settings: $_selectedAppName',
-          style: TextStyle(color: p.textPrimary, fontSize: 18),
-        ),
-        content: SizedBox(
-          width: 480,
-          child: TextField(
-            key: const Key('field_set_settings_json'),
-            controller: controller,
-            maxLines: 8,
-            minLines: 4,
-            style: TextStyle(
-              color: p.textPrimary,
-              fontFamily: 'monospace',
-              fontSize: 13,
-            ),
-            decoration: InputDecoration(
-              hintText: '{"interval": 5, ...}',
-              hintStyle: TextStyle(color: p.textPlaceholder),
-              filled: true,
-              fillColor: p.surfaceAlt,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(4),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('취소'),
-            onPressed: () => Navigator.of(ctx).pop(),
-          ),
-          ElevatedButton.icon(
-            key: const Key('btn_set_settings_apply'),
-            icon: const Icon(Icons.check, size: 18),
-            label: const Text('Apply'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: p.primary,
-              foregroundColor: p.onPrimary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            onPressed: () {
-              _otaCollector.setAppSettings(_selectedAppName!, controller.text);
-              Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('SetSettings 요청됨: $_selectedAppName')),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _onRequestUpdate() {
-    if (_selectedAppName == null) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('확인'),
-        content: Text('$_selectedAppName 앱의 업데이트를 요청하시겠습니까?'),
-        actions: [
-          TextButton(
-            child: const Text('취소'),
-            onPressed: () => Navigator.of(ctx).pop(),
-          ),
-          TextButton(
-            child: const Text('확인'),
-            onPressed: () {
-              _otaCollector.requestUpdate(_selectedAppName!);
-              Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('$_selectedAppName 업데이트 요청됨')),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showFullTextDialog(String title, String content) {
-    final p = palette;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: p.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        title: Text(title, style: TextStyle(color: p.textPrimary)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              content,
-              style: TextStyle(
-                fontSize: 14,
-                color: p.textSecondary,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('닫기'),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─── Left panel: scrollable app list ──────────────────────────────────────
 
   Widget _buildAppListPanel() {
@@ -299,12 +145,16 @@ class _OtaViewPageState extends State<OtaViewPage> {
           Divider(color: p.divider, height: 1),
           Expanded(
             child: Obx(() {
+              // Touch the reactive maps so Obx rebuilds on owner / name
+              // changes too, not just on appList replacement.
+              final _ = _otaCollector.appOwnerClientIds.length +
+                  _otaCollector.clientNamesById.length;
               if (_otaCollector.appList.isEmpty) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      '앱 없음\nRefresh 또는 테스트 앱 추가',
+                      '앱 없음\nRefresh 로 다시 조회하세요',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: p.textTertiary,
@@ -314,269 +164,163 @@ class _OtaViewPageState extends State<OtaViewPage> {
                   ),
                 );
               }
+
+              // Group apps by owner client_id (apps with no owner are
+              // bucketed under -1 to stay visible — happens until the
+              // first GetAppListResponse arrives or for initialApps
+              // seeded locally).
+              final byOwner = <int, List<Map<String, dynamic>>>{};
+              for (final app in _otaCollector.appList) {
+                final name = app['name'] as String;
+                final ownerId =
+                    _otaCollector.appOwnerClientIds[name] ?? -1;
+                byOwner.putIfAbsent(ownerId, () => []).add(app);
+              }
+              final ownerIds = byOwner.keys.toList()..sort();
+
               return ListView.builder(
                 padding: const EdgeInsets.all(8),
-                itemCount: _otaCollector.appList.length,
+                itemCount: ownerIds.length,
                 itemBuilder: (_, i) {
-                  final app = _otaCollector.appList[i];
-                  final name = app['name'] as String;
-                  final status = app['status'] as String? ?? 'Unknown';
-                  return _AppListTile(
-                    appName: name,
-                    status: status,
-                    isSelected: name == _selectedAppName,
-                    onTap: () => _onAppSelected(name),
+                  final ownerId = ownerIds[i];
+                  final clientName =
+                      _otaCollector.clientNamesById[ownerId];
+                  final apps = byOwner[ownerId]!;
+                  return _ClientGroupTile(
+                    clientId: ownerId,
+                    clientName: clientName,
+                    apps: apps,
+                    selectedAppName: _selectedAppName,
+                    onAppTap: _onAppSelected,
+                    onDeleteClient: ownerId >= 0
+                        ? () => _confirmDeleteClient(ownerId, clientName)
+                        : null,
                   );
                 },
               );
             }),
-          ),
-          Divider(color: p.divider, height: 1),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _onAddTestApp,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('테스트 앱 추가'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: p.primary,
-                  foregroundColor: p.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            ),
           ),
         ],
       ),
     );
   }
 
-  // ─── Right panel: detail + history ────────────────────────────────────────
-
-  Widget _buildDetailPanel() {
-    return Column(
-      children: [
-        Expanded(flex: 3, child: _buildAppDetailsSection()),
-        const SizedBox(height: 12),
-        Expanded(flex: 2, child: _buildUpdateHistorySection()),
-      ],
-    );
-  }
-
-  Widget _buildAppDetailsSection() {
+  Future<void> _confirmDeleteClient(int clientId, String? clientName) async {
     final p = palette;
-    if (_selectedAppName == null) {
-      return _Panel(
-        child: Column(
-          children: [
-            _sectionHeader('App Details', Icons.info_outline, p.success),
-            Expanded(
-              child: Center(
-                child: Text(
-                  '← 앱을 선택하세요',
-                  style: TextStyle(fontSize: 16, color: p.textTertiary),
-                ),
-              ),
-            ),
-          ],
+    final label = clientName != null && clientName.isNotEmpty
+        ? 'Client #$clientId — $clientName'
+        : 'Client #$clientId';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('Delete client',
+            style: TextStyle(color: p.textPrimary, fontSize: 18)),
+        content: Text(
+          '$label 의 등록 및 모든 앱을 삭제할까요?',
+          style: TextStyle(color: p.textSecondary, fontSize: 14),
         ),
-      );
-    }
-
-    return Obx(() {
-      final settings =
-          _otaCollector.topicData['${_selectedAppName}_settings'] as String? ??
-              'Loading...';
-      final state =
-          _otaCollector.topicData['${_selectedAppName}_state'] as String? ??
-              'Loading...';
-      final status =
-          _otaCollector.topicData['${_selectedAppName}_status'] as String? ??
-              'Unknown';
-
-      return _Panel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionHeader(
-              'App Details',
-              Icons.info_outline,
-              p.success,
-              trailing: Text(
-                _selectedAppName!,
-                style: TextStyle(
-                  color: p.accentBlue,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            Divider(color: p.divider, height: 1),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _detailField('App Name', _selectedAppName!),
-                    const SizedBox(height: 10),
-                    _statusBadge(status),
-                    const SizedBox(height: 10),
-                    _detailField(
-                      'Settings',
-                      settings,
-                      onViewFull: settings.length > _truncate
-                          ? () => _showFullTextDialog(
-                              'Settings - $_selectedAppName', settings)
-                          : null,
-                    ),
-                    const SizedBox(height: 10),
-                    _detailField(
-                      'State Info',
-                      state,
-                      onViewFull: state.length > _truncate
-                          ? () => _showFullTextDialog(
-                              'State Info - $_selectedAppName', state)
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _actionButton(
-                            keyName: 'btn_app_get_settings',
-                            label: 'Get Settings',
-                            icon: Icons.download,
-                            color: p.actionGet,
-                            onPressed: () {
-                              if (_selectedAppName != null) {
-                                _otaCollector
-                                    .requestAppSettings(_selectedAppName!);
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _actionButton(
-                            keyName: 'btn_app_set_settings',
-                            label: 'Set Settings',
-                            icon: Icons.upload,
-                            color: p.actionSet,
-                            onPressed: _onSetSettings,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _actionButton(
-                            keyName: 'btn_app_get_state',
-                            label: 'Get State',
-                            icon: Icons.refresh,
-                            color: p.actionRefresh,
-                            onPressed: () {
-                              if (_selectedAppName != null) {
-                                _otaCollector
-                                    .requestAppState(_selectedAppName!);
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _actionButton(
-                            keyName: 'btn_app_request_update',
-                            label: 'Request Update',
-                            icon: Icons.system_update_alt,
-                            color: p.actionDanger,
-                            onPressed: _onRequestUpdate,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _actionButton({
-    required String keyName,
-    required String label,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onPressed,
-  }) {
-    return ElevatedButton.icon(
-      key: Key(keyName),
-      onPressed: onPressed,
-      icon: Icon(icon, size: 16),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: palette.onPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        actions: [
+          TextButton(
+            child: const Text('취소'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: p.error),
+            child: const Text('삭제'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+        ],
       ),
     );
+    if (ok == true) {
+      _otaCollector.deleteClient(clientId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label 삭제 요청됨')),
+        );
+      }
+    }
   }
 
-  Widget _buildUpdateHistorySection() {
+  // ─── Right panel: 4 Actor cards (inline, no modal) ────────────────────────
+
+  Widget _buildActorPanel() {
     final p = palette;
-    return Obx(() {
-      final history = _otaCollector.updateHistory;
-      return _Panel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionHeader(
-              'Update History',
-              Icons.history,
-              p.warning,
-              trailing: Text(
-                '${history.length}',
-                style: TextStyle(color: p.textTertiary, fontSize: 14),
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _panelHeader('Actor API Call', Icons.api, p.accentBlue),
+          Divider(color: p.divider, height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                children: [
+                  ActorCard(
+                    cardKey: 'card_actor_get_settings',
+                    title: 'GetAppUpdateSettings',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_get_settings_app_name'),
+                    ],
+                    sendKey: 'btn_actor_get_settings',
+                    responseKey: 'text_actor_get_settings_response',
+                    kind: OtaRequestKind.getSettings,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                  const SizedBox(height: 16),
+                  ActorCard(
+                    cardKey: 'card_actor_set_settings',
+                    title: 'SetAppUpdateSettings',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_set_settings_app_name'),
+                      ActorCardField(
+                        'app_settings (JSON)',
+                        keyName: 'field_actor_set_settings_value',
+                        multiline: true,
+                      ),
+                    ],
+                    sendKey: 'btn_actor_set_settings',
+                    responseKey: 'text_actor_set_settings_response',
+                    kind: OtaRequestKind.setSettings,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                  const SizedBox(height: 16),
+                  ActorCard(
+                    cardKey: 'card_actor_get_state',
+                    title: 'GetAppUpdateState',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_get_state_app_name'),
+                    ],
+                    sendKey: 'btn_actor_get_state',
+                    responseKey: 'text_actor_get_state_response',
+                    kind: OtaRequestKind.getState,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                  const SizedBox(height: 16),
+                  ActorCard(
+                    cardKey: 'card_actor_set_update',
+                    title: 'SetAppUpdate',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_set_update_app_name'),
+                    ],
+                    sendKey: 'btn_actor_set_update',
+                    responseKey: 'text_actor_set_update_response',
+                    kind: OtaRequestKind.setUpdate,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                ],
               ),
             ),
-            Divider(color: p.divider, height: 1),
-            Expanded(
-              child: history.isEmpty
-                  ? Center(
-                      child: Text(
-                        '히스토리 없음',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: p.textTertiary,
-                        ),
-                      ),
-                    )
-                  : ValueListenableBuilder<int?>(
-                      valueListenable:
-                          widget.clientIdNotifier ?? ValueNotifier<int?>(null),
-                      builder: (_, myId, __) => ListView.builder(
-                        padding: const EdgeInsets.all(8),
-                        itemCount: history.length,
-                        itemBuilder: (_, i) => _HistoryItem(
-                          entry: history[i],
-                          myClientId: myId,
-                        ),
-                      ),
-                    ),
-            ),
-          ],
-        ),
-      );
-    });
+          ),
+        ],
+      ),
+    );
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -593,8 +337,10 @@ class _OtaViewPageState extends State<OtaViewPage> {
     );
   }
 
-  Widget _sectionHeader(String title, IconData icon, Color iconColor,
-      {Widget? trailing}) {
+  /// Standard panel header used by Actor and Client sections. Matches
+  /// the App List header's styling (icon badge + title) so the three
+  /// panels read as siblings.
+  Widget _panelHeader(String title, IconData icon, Color iconColor) {
     final p = palette;
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -610,100 +356,37 @@ class _OtaViewPageState extends State<OtaViewPage> {
               color: p.textPrimary,
             ),
           ),
-          if (trailing != null) ...[
-            const Spacer(),
-            trailing,
-          ],
         ],
       ),
     );
   }
 
-  Widget _detailField(String label, String value, {VoidCallback? onViewFull}) {
-    final p = palette;
-    final display =
-        value.length > _truncate ? '${value.substring(0, _truncate)}...' : value;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: p.textTertiary,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: p.surfaceAlt,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                display,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: p.textSecondary,
-                  fontFamily: 'monospace',
-                ),
-              ),
-              if (onViewFull != null)
-                GestureDetector(
-                  onTap: onViewFull,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '전체 보기 →',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: p.accentBlue,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // ─── Left panel bottom: Client section ────────────────────────────────────
 
-  Widget _statusBadge(String status) {
+  Widget _buildClientSection() {
     final p = palette;
-    final color = status.contains('complete') || status == 'Synced'
-        ? p.success
-        : status.contains('fail') || status.contains('error')
-            ? p.error
-            : p.warning;
-    return Row(
-      children: [
-        Text(
-          'Status: ',
-          style: TextStyle(fontSize: 12, color: p.textTertiary),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
-          ),
-          child: Text(
-            status,
-            style: TextStyle(
-              fontSize: 13,
-              color: color,
-              fontWeight: FontWeight.w500,
+    final c = widget.clientController;
+    final Widget body = c == null
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Ros connecting…\nClient 정보 대기 중',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.textTertiary, fontSize: 14),
+              ),
             ),
-          ),
-        ),
-      ],
+          )
+        : ClientPage(controller: c);
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _panelHeader('Client Interaction', Icons.swap_horiz, p.accentBlue),
+          Divider(color: p.divider, height: 1),
+          Expanded(child: body),
+        ],
+      ),
     );
   }
 
@@ -714,9 +397,18 @@ class _OtaViewPageState extends State<OtaViewPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 1, child: _buildAppListPanel()),
+          Expanded(
+            flex: 1,
+            child: Column(
+              children: [
+                Expanded(child: _buildAppListPanel()),
+                const SizedBox(height: 16),
+                Expanded(child: _buildClientSection()),
+              ],
+            ),
+          ),
           const SizedBox(width: 24),
-          Expanded(flex: 2, child: _buildDetailPanel()),
+          Expanded(flex: 1, child: _buildActorPanel()),
         ],
       ),
     );
@@ -740,6 +432,96 @@ class _Panel extends StatelessWidget {
         border: Border.all(color: p.divider, width: 1),
       ),
       child: child,
+    );
+  }
+}
+
+/// Expandable group of apps owned by a single client. Renders the
+/// header as "Client #<id> — <name>" plus a trash icon (when the
+/// client_id is valid) that asks the parent to confirm + publish
+/// DeleteOtaClientRegistration.
+class _ClientGroupTile extends StatelessWidget {
+  const _ClientGroupTile({
+    required this.clientId,
+    required this.clientName,
+    required this.apps,
+    required this.selectedAppName,
+    required this.onAppTap,
+    this.onDeleteClient,
+  });
+
+  final int clientId;
+  final String? clientName;
+  final List<Map<String, dynamic>> apps;
+  final String? selectedAppName;
+  final void Function(String appName) onAppTap;
+  final VoidCallback? onDeleteClient;
+
+  String get _headerLabel {
+    if (clientId < 0) return 'Unassigned';
+    final name = clientName;
+    return (name != null && name.isNotEmpty)
+        ? 'Client #$clientId — $name'
+        : 'Client #$clientId';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = palette;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+      ),
+      child: Container(
+        key: Key('client_group_$clientId'),
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        decoration: BoxDecoration(
+          color: p.surfaceAlt.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: ExpansionTile(
+          initiallyExpanded: true,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.only(left: 8, right: 4, bottom: 4),
+          title: Text(
+            _headerLabel,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: p.textPrimary,
+            ),
+          ),
+          subtitle: Text(
+            '${apps.length} app${apps.length == 1 ? '' : 's'}',
+            style: TextStyle(fontSize: 11, color: p.textTertiary),
+          ),
+          trailing: onDeleteClient != null
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      key: Key('btn_delete_client_$clientId'),
+                      icon: Icon(Icons.delete_outline, size: 18, color: p.error),
+                      tooltip: 'Delete this client',
+                      onPressed: onDeleteClient,
+                    ),
+                    Icon(Icons.expand_more, color: p.textTertiary, size: 20),
+                  ],
+                )
+              : null,
+          children: [
+            for (final app in apps)
+              _AppListTile(
+                appName: app['name'] as String,
+                status: app['status'] as String? ?? 'Unknown',
+                isSelected: app['name'] == selectedAppName,
+                onTap: () => onAppTap(app['name'] as String),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -814,89 +596,6 @@ class _AppListTile extends StatelessWidget {
               Icon(Icons.chevron_right, color: p.primary, size: 20),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _HistoryItem extends StatelessWidget {
-  const _HistoryItem({required this.entry, this.myClientId});
-
-  final Map<String, dynamic> entry;
-  final int? myClientId;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = palette;
-    final timestamp = entry['timestamp'] as String;
-    final appName = entry['app_name'] as String;
-    final message = entry['message'] as String;
-    final retCode = entry['ret_code'] as int?;
-    final entryClientId = entry['client_id'] as int?;
-    final isMine =
-        myClientId != null && entryClientId != null && entryClientId == myClientId;
-
-    final icon = retCode == 1
-        ? Icons.check_circle
-        : retCode == 2
-            ? Icons.error
-            : Icons.info;
-    final iconColor = retCode == 1
-        ? p.success
-        : retCode == 2
-            ? p.error
-            : p.accentBlue;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: isMine ? p.selectionBg : Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: isMine ? p.selectionBorder : Colors.transparent,
-          width: 1,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            isMine ? '▣' : '□',
-            style: TextStyle(
-              fontSize: 14,
-              color: isMine ? p.primary : p.textPlaceholder,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Icon(icon, color: iconColor, size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entryClientId != null
-                      ? '$appName — $message  (cid=$entryClientId)'
-                      : '$appName — $message',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: p.textPrimary,
-                    fontWeight:
-                        isMine ? FontWeight.w500 : FontWeight.normal,
-                  ),
-                ),
-                Text(
-                  timestamp.length >= 19
-                      ? timestamp.substring(0, 19)
-                      : timestamp,
-                  style: TextStyle(fontSize: 12, color: p.textTertiary),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
