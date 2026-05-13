@@ -246,64 +246,77 @@ class _OtaViewPageState extends State<OtaViewPage> {
   // ─── Right panel: 4 Actor cards (inline, no modal) ────────────────────────
 
   Widget _buildActorPanel() {
-    return SingleChildScrollView(
+    final p = palette;
+    return _Panel(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ActorCard(
-            cardKey: 'card_actor_get_settings',
-            title: 'GetAppUpdateSettings',
-            fields: const [
-              ActorCardField('app_name', keyName: 'field_actor_get_settings_app_name'),
-            ],
-            sendKey: 'btn_actor_get_settings',
-            responseKey: 'text_actor_get_settings_response',
-            kind: OtaRequestKind.getSettings,
-            collector: _otaCollector,
-            selectedApp: widget.selectedApp,
-          ),
-          const SizedBox(height: 16),
-          ActorCard(
-            cardKey: 'card_actor_set_settings',
-            title: 'SetAppUpdateSettings',
-            fields: const [
-              ActorCardField('app_name', keyName: 'field_actor_set_settings_app_name'),
-              ActorCardField(
-                'app_settings (JSON)',
-                keyName: 'field_actor_set_settings_value',
-                multiline: true,
+          _panelHeader('Actor API Call', Icons.api, p.accentBlue),
+          Divider(color: p.divider, height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                children: [
+                  ActorCard(
+                    cardKey: 'card_actor_get_settings',
+                    title: 'GetAppUpdateSettings',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_get_settings_app_name'),
+                    ],
+                    sendKey: 'btn_actor_get_settings',
+                    responseKey: 'text_actor_get_settings_response',
+                    kind: OtaRequestKind.getSettings,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                  const SizedBox(height: 16),
+                  ActorCard(
+                    cardKey: 'card_actor_set_settings',
+                    title: 'SetAppUpdateSettings',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_set_settings_app_name'),
+                      ActorCardField(
+                        'app_settings (JSON)',
+                        keyName: 'field_actor_set_settings_value',
+                        multiline: true,
+                      ),
+                    ],
+                    sendKey: 'btn_actor_set_settings',
+                    responseKey: 'text_actor_set_settings_response',
+                    kind: OtaRequestKind.setSettings,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                  const SizedBox(height: 16),
+                  ActorCard(
+                    cardKey: 'card_actor_get_state',
+                    title: 'GetAppUpdateState',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_get_state_app_name'),
+                    ],
+                    sendKey: 'btn_actor_get_state',
+                    responseKey: 'text_actor_get_state_response',
+                    kind: OtaRequestKind.getState,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                  const SizedBox(height: 16),
+                  ActorCard(
+                    cardKey: 'card_actor_set_update',
+                    title: 'SetAppUpdate',
+                    fields: const [
+                      ActorCardField('app_name', keyName: 'field_actor_set_update_app_name'),
+                    ],
+                    sendKey: 'btn_actor_set_update',
+                    responseKey: 'text_actor_set_update_response',
+                    kind: OtaRequestKind.setUpdate,
+                    collector: _otaCollector,
+                    selectedApp: widget.selectedApp,
+                  ),
+                ],
               ),
-            ],
-            sendKey: 'btn_actor_set_settings',
-            responseKey: 'text_actor_set_settings_response',
-            kind: OtaRequestKind.setSettings,
-            collector: _otaCollector,
-            selectedApp: widget.selectedApp,
-          ),
-          const SizedBox(height: 16),
-          ActorCard(
-            cardKey: 'card_actor_get_state',
-            title: 'GetAppUpdateState',
-            fields: const [
-              ActorCardField('app_name', keyName: 'field_actor_get_state_app_name'),
-            ],
-            sendKey: 'btn_actor_get_state',
-            responseKey: 'text_actor_get_state_response',
-            kind: OtaRequestKind.getState,
-            collector: _otaCollector,
-            selectedApp: widget.selectedApp,
-          ),
-          const SizedBox(height: 16),
-          ActorCard(
-            cardKey: 'card_actor_set_update',
-            title: 'SetAppUpdate',
-            fields: const [
-              ActorCardField('app_name', keyName: 'field_actor_set_update_app_name'),
-            ],
-            sendKey: 'btn_actor_set_update',
-            responseKey: 'text_actor_set_update_response',
-            kind: OtaRequestKind.setUpdate,
-            collector: _otaCollector,
-            selectedApp: widget.selectedApp,
+            ),
           ),
         ],
       ),
@@ -324,26 +337,57 @@ class _OtaViewPageState extends State<OtaViewPage> {
     );
   }
 
+  /// Standard panel header used by Actor and Client sections. Matches
+  /// the App List header's styling (icon badge + title) so the three
+  /// panels read as siblings.
+  Widget _panelHeader(String title, IconData icon, Color iconColor) {
+    final p = palette;
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          _iconBadge(icon, iconColor),
+          const SizedBox(width: 12),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              color: p.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ─── Left panel bottom: Client section ────────────────────────────────────
 
   Widget _buildClientSection() {
     final p = palette;
     final c = widget.clientController;
-    if (c == null) {
-      return _Panel(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'Ros connecting…\nClient 정보 대기 중',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: p.textTertiary, fontSize: 14),
+    final Widget body = c == null
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Ros connecting…\nClient 정보 대기 중',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.textTertiary, fontSize: 14),
+              ),
             ),
-          ),
-        ),
-      );
-    }
-    return _Panel(child: ClientPage(controller: c));
+          )
+        : ClientPage(controller: c);
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _panelHeader('Client Interaction', Icons.swap_horiz, p.accentBlue),
+          Divider(color: p.divider, height: 1),
+          Expanded(child: body),
+        ],
+      ),
+    );
   }
 
   @override
