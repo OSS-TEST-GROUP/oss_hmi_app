@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
 
@@ -10,6 +11,30 @@ enum OtaRequestKind {
   setSettings,
   getState,
   setUpdate,
+}
+
+/// F009: response event emitted whenever an Actor-service Response arrives
+/// (success or business-level error). Lets the Actor tab (and future
+/// consumers) react to individual requests without polling [topicData].
+///
+/// `id` is the request id that was assigned by [OtaCollector] when the
+/// matching publish was issued; callers use it to match their own in-flight
+/// request. `body` carries the raw decoded message so consumers can read
+/// fields that are specific to a particular response kind.
+class OtaResponseEvent {
+  OtaResponseEvent({
+    required this.kind,
+    required this.id,
+    required this.appName,
+    required this.retCode,
+    required this.body,
+  });
+
+  final OtaRequestKind kind;
+  final int? id;
+  final String? appName;
+  final int? retCode;
+  final Map<String, dynamic> body;
 }
 
 class PendingRequest {
@@ -36,9 +61,6 @@ class OtaCollector extends GetxController {
   /// Sweep interval for [pendingRequests] expiration. Exposed for testing.
   final Duration timeoutSweepInterval;
 
-  /// Maximum number of entries retained in [updateHistory] (F005).
-  final int historySize;
-
   /// App names to seed the UI with at startup (F004). Settings and state
   /// requests are issued automatically for each entry once topics are
   /// advertised.
@@ -57,14 +79,13 @@ class OtaCollector extends GetxController {
     this.requestTimeout = const Duration(seconds: 30),
     this.timeoutSweepInterval = const Duration(seconds: 5),
     this.watchdogInterval = const Duration(seconds: 1),
-    this.historySize = 20,
     this.initialApps = const [],
     this.autoStartTimers = true,
   }) : topicFactory = topicFactory ??
             ((ros, name, type) => Topic(ros: ros, name: name, type: type)) {
     // Seed the app list immediately so the UI has something to show while
     // responses are still in flight. The entries' status stays 'Unknown'
-    // until the first GetAppUpdateStateResponse / NotifyAppUpdateStatus.
+    // until the first GetAppUpdateStateResponse arrives.
     for (final name in initialApps) {
       _updateAppList(name);
     }
@@ -75,8 +96,6 @@ class OtaCollector extends GetxController {
   // State data
   final RxMap<String, dynamic> topicData = <String, dynamic>{}.obs;
   final RxList<Map<String, dynamic>> appList = <Map<String, dynamic>>[].obs;
-  final RxList<Map<String, dynamic>> updateHistory =
-      <Map<String, dynamic>>[].obs;
 
   // Request ID tracking
   int _nextRequestId = 1000;
@@ -100,10 +119,51 @@ class OtaCollector extends GetxController {
   Topic? _stateReqPub;
   Topic? _updateReqPub;
 
+  // F023 — GetAppList query (Manager 진실 소스 통합).
+  Topic? _getAppListReqPub;
+  Topic? _getAppListResSub;
+  int _nextGetAppListId = 1;
+
+  // DeleteOtaClientRegistration — operator-driven removal of a client
+  // and all its apps, addressed by client_id. Tracked separately from
+  // the Actor pending-request map because it doesn't carry an app_name.
+  Topic? _deleteClientReqPub;
+  Topic? _deleteClientResSub;
+  int _nextDeleteClientId = 1;
+
+  /// Source label for the App List (F023).
+  /// 'local' until the first GetAppListResponse arrives, then 'manager'.
+  final RxString appListSource = 'local'.obs;
+
+  /// Per-app owner client_id from the most recent GetAppListResponse.
+  /// Used by tooltips / debug overlays in the Apps tab.
+  final RxMap<String, int> appOwnerClientIds = <String, int>{}.obs;
+
+  /// (client_id -> client_name) lookup populated from
+  /// GetAppListResponse.owner_client_names. The tree view on the App
+  /// List panel uses this to label each client node. Names are
+  /// best-effort: if the Manager hasn't published one for a given id,
+  /// the entry is just absent and the UI falls back to the id alone.
+  final RxMap<int, String> clientNamesById = <int, String>{}.obs;
+
+  /// Monotonic counter incremented on every successful
+  /// GetAppListResponse. Lets the UI's refresh button observe whether a
+  /// response arrived inside its 5 s window without itself owning
+  /// subscription bookkeeping.
+  final RxInt appListGeneration = 0.obs;
+
   bool _setup = false;
   Ros? _boundRos;
   Timer? _watchdog;
   Timer? _timeoutSweeper;
+
+  /// F009 SHOULD #1: flips to `true` once `_start` has finished subscribing
+  /// and advertising the Actor topics. The Actor tab listens to this so its
+  /// Send buttons stay disabled until the rosbridge round-trip is wired —
+  /// wireframe §4 "미연결 → Send disabled" requirement.
+  final ValueNotifier<bool> readyNotifier = ValueNotifier<bool>(false);
+
+  bool get isReady => readyNotifier.value;
 
   // F007: surface user-facing error events to the UI via a broadcast stream.
   final StreamController<String> _errorCtrl =
@@ -111,6 +171,17 @@ class OtaCollector extends GetxController {
 
   /// Emits short, user-facing error messages (displayed as SnackBars).
   Stream<String> get errors => _errorCtrl.stream;
+
+  // F009: per-request response events for the Actor tab's raw UI. Each
+  // event fires after [_matchAndRemove] succeeds (or is skipped for
+  // unsolicited notifications), so `id` is safe to use for request-reply
+  // correlation on the listener side.
+  final StreamController<OtaResponseEvent> _responseCtrl =
+      StreamController<OtaResponseEvent>.broadcast();
+
+  /// Emits each Actor-service response as it arrives. Broadcast stream;
+  /// late subscribers miss past events.
+  Stream<OtaResponseEvent> get responses => _responseCtrl.stream;
 
   @override
   void onInit() {
@@ -135,6 +206,8 @@ class OtaCollector extends GetxController {
     _watchdog?.cancel();
     _timeoutSweeper?.cancel();
     _errorCtrl.close();
+    _responseCtrl.close();
+    readyNotifier.dispose();
     super.onClose();
   }
 
@@ -143,6 +216,7 @@ class OtaCollector extends GetxController {
 
   Future<void> _start(Ros r) async {
     _setup = false;
+    readyNotifier.value = false;
     _boundRos = r;
 
     try {
@@ -179,7 +253,27 @@ class OtaCollector extends GetxController {
       await _stateReqPub?.advertise();
       await _updateReqPub?.advertise();
 
+      // F023 — GetAppList query channel.
+      _getAppListReqPub = topicFactory(
+          r, otaGetAppListReqTopic, otaGetAppListReqType);
+      _getAppListResSub = topicFactory(
+          r, otaGetAppListResTopic, otaGetAppListResType);
+      await _getAppListReqPub?.advertise();
+      await _getAppListResSub?.subscribe(
+          (m) async => onGetAppListResponse(m));
+
+      // DeleteOtaClientRegistration channel — used by the App List tree
+      // trash icon to ask the Manager to forget a client + its apps.
+      _deleteClientReqPub = topicFactory(
+          r, otaDeleteClientReqTopic, otaDeleteClientReqType);
+      _deleteClientResSub = topicFactory(
+          r, otaDeleteClientResTopic, otaDeleteClientResType);
+      await _deleteClientReqPub?.advertise();
+      await _deleteClientResSub?.subscribe(
+          (m) async => onDeleteClientResponse(m));
+
       _setup = true;
+      readyNotifier.value = true;
       appLog('[OTA] Topics subscribed & advertised');
 
       // F004: auto-request settings/state for each initialApps entry.
@@ -209,6 +303,8 @@ class OtaCollector extends GetxController {
       topicData['${appName}_settings_ret'] = ReturnValue.fromInt(retCode);
       _updateAppList(appName, settings: appSettings);
     }
+    _emitResponse(OtaRequestKind.getSettings, msg, matched?.id, appName,
+        retCode);
   }
 
   void onSetSettingsResponse(Map<String, dynamic> msg) {
@@ -221,6 +317,8 @@ class OtaCollector extends GetxController {
     if (appName != null) {
       topicData['${appName}_set_settings_result'] = result;
     }
+    _emitResponse(OtaRequestKind.setSettings, msg, matched?.id, appName,
+        retCode);
   }
 
   void onStateResponse(Map<String, dynamic> msg) {
@@ -235,6 +333,7 @@ class OtaCollector extends GetxController {
       topicData['${appName}_state_ret'] = ReturnValue.fromInt(retCode);
       _updateAppList(appName, state: appStateInfo);
     }
+    _emitResponse(OtaRequestKind.getState, msg, matched?.id, appName, retCode);
   }
 
   void onUpdateResponse(Map<String, dynamic> msg) {
@@ -245,49 +344,152 @@ class OtaCollector extends GetxController {
 
     if (appName != null) {
       topicData['${appName}_update_result'] = ReturnValue.fromInt(retCode);
-      _addUpdateHistory(appName, 'Update requested', retCode);
     }
+    _emitResponse(OtaRequestKind.setUpdate, msg, matched?.id, appName,
+        retCode);
   }
 
+  /// NotifyAppUpdateStatus handler — status-only. Populates the app
+  /// list's per-app status field so the left-panel tiles can show the
+  /// live state ("downloading", "complete", "error", …) instead of
+  /// the default "Unknown".
+  ///
+  /// We intentionally keep this lean: no update history, no
+  /// per-client filtering. The Client section (lib/view/client_page.dart)
+  /// owns its own dedicated subscription via ClientServiceController for
+  /// the App Update Status card.
   void onNotifyStatus(Map<String, dynamic> msg) {
     appLog('[OTA] NotifyAppUpdateStatus: $msg');
     final appName = msg['app_name'] as String?;
     final status = msg['status'] as String?;
-
-    // NotifyStatus is unsolicited — no pending request to match. Intentionally
-    // skip _matchAndRemove() here.
     if (appName != null && status != null) {
       topicData['${appName}_status'] = status;
       _updateAppList(appName, status: status);
-      _addUpdateHistory(appName, 'Status: $status', null);
     }
   }
 
-  // ── Publish helpers ──────────────────────────────────────────────────────
+  // ── F023: GetAppList query ───────────────────────────────────────────────
+  //
+  // Issues a GetAppList request to the Manager and lets onGetAppListResponse
+  // overwrite [appList] with the authoritative snapshot. Returns the
+  // request id so a caller (Apps tab refresh button, integration test)
+  // can correlate the response.
+  int requestAppList() {
+    final id = _nextGetAppListId++;
+    _publish(_getAppListReqPub, {'id': id});
+    appLog('[OTA] GetAppList request id=$id');
+    return id;
+  }
 
-  void requestAppSettings(String appName) {
+  // ── DeleteOtaClientRegistration ──────────────────────────────────────────
+  //
+  // Asks the Manager to forget the given client_id (and all its apps).
+  // The Manager persists the change, so a successful delete also takes
+  // effect across Manager restarts. Returns the request id; the
+  // response arrives asynchronously via onDeleteClientResponse, which
+  // automatically re-issues a GetAppList so the App List tree refreshes
+  // without an extra round-trip in the UI layer.
+  int deleteClient(int clientId) {
+    final id = _nextDeleteClientId++;
+    _publish(_deleteClientReqPub, {'id': id, 'client_id': clientId});
+    appLog('[OTA] DeleteOtaClientRegistration request id=$id client_id=$clientId');
+    return id;
+  }
+
+  /// Public for unit tests; called by the rosbridge subscription in
+  /// production.
+  void onDeleteClientResponse(Map<String, dynamic> msg) {
+    final retCode = msg['ret_code'] as int?;
+    final clientId = (msg['client_id'] as num?)?.toInt();
+    appLog('[OTA] DeleteOtaClientRegistrationResponse client_id=$clientId ret=$retCode');
+    if (retCode == ReturnValue.success.value) {
+      // Refresh the tree by re-querying the authoritative app list.
+      requestAppList();
+    }
+  }
+
+  /// Public for unit tests; called by the rosbridge subscription in
+  /// production.
+  void onGetAppListResponse(Map<String, dynamic> msg) {
+    final names = (msg['app_names'] as List?)
+            ?.whereType<String>()
+            .toList(growable: false) ??
+        const <String>[];
+    final owners = (msg['owner_client_ids'] as List?)
+            ?.map((v) => (v as num).toInt())
+            .toList(growable: false) ??
+        const <int>[];
+    final ownerNames = (msg['owner_client_names'] as List?)
+            ?.whereType<String>()
+            .toList(growable: false) ??
+        const <String>[];
+
+    appLog('[OTA] GetAppListResponse apps=${names.length}');
+
+    // F023 ac3: replace appList wholesale, but preserve any per-app
+    // status/settings/state cached from prior responses (key = appName).
+    final preserved = <String, Map<String, dynamic>>{};
+    for (final entry in appList) {
+      preserved[entry['name'] as String] = Map<String, dynamic>.from(entry);
+    }
+    appList.clear();
+    final newOwners = <String, int>{};
+    final newClientNames = <int, String>{};
+    for (var i = 0; i < names.length; i++) {
+      final n = names[i];
+      final cached = preserved[n] ?? <String, dynamic>{
+        'name': n,
+        'settings': '',
+        'state': '',
+        'status': 'Unknown',
+      };
+      cached['name'] = n;
+      appList.add(cached);
+      if (i < owners.length) {
+        newOwners[n] = owners[i];
+        if (i < ownerNames.length && ownerNames[i].isNotEmpty) {
+          newClientNames[owners[i]] = ownerNames[i];
+        }
+      }
+    }
+    appOwnerClientIds.assignAll(newOwners);
+    clientNamesById.assignAll(newClientNames);
+    appListSource.value = 'manager';
+    appListGeneration.value = appListGeneration.value + 1;
+  }
+
+  // ── Publish helpers ──────────────────────────────────────────────────────
+  //
+  // F009: each of these returns the assigned request id so the caller
+  // (Actor tab cards, tests) can match the corresponding response event.
+
+  int requestAppSettings(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.getSettings);
     _publish(_settingsReqPub, {'id': id, 'app_name': appName});
     appLog('[OTA] Requested settings for $appName (id=$id)');
+    return id;
   }
 
-  void setAppSettings(String appName, String settingsJson) {
+  int setAppSettings(String appName, String settingsJson) {
     final id = _registerRequest(appName, OtaRequestKind.setSettings);
     _publish(_setSettingsReqPub,
         {'id': id, 'app_name': appName, 'app_settings': settingsJson});
     appLog('[OTA] Set settings for $appName (id=$id)');
+    return id;
   }
 
-  void requestAppState(String appName) {
+  int requestAppState(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.getState);
     _publish(_stateReqPub, {'id': id, 'app_name': appName});
     appLog('[OTA] Requested state for $appName (id=$id)');
+    return id;
   }
 
-  void requestUpdate(String appName) {
+  int requestUpdate(String appName) {
     final id = _registerRequest(appName, OtaRequestKind.setUpdate);
     _publish(_updateReqPub, {'id': id, 'app_name': appName});
     appLog('[OTA] Requested update for $appName (id=$id)');
+    return id;
   }
 
   void _publish(Topic? topic, Map<String, dynamic> fields) {
@@ -319,6 +521,27 @@ class OtaCollector extends GetxController {
       sentAt: DateTime.now(),
     );
     return id;
+  }
+
+  /// F009: emit an [OtaResponseEvent] on the broadcast [responses] stream.
+  /// Tolerates a closed controller (guards against events arriving after
+  /// onClose during widget disposal).
+  void _emitResponse(
+    OtaRequestKind kind,
+    Map<String, dynamic> msg,
+    int? matchedId,
+    String? appName,
+    int? retCode,
+  ) {
+    if (_responseCtrl.isClosed) return;
+    final msgId = _extractInt(msg['id']);
+    _responseCtrl.add(OtaResponseEvent(
+      kind: kind,
+      id: msgId ?? matchedId,
+      appName: appName,
+      retCode: retCode,
+      body: msg,
+    ));
   }
 
   /// Look up the pending request referenced by [msg]'s `id` field (if any)
@@ -390,16 +613,4 @@ class OtaCollector extends GetxController {
     }
   }
 
-  void _addUpdateHistory(String appName, String message, int? retCode) {
-    final timestamp = DateTime.now().toIso8601String();
-    updateHistory.insert(0, {
-      'timestamp': timestamp,
-      'app_name': appName,
-      'message': message,
-      'ret_code': retCode,
-    });
-    if (updateHistory.length > historySize) {
-      updateHistory.removeRange(historySize, updateHistory.length);
-    }
-  }
 }

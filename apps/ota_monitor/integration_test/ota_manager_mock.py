@@ -22,16 +22,16 @@ Requirements
 ------------
 * ROS2 (tested mental model: Humble / Jazzy)
 * Python `rclpy` (`pip install rclpy` or sourced from /opt/ros/<distro>/setup.bash)
-* `mmf_interfaces` package providing the message types below. The exact
+* `otamanager` package providing the message types below. The exact
   field names are derived from ota_data.dart + ota_collector.dart — double
   check against the real .msg files before relying on a green run.
 
 Status
 ------
-SKELETON. Not executed in-repo because mmf_interfaces + ROS2 runtime are
+SKELETON. Not executed in-repo because otamanager + ROS2 runtime are
 not present in the dev environment. Syntax-validated with py_compile only.
 Expected follow-up work:
-  1. Vendor-locate the exact mmf_interfaces .msg definitions and fix the
+  1. Vendor-locate the exact otamanager .msg definitions and fix the
      `import` block if field names differ.
   2. Run under the same ROS_DOMAIN_ID as the production OtaManager.
 """
@@ -56,11 +56,11 @@ except ImportError as exc:  # pragma: no cover — handled at runtime
     )
     raise
 
-# mmf_interfaces message types — verify these imports against the real
+# otamanager message types — verify these imports against the real
 # package. Field names used below are the best-guess mapping from
 # lib/data/ota_data.dart + lib/controller/ota_collector.dart.
 try:
-    from mmf_interfaces.msg import (  # type: ignore[import-not-found]
+    from otamanager.msg import (  # type: ignore[import-not-found]
         GetAppUpdateSettings,
         GetAppUpdateSettingsResponse,
         SetAppUpdateSettings,
@@ -73,7 +73,7 @@ try:
     )
 except ImportError as exc:  # pragma: no cover
     print(
-        "[ota_manager_mock] mmf_interfaces is not on the Python path. "
+        "[ota_manager_mock] otamanager is not on the Python path. "
         "Build the ROS2 workspace that provides it and source install/setup.bash.",
         file=sys.stderr,
     )

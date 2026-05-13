@@ -10,13 +10,13 @@ class AppConfig {
   });
 
   factory AppConfig.defaults() => AppConfig(
-        rosUrl: Uri.parse('ws://172.16.10.48:9090'),
+        rosUrl: Uri.parse('ws://127.0.0.1:9090'),
         statusTopic: '/app_status/adsw_monitor',
       );
 
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
         rosUrl: Uri.parse(
-          (j['rosbridge']?['url'] as String?) ?? 'ws://172.16.10.48:9090',
+          (j['rosbridge']?['url'] as String?) ?? 'ws://127.0.0.1:9090',
         ),
         statusTopic:
             (j['statusTopic'] as String?) ?? '/app_status/adsw_monitor',
