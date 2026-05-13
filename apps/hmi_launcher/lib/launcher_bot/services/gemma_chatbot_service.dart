@@ -203,7 +203,7 @@ class GemmaChatbotService {
     }
 
     final resolvedConfig = File(
-      '${Directory.systemTemp.path}/oss_launcher_bot_llm_config_gemma.json',
+      '${Directory.systemTemp.path}/hmi_launcher_llm_config_gemma.json',
     );
     await resolvedConfig.writeAsString(jsonEncode(config));
     return resolvedConfig.path;
@@ -217,6 +217,7 @@ class GemmaChatbotService {
     final resolved = _firstExistingPath([
       '${bundleRoot.path}/data/$rawModelPath',
       '${bundleRoot.path}/data/flutter_assets/$rawModelPath',
+      '${bundleRoot.path}/data/flutter_assets/assets/$rawModelPath',
       '${Directory.current.path}/$rawModelPath',
     ]);
 
@@ -241,6 +242,7 @@ class GemmaChatbotService {
       '${bundleRoot.path}/data/flutter_assets/assets/config/llm_config_gemma.json',
       '${bundleRoot.path}/flutter_assets/assets/config/llm_config_gemma.json',
       '${bundleRoot.path}/assets/config/llm_config_gemma.json',
+      '${bundleRoot.path}/data/assets/config/llm_config_gemma.json',
       '${Directory.current.path}/assets/config/llm_config_gemma.json',
     ];
   }
@@ -297,16 +299,26 @@ class GemmaChatbotService {
     add('${Directory.current.path}/build/linux/x64/debug/bundle');
     add('${Directory.current.path}/build/linux/x64/release/bundle');
 
-    final appShareRoot = Directory('/usr/share/flutter/oss_launcher_bot');
-    if (appShareRoot.existsSync()) {
-      for (final versionDir in appShareRoot.listSync().whereType<Directory>()) {
-        add('${versionDir.path}/release');
-        add('${versionDir.path}/profile');
-        add('${versionDir.path}/debug');
-      }
-    }
+    _addFlutterAutoShareCandidates(add, 'hmi_launcher');
 
     return candidates;
+  }
+
+  void _addFlutterAutoShareCandidates(
+    void Function(String? path) add,
+    String appName,
+  ) {
+    final appShareRoot = Directory('/usr/share/flutter/$appName');
+    if (!appShareRoot.existsSync()) return;
+
+    final versionDirs = appShareRoot.listSync().whereType<Directory>().toList()
+      ..sort((a, b) => b.path.compareTo(a.path));
+
+    for (final versionDir in versionDirs) {
+      add('${versionDir.path}/release');
+      add('${versionDir.path}/profile');
+      add('${versionDir.path}/debug');
+    }
   }
 
   String? _firstExistingPath(List<String> candidates) {
