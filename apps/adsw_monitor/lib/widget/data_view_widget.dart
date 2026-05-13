@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 // import 'package:get/get.dart';
+import 'package:adsw_monitor/theme/adsw_palette.dart';
 import 'package:adsw_monitor/widget/key_value_item.dart';
 
 class DataViewWidget extends StatelessWidget {
@@ -26,19 +27,19 @@ class DataViewWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdswPaletteScope.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF374151).withOpacity(0.5),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0xFF374151), width: 0.5),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Column(
         children: [
           InkWell(
             onTap: onTap,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
             child: Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               child: Row(
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -48,22 +49,24 @@ class DataViewWidget extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(9),
+                          width: 38,
+                          height: 38,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
+                            color: palette.surfaceAlt,
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Icon(icon, color: iconColor, size: 23),
+                          child: Icon(icon, color: palette.primary, size: 22),
                         ),
-                        const SizedBox(width: 15),
+                        const SizedBox(width: 14),
                         Flexible(
                           fit: FlexFit.loose,
                           child: Text(
                             title,
-                            style: const TextStyle(
-                              fontSize: 23,
+                            style: TextStyle(
+                              fontSize: 17,
                               fontWeight: FontWeight.w500,
-                              color: Colors.white,
+                              color: palette.text,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -75,8 +78,10 @@ class DataViewWidget extends StatelessWidget {
                     ),
                   ),
                   Icon(
-                    isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
-                    color: const Color(0xFF9CA3AF),
+                    isExpanded
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_right,
+                    color: palette.muted,
                     size: 22,
                   ),
                 ],
@@ -86,15 +91,15 @@ class DataViewWidget extends StatelessWidget {
           if (isExpanded)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(15),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFF374151), width: 0.3)),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: palette.line, width: 1)),
               ),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111827).withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(10),
+                  color: palette.valueSurface,
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

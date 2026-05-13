@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:adsw_monitor/theme/adsw_palette.dart';
 
-class KeyValueItem extends StatelessWidget{
+class KeyValueItem extends StatelessWidget {
   final String label;
   final String value;
   final String? subtitle;
-  final StatusType status;// = StatusType.good;
+  final StatusType status; // = StatusType.good;
 
   const KeyValueItem({
     super.key,
@@ -16,8 +17,9 @@ class KeyValueItem extends StatelessWidget{
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdswPaletteScope.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -36,9 +38,10 @@ class KeyValueItem extends StatelessWidget{
             flex: 2,
             child: Text(
               label,
-              style: const TextStyle(
-                fontSize: 19,
-                color: Color(0xFF9CA3AF),
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.35,
+                color: palette.muted,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -90,18 +93,21 @@ class KeyValueItem extends StatelessWidget{
                   constraints: const BoxConstraints(
                     maxHeight: 180, // 필요하면 조절
                   ),
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     //color: const Color(0xFF1F2937),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: SingleChildScrollView(
                     child: SelectableText(
                       value,
                       textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        color: Colors.white,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: palette.text,
                         fontFamily: 'monospace',
                         height: 1.3,
                       ),
@@ -116,9 +122,9 @@ class KeyValueItem extends StatelessWidget{
                     child: Text(
                       subtitle!,
                       textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF9CA3AF),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: palette.muted,
                         height: 1.25,
                       ),
                       softWrap: true,
@@ -167,11 +173,6 @@ class KeyValueItem extends StatelessWidget{
 
   //   return Icon(icon, color: color, size: 12);
   // }
-
 }
 
-enum StatusType {
-  good,
-  warning,
-  error,
-}
+enum StatusType { good, warning, error }

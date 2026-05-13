@@ -3,15 +3,14 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:adsw_monitor/controller/mw_collector.dart';
+import 'package:adsw_monitor/theme/adsw_palette.dart';
 import 'package:adsw_monitor/widget/data_view_widget.dart';
 import 'package:adsw_monitor/widget/key_value_item.dart';
 //import 'package:adsw_monitor/data/mw_data.dart';
 import 'package:roslibdart/roslibdart.dart';
 
 class MwViewPage extends StatefulWidget {
-  const MwViewPage({
-    super.key,
-  });
+  const MwViewPage({super.key});
 
   @override
   MwViewPageState createState() => MwViewPageState();
@@ -95,6 +94,7 @@ class MwViewPageState extends State<MwViewPage>
   }
 
   Future<void> _showSecurityAlert(String text) async {
+    final palette = AdswPaletteScope.of(context);
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -102,7 +102,10 @@ class MwViewPageState extends State<MwViewPage>
         return AlertDialog(
           title: const Text('Security Alert'),
           content: SingleChildScrollView(
-            child: SelectableText(text),
+            child: SelectableText(
+              text,
+              style: TextStyle(color: palette.text, height: 1.4),
+            ),
           ),
           actions: [
             TextButton(
@@ -118,6 +121,7 @@ class MwViewPageState extends State<MwViewPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final palette = AdswPaletteScope.of(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -140,8 +144,8 @@ class MwViewPageState extends State<MwViewPage>
                     if (it.status != null) {
                       final stText =
                           (it.statusText != null && it.statusText!.isNotEmpty)
-                              ? it.statusText
-                              : '${it.status}';
+                          ? it.statusText
+                          : '${it.status}';
                       lines.add('status: $stText (${it.status})');
                     }
 
@@ -161,8 +165,9 @@ class MwViewPageState extends State<MwViewPage>
                     }
 
                     // received_at
-                    lines
-                        .add('received_at: ${it.receivedAt.toIso8601String()}');
+                    lines.add(
+                      'received_at: ${it.receivedAt.toIso8601String()}',
+                    );
 
                     return lines.isEmpty ? '-' : lines.join('\n');
                   }
@@ -185,7 +190,9 @@ class MwViewPageState extends State<MwViewPage>
 
                   final Widget content = logs.isEmpty
                       ? const KeyValueItem(
-                          label: 'Waiting for notifications...', value: '-')
+                          label: 'Waiting for notifications...',
+                          value: '-',
+                        )
                       : ListView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
@@ -206,7 +213,7 @@ class MwViewPageState extends State<MwViewPage>
                   return DataViewWidget(
                     title: 'Diagnostic Notifications',
                     icon: Icons.notifications_active,
-                    iconColor: const Color(0xFF34D399),
+                    iconColor: palette.primary,
                     status: StatusType.warning,
                     isExpanded: _expandedSections['notification'] ?? false,
                     onTap: () => _toggleSection('notification'),
@@ -216,9 +223,7 @@ class MwViewPageState extends State<MwViewPage>
               ),
             ],
           ),
-          const SizedBox(
-            height: 30,
-          ),
+          const SizedBox(height: 30),
           Obx(() {
             final list = _mwCollector.diagnostics;
 
@@ -259,7 +264,9 @@ class MwViewPageState extends State<MwViewPage>
             final children = list.isEmpty
                 ? const [
                     KeyValueItem(
-                        label: 'Press refresh to load diagnostics', value: '-'),
+                      label: 'Press refresh to load diagnostics',
+                      value: '-',
+                    ),
                   ]
                 : [
                     // overflow 방지: 높이 제한 + 스크롤
@@ -296,6 +303,7 @@ class MwViewPageState extends State<MwViewPage>
 
             final Widget refreshButton = IconButton(
               tooltip: busy ? 'Refreshing...' : 'Refresh',
+              color: palette.primary,
               onPressed: busy
                   ? null
                   : () async {
@@ -313,7 +321,7 @@ class MwViewPageState extends State<MwViewPage>
             return DataViewWidget(
               title: 'Diagnostic Info Get',
               icon: Icons.settings,
-              iconColor: const Color(0xFF34D399),
+              iconColor: palette.primary,
               status: StatusType.error,
               isExpanded: _expandedSections['diagnostic'] ?? false,
               onTap: () => _toggleSection('diagnostic'),
