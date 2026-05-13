@@ -25,7 +25,7 @@ class OtaViewPage extends StatefulWidget {
 
   /// Wired up by OtaMonitorHomePage once Ros is available so the bottom
   /// half of the left panel can render the Client section
-  /// (Self Registration / Manager Status / App Update Status). When
+  /// (New Client Registration / Manager Status / App Update Status). When
   /// null, the bottom half shows a "Ros connecting…" placeholder.
   final ClientServiceController? clientController;
 

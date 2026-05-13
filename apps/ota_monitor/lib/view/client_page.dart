@@ -4,7 +4,7 @@ import 'package:ota_monitor/controller/client_service_controller.dart';
 import 'package:ota_monitor/theme/app_palette.dart';
 
 /// F021 — Client tab. Three cards:
-///   1. Self Registration (card_client_register)
+///   1. New Client Registration (card_client_register)
 ///        SetOtaClientRegistration → client_id 표시
 ///   2. Manager Status (card_client_manager_status)
 ///        NotifyOtaManagerReady 수신 / heartbeat seq+ts
@@ -100,7 +100,7 @@ class _ClientPageState extends State<ClientPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Self Registration', style: _titleStyle()),
+          Text('New Client Registration', style: _titleStyle()),
           const SizedBox(height: 12),
           _input(
             label: 'client_name',
