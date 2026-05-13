@@ -18,6 +18,9 @@ class LauncherBotShell extends StatefulWidget {
     required this.rosUrl,
     required this.rosStatus,
     required this.onRosUrlChanged,
+    required this.otaTheme,
+    required this.adswTheme,
+    required this.onAppThemeChanged,
     this.initialAppId,
     this.panelBuilder,
   });
@@ -26,6 +29,9 @@ class LauncherBotShell extends StatefulWidget {
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
+  final String otaTheme;
+  final String adswTheme;
+  final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
 
@@ -163,6 +169,9 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       rosUrl: widget.rosUrl,
                       rosStatus: widget.rosStatus,
                       onRosUrlChanged: widget.onRosUrlChanged,
+                      otaTheme: widget.otaTheme,
+                      adswTheme: widget.adswTheme,
+                      onAppThemeChanged: widget.onAppThemeChanged,
                     ),
                   ),
                 ],
@@ -184,6 +193,9 @@ class _AppStage extends StatelessWidget {
     required this.rosUrl,
     required this.rosStatus,
     required this.onRosUrlChanged,
+    required this.otaTheme,
+    required this.adswTheme,
+    required this.onAppThemeChanged,
     this.panelBuilder,
   });
 
@@ -194,6 +206,9 @@ class _AppStage extends StatelessWidget {
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
+  final String otaTheme;
+  final String adswTheme;
+  final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final AppPanelBuilder? panelBuilder;
 
   @override
@@ -226,6 +241,9 @@ class _AppStage extends StatelessWidget {
         rosUrl: rosUrl,
         rosStatus: rosStatus,
         onRosUrlChanged: onRosUrlChanged,
+        otaTheme: otaTheme,
+        adswTheme: adswTheme,
+        onAppThemeChanged: onAppThemeChanged,
       );
     }
 
@@ -309,6 +327,9 @@ class _SettingsPage extends StatefulWidget {
     required this.rosUrl,
     required this.rosStatus,
     required this.onRosUrlChanged,
+    required this.otaTheme,
+    required this.adswTheme,
+    required this.onAppThemeChanged,
   });
 
   static const appId = '__settings__';
@@ -316,6 +337,9 @@ class _SettingsPage extends StatefulWidget {
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
+  final String otaTheme;
+  final String adswTheme;
+  final Future<void> Function(String appId, String themeName) onAppThemeChanged;
 
   @override
   State<_SettingsPage> createState() => _SettingsPageState();
@@ -439,14 +463,43 @@ class _SettingsPageState extends State<_SettingsPage> {
             const SizedBox(width: 16),
             Expanded(
               flex: 4,
-              child: _SettingsPanel(
-                title: 'Runtime',
+              child: Column(
                 children: [
-                  const _SettingStatus(label: 'AI SDK', value: 'Enabled'),
-                  const SizedBox(height: 10),
-                  _SettingStatus(label: 'ROS bridge', value: widget.rosStatus),
-                  const SizedBox(height: 10),
-                  const _SettingStatus(label: 'Input method', value: 'Shared'),
+                  _SettingsPanel(
+                    title: 'App Theme',
+                    children: [
+                      _ThemeSettingRow(
+                        label: 'OTA Monitor',
+                        value: widget.otaTheme,
+                        onChanged: (theme) =>
+                            widget.onAppThemeChanged('ota_monitor', theme),
+                      ),
+                      const SizedBox(height: 12),
+                      _ThemeSettingRow(
+                        label: 'AD SW',
+                        value: widget.adswTheme,
+                        onChanged: (theme) =>
+                            widget.onAppThemeChanged('adsw_monitor', theme),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _SettingsPanel(
+                    title: 'Runtime',
+                    children: [
+                      const _SettingStatus(label: 'AI SDK', value: 'Enabled'),
+                      const SizedBox(height: 10),
+                      _SettingStatus(
+                        label: 'ROS bridge',
+                        value: widget.rosStatus,
+                      ),
+                      const SizedBox(height: 10),
+                      const _SettingStatus(
+                        label: 'Input method',
+                        value: 'Shared',
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -733,6 +786,90 @@ class _SettingField extends StatelessWidget {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: _BotColors.accent),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeSettingRow extends StatelessWidget {
+  const _ThemeSettingRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _BotColors.canvas,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _BotColors.ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          _ThemeChoice(
+            label: 'Light',
+            selected: value == 'light',
+            onTap: () => onChanged('light'),
+          ),
+          const SizedBox(width: 6),
+          _ThemeChoice(
+            label: 'Dark',
+            selected: value == 'dark',
+            onTap: () => onChanged('dark'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeChoice extends StatelessWidget {
+  const _ThemeChoice({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 34,
+      width: 72,
+      child: TextButton(
+        onPressed: selected ? null : onTap,
+        style: TextButton.styleFrom(
+          backgroundColor: selected ? _BotColors.ink : _BotColors.surface,
+          foregroundColor: selected ? _BotColors.surface : _BotColors.muted,
+          disabledBackgroundColor: _BotColors.ink,
+          disabledForegroundColor: _BotColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          padding: EdgeInsets.zero,
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
       ),
     );

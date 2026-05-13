@@ -1,4 +1,5 @@
 import 'package:adsw_monitor/main.dart' show AdswViewPage, MwViewPage;
+import 'package:adsw_monitor/theme/adsw_palette.dart';
 import 'package:flutter/material.dart';
 
 /// Embeds adsw_monitor's two views (AD SW + Middleware) behind a tab bar
@@ -18,12 +19,6 @@ class AdswEmbeddedPanel extends StatefulWidget {
 
 class _AdswEmbeddedPanelState extends State<AdswEmbeddedPanel>
     with SingleTickerProviderStateMixin {
-  // Mirrors AdswMonitorApp.theme in adsw_monitor/lib/main.dart.
-  static const _bg = Color(0xFF0F172A);
-  static const _accent = Color(0xFF3B82F6);
-  static const _border = Color(0xFF1E293B);
-  static const _textMuted = Color(0xFF94A3B8);
-
   late TabController _tabController;
 
   @override
@@ -40,51 +35,51 @@ class _AdswEmbeddedPanelState extends State<AdswEmbeddedPanel>
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: _bg,
-        colorScheme: const ColorScheme.dark(
-          primary: _accent,
-          secondary: Color(0xFF64748B),
-        ),
-      ),
-      child: Material(
-        color: _bg,
-        child: Column(
-          children: [
-            _tabBar(),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: const [
-                  AdswViewPage(),
-                  MwViewPage(),
-                ],
-              ),
+    return ValueListenableBuilder<AdswPalette>(
+      valueListenable: adswPaletteNotifier,
+      builder: (_, palette, __) => AdswPaletteScope(
+        palette: palette,
+        child: Theme(
+          data: palette.toThemeData(),
+          child: Material(
+            color: palette.canvas,
+            child: Column(
+              children: [
+                _tabBar(palette),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: const [
+                      AdswViewPage(),
+                      MwViewPage(),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _tabBar() {
+  Widget _tabBar(AdswPalette palette) {
     return Container(
       height: 50,
-      decoration: const BoxDecoration(
-        color: Color(0xFF111827),
-        border: Border(bottom: BorderSide(color: _border, width: 1)),
+      decoration: BoxDecoration(
+        color: palette.canvas,
+        border: Border(bottom: BorderSide(color: palette.line, width: 1)),
       ),
       child: TabBar(
         controller: _tabController,
-        indicatorColor: _accent,
+        indicatorColor: palette.primary,
         indicatorWeight: 3,
-        labelColor: Colors.white,
+        labelColor: palette.text,
         labelStyle: const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
-        unselectedLabelColor: _textMuted,
+        unselectedLabelColor: palette.muted,
         unselectedLabelStyle: const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.normal,

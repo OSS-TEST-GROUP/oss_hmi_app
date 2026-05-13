@@ -12,11 +12,16 @@ class LauncherConfig {
   /// Status heartbeat publish interval in seconds.
   final int heartbeatIntervalSec;
 
+  final String otaTheme;
+  final String adswTheme;
+
   LauncherConfig({
     required this.rosUrl,
     required this.statusTopic,
     this.rosReconnectIntervalSec = 2,
     this.heartbeatIntervalSec = 1,
+    this.otaTheme = 'light',
+    this.adswTheme = 'light',
   });
 
   factory LauncherConfig.defaults() => LauncherConfig(
@@ -33,6 +38,8 @@ class LauncherConfig {
         rosReconnectIntervalSec:
             _asPositiveInt(j['rosReconnectIntervalSec'], 2),
         heartbeatIntervalSec: _asPositiveInt(j['heartbeatIntervalSec'], 1),
+        otaTheme: _asThemeName(j['otaTheme']),
+        adswTheme: _asThemeName(j['adswTheme']),
       );
 
   static int _asPositiveInt(dynamic v, int fallback) {
@@ -43,5 +50,9 @@ class LauncherConfig {
       if (parsed != null && parsed > 0) return parsed;
     }
     return fallback;
+  }
+
+  static String _asThemeName(dynamic v) {
+    return v == 'dark' ? 'dark' : 'light';
   }
 }

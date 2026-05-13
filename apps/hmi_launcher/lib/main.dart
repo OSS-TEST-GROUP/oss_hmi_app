@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:adsw_monitor/theme/adsw_palette.dart' as adsw_theme;
+import 'package:ota_monitor/theme/app_palette.dart' as ota_theme;
 import 'package:roslibdart/roslibdart.dart';
 
 import 'domain/launcher_config.dart';
@@ -168,6 +170,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       _launcherConfig = loadedConfig;
       _rosStatus = widget.enableRos ? 'Configured' : 'Disabled';
     });
+    _syncAppThemes(loadedConfig);
     _initRosSync();
   }
 
@@ -188,6 +191,8 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       statusTopic: _launcherConfig.statusTopic,
       rosReconnectIntervalSec: _launcherConfig.rosReconnectIntervalSec,
       heartbeatIntervalSec: _launcherConfig.heartbeatIntervalSec,
+      otaTheme: _launcherConfig.otaTheme,
+      adswTheme: _launcherConfig.adswTheme,
     );
 
     setState(() {
@@ -206,6 +211,30 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
     _rosKeeper = LauncherRosKeeper(nextConfig);
     await _rosKeeper!.start();
     if (mounted) setState(() => _rosStatus = 'Configured');
+  }
+
+  Future<void> _applyAppTheme(String appId, String themeName) async {
+    final normalized = themeName == 'dark' ? 'dark' : 'light';
+    final nextConfig = LauncherConfig(
+      rosUrl: _launcherConfig.rosUrl,
+      statusTopic: _launcherConfig.statusTopic,
+      rosReconnectIntervalSec: _launcherConfig.rosReconnectIntervalSec,
+      heartbeatIntervalSec: _launcherConfig.heartbeatIntervalSec,
+      otaTheme: appId == 'ota_monitor' ? normalized : _launcherConfig.otaTheme,
+      adswTheme:
+          appId == 'adsw_monitor' ? normalized : _launcherConfig.adswTheme,
+    );
+
+    setState(() => _launcherConfig = nextConfig);
+    _syncAppThemes(nextConfig);
+    await _LauncherConfigStore.save(nextConfig);
+  }
+
+  void _syncAppThemes(LauncherConfig config) {
+    ota_theme.paletteNotifier.value =
+        ota_theme.Palette.fromName(config.otaTheme);
+    adsw_theme.adswPaletteNotifier.value =
+        adsw_theme.AdswPalette.fromName(config.adswTheme);
   }
 
   /// Registers a mock Ros instance for test environments.
@@ -231,6 +260,9 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       rosUrl: _launcherConfig.rosUrl,
       rosStatus: widget.enableRos ? _rosStatus : 'Disabled',
       onRosUrlChanged: _applyRosBridge,
+      otaTheme: _launcherConfig.otaTheme,
+      adswTheme: _launcherConfig.adswTheme,
+      onAppThemeChanged: _applyAppTheme,
     );
   }
 }
@@ -258,6 +290,8 @@ class _LauncherConfigStore {
       'statusTopic': config.statusTopic,
       'rosReconnectIntervalSec': config.rosReconnectIntervalSec,
       'heartbeatIntervalSec': config.heartbeatIntervalSec,
+      'otaTheme': config.otaTheme,
+      'adswTheme': config.adswTheme,
     });
 
     try {
