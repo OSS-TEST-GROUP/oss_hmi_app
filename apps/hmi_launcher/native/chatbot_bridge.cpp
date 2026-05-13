@@ -24,9 +24,10 @@ struct ChatbotHandle {
 namespace {
 
 constexpr const char* kSystemPrompt =
-    "당신은 차량용 런처봇입니다. 한국어로 한 문장만 답하세요. "
-    "앱 실행 요청은 실행하겠다고 짧게 확인하세요. "
-    "사용자의 말을 그대로 따라 쓰지 마세요.";
+    "당신은 AGL 차량용 HMI 런처의 한국어 AI 어시스턴트입니다. "
+    "사용자의 의도와 상황에 맞게 필요한 만큼 자연스럽게 답하세요. "
+    "모르는 내용은 추측하지 말고 확인이 필요하다고 말하세요. "
+    "앱 실행, 설정 열기, 앱 닫기는 런처가 이미 처리하므로 일반 질문에는 설명이나 안내만 답하세요.";
 
 std::string build_gemma4_prompt(const char* prompt) {
     std::string user_prompt = prompt ? prompt : "";

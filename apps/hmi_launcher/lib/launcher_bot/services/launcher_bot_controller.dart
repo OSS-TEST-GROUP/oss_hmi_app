@@ -131,10 +131,22 @@ class LauncherBotController extends ChangeNotifier {
       return true;
     }
 
-    final app = _nluRouter.resolve(input);
-    if (app != null) {
-      _onOpenApp(app);
-      _addBotMessage('${app.name}을 실행했어요.', intent: 'Open App');
+    final route = _nluRouter.resolveIntent(input);
+    if (route != null) {
+      if (route.action == NluRouteAction.close) {
+        if (_contextName == route.app.name) {
+          _onCloseApp();
+          _addBotMessage('${route.app.name}을 닫았어요.', intent: 'Close App');
+        } else {
+          _addBotMessage(
+            '${route.app.name}은 현재 열려 있지 않아요.',
+            intent: 'Close App',
+          );
+        }
+      } else {
+        _onOpenApp(route.app);
+        _addBotMessage('${route.app.name}을 실행했어요.', intent: 'Open App');
+      }
       return true;
     }
 
@@ -174,8 +186,8 @@ class LauncherBotController extends ChangeNotifier {
 
   List<String> _buildContexts() {
     return [
-      'Current launcher context: $_contextName',
-      'Local commands are handled before AI: open app, close app, settings.',
+      '현재 화면: $_contextName',
+      '앱 실행, 설정 열기, 앱 닫기는 런처가 AI 호출 전에 먼저 처리합니다.',
     ];
   }
 

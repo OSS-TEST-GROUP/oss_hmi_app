@@ -1,5 +1,14 @@
 import 'app_manifest.dart';
 
+enum NluRouteAction { open, close }
+
+class NluRouteResult {
+  const NluRouteResult({required this.action, required this.app});
+
+  final NluRouteAction action;
+  final AppManifest app;
+}
+
 /// Resolves free-form user input to a target [AppManifest] using nothing
 /// more than case-insensitive substring matching against `manifest.prompts`.
 ///
@@ -21,8 +30,15 @@ class NluRouter {
   final List<AppManifest> apps;
 
   AppManifest? resolve(String input) {
+    return resolveIntent(input)?.app;
+  }
+
+  NluRouteResult? resolveIntent(String input) {
     final query = input.trim().toLowerCase();
     if (query.isEmpty) return null;
+
+    final action =
+        _isCloseIntent(input) ? NluRouteAction.close : NluRouteAction.open;
 
     // Primary: prompt substring match (input contains a declared prompt).
     AppManifest? bestByPrompt;
@@ -42,7 +58,9 @@ class NluRouter {
         }
       }
     }
-    if (bestByPrompt != null) return bestByPrompt;
+    if (bestByPrompt != null) {
+      return NluRouteResult(action: action, app: bestByPrompt);
+    }
 
     // Fallback: match against the manifest's display name or id.
     // Either direction is accepted: a short query like "ota" opens the
@@ -67,12 +85,24 @@ class NluRouter {
       if (score < 0) continue;
       if (score > bestNameScore ||
           (score == bestNameScore &&
-              (bestByName == null ||
-                  app.id.compareTo(bestByName.id) < 0))) {
+              (bestByName == null || app.id.compareTo(bestByName.id) < 0))) {
         bestByName = app;
         bestNameScore = score;
       }
     }
-    return bestByName;
+    if (bestByName == null) return null;
+    return NluRouteResult(action: action, app: bestByName);
+  }
+
+  bool _isCloseIntent(String input) {
+    final query = input.trim().toLowerCase();
+    return query.contains('close') ||
+        query.contains('exit') ||
+        query.contains('quit') ||
+        query.contains('종료') ||
+        query.contains('닫') ||
+        query.contains('꺼') ||
+        query.contains('나가') ||
+        query.contains('뒤로');
   }
 }
