@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/app_manifest.dart';
 import '../../launcher_bot/models/launcher_bot_message.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
 
@@ -8,11 +9,15 @@ class LauncherBotPanel extends StatefulWidget {
     super.key,
     required this.controller,
     required this.selectedName,
+    required this.aiMode,
+    required this.apps,
     required this.onClose,
   });
 
   final LauncherBotController controller;
   final String selectedName;
+  final bool aiMode;
+  final List<AppManifest> apps;
   final VoidCallback onClose;
 
   @override
@@ -84,7 +89,10 @@ class _LauncherBotPanelState extends State<LauncherBotPanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _PanelHeader(
-              selectedName: widget.selectedName, onClose: widget.onClose),
+            selectedName: widget.selectedName,
+            aiMode: widget.aiMode,
+            onClose: widget.onClose,
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: _MessageList(
@@ -93,11 +101,18 @@ class _LauncherBotPanelState extends State<LauncherBotPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          _BotInput(
-            controller: _inputController,
-            enabled: !widget.controller.isGenerating,
-            onSubmit: _submit,
-          ),
+          if (widget.aiMode)
+            _BotInput(
+              controller: _inputController,
+              enabled: !widget.controller.isGenerating,
+              onSubmit: _submit,
+            )
+          else
+            _StandardCommandPanel(
+              apps: widget.apps,
+              selectedName: widget.selectedName,
+              controller: widget.controller,
+            ),
           const SizedBox(height: 8),
           _QuickCommandRow(controller: widget.controller),
         ],
@@ -107,9 +122,14 @@ class _LauncherBotPanelState extends State<LauncherBotPanel> {
 }
 
 class _PanelHeader extends StatelessWidget {
-  const _PanelHeader({required this.selectedName, required this.onClose});
+  const _PanelHeader({
+    required this.selectedName,
+    required this.aiMode,
+    required this.onClose,
+  });
 
   final String selectedName;
+  final bool aiMode;
   final VoidCallback onClose;
 
   @override
@@ -149,7 +169,9 @@ class _PanelHeader extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'Context: $selectedName',
+                  aiMode
+                      ? 'AI SDK · Context: $selectedName'
+                      : 'Standard · Local commands',
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: _BotPanelColors.muted,
@@ -165,6 +187,123 @@ class _PanelHeader extends StatelessWidget {
             tooltip: 'Close',
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StandardCommandPanel extends StatelessWidget {
+  const _StandardCommandPanel({
+    required this.apps,
+    required this.selectedName,
+    required this.controller,
+  });
+
+  final List<AppManifest> apps;
+  final String selectedName;
+  final LauncherBotController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _BotPanelColors.canvas,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: _BotPanelColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Local commands',
+            style: TextStyle(
+              color: _BotPanelColors.ink,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final app in apps)
+                _StandardCommandChip(
+                  label: '${app.name} 실행',
+                  icon: _iconForApp(app.id),
+                  onTap: () =>
+                      controller.submitLocalCommand('${app.name} 실행해줘'),
+                ),
+              _StandardCommandChip(
+                label: '설정 열기',
+                icon: Icons.settings_outlined,
+                onTap: () => controller.submitLocalCommand('설정 열어줘'),
+              ),
+              if (selectedName != 'Launcher')
+                _StandardCommandChip(
+                  label: '현재 앱 닫기',
+                  icon: Icons.close,
+                  onTap: () => controller.submitLocalCommand('닫아줘'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconForApp(String id) {
+    switch (id) {
+      case 'ota_monitor':
+        return Icons.inventory_2_outlined;
+      case 'adsw_monitor':
+        return Icons.satellite_alt_outlined;
+      default:
+        return Icons.apps_outlined;
+    }
+  }
+}
+
+class _StandardCommandChip extends StatelessWidget {
+  const _StandardCommandChip({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: _BotPanelColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _BotPanelColors.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: _BotPanelColors.accent, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _BotPanelColors.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

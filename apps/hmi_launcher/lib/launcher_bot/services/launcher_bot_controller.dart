@@ -57,13 +57,7 @@ class LauncherBotController extends ChangeNotifier {
     final input = rawInput.trim();
     if (input.isEmpty || _isGenerating) return;
 
-    _addMessage(
-      LauncherBotMessage(
-        speaker: LauncherBotSpeaker.user,
-        text: input,
-        timestamp: _nowLabel(),
-      ),
-    );
+    _addUserMessage(input);
 
     if (_handleLocalCommand(input)) return;
 
@@ -98,6 +92,25 @@ class LauncherBotController extends ChangeNotifier {
       _isGenerating = false;
       notifyListeners();
     }
+  }
+
+  void submitLocalCommand(String rawInput) {
+    final input = rawInput.trim();
+    if (input.isEmpty || _isGenerating) return;
+
+    _addUserMessage(input);
+    if (_handleLocalCommand(input)) return;
+    _addBotMessage('Standard 모드에서는 등록된 명령만 실행할 수 있어요.', intent: 'Standard');
+  }
+
+  void _addUserMessage(String input) {
+    _addMessage(
+      LauncherBotMessage(
+        speaker: LauncherBotSpeaker.user,
+        text: input,
+        timestamp: _nowLabel(),
+      ),
+    );
   }
 
   void analyzeCurrentContext() {

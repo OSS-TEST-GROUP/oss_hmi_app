@@ -93,10 +93,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _setAiMode(bool value) {
-    setState(() {
-      _aiMode = value;
-      if (!value) _assistantOpen = false;
-    });
+    setState(() => _aiMode = value);
   }
 
   void _openApp(AppManifest app) {
@@ -150,11 +147,13 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 260),
                     curve: Curves.easeOutCubic,
-                    width: _aiMode && _assistantOpen ? 440 : 0,
+                    width: _assistantOpen ? 440 : 0,
                     child: ClipRect(
                       child: LauncherBotPanel(
                         controller: _launcherBotController,
                         selectedName: selectedName,
+                        aiMode: _aiMode,
+                        apps: widget.registry.apps,
                         onClose: () => setState(() => _assistantOpen = false),
                       ),
                     ),
