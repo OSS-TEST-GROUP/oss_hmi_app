@@ -69,7 +69,6 @@ class AdswPalette {
     final base = isDark ? ThemeData.dark() : ThemeData.light();
     return base.copyWith(
       scaffoldBackgroundColor: canvas,
-      fontFamily: 'NotoSansKR',
       colorScheme: ColorScheme(
         brightness: brightness,
         primary: primary,
