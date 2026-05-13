@@ -12,8 +12,8 @@ class MockTopic extends Mock implements Topic {}
 void main() {
   late MockRos mockRos;
   late OtaCollector collector;
-  late List<MockTopic> respTopics; // 5 response topics
-  late List<MockTopic> reqTopics;  // 4 request topics
+  late List<MockTopic> respTopics; // 5 + GetAppListResponse + DeleteClientResponse = 7
+  late List<MockTopic> reqTopics;  // 4 + GetAppList + DeleteClient        = 6
 
   setUp(() {
     Get.reset();
@@ -21,12 +21,15 @@ void main() {
     mockRos = MockRos();
     Get.put<Ros>(mockRos);
 
-    // F023: OtaCollector also wires the GetAppList request + response —
-    // reserve mock slots for both. respTopics covers the 5 entries in
-    // otaResponseTopics plus GetAppListResponse (resp idx 5); reqTopics
-    // covers GetAppList (req idx 4) on top of the 4 standard requests.
-    respTopics = List.generate(6, (_) => MockTopic());
-    reqTopics  = List.generate(5, (_) => MockTopic());
+    // Mock slots cover everything OtaCollector subscribes / advertises:
+    //   - 5 otaResponseTopics
+    //   - GetAppListResponse (resp dedicated)
+    //   - DeleteOtaClientRegistrationResponse (resp dedicated)
+    //   - 4 otaRequestTopics
+    //   - GetAppList request (dedicated)
+    //   - DeleteOtaClientRegistration request (dedicated)
+    respTopics = List.generate(7, (_) => MockTopic());
+    reqTopics  = List.generate(6, (_) => MockTopic());
 
     for (final t in [...respTopics, ...reqTopics]) {
       when(() => t.subscribe(any())).thenAnswer((_) async {});
@@ -38,9 +41,10 @@ void main() {
     int reqIdx  = 0;
 
     Topic topicFactory(Ros ros, String name, String type) {
-      // F023 — GetAppList response is not in otaResponseTopics, route
-      // it explicitly so the dedicated subscription gets a real mock.
+      // Dedicated response subscriptions outside the otaResponseTopics
+      // array — route explicitly so each gets its own mock.
       if (name == otaGetAppListResTopic) return respTopics[respIdx++];
+      if (name == otaDeleteClientResTopic) return respTopics[respIdx++];
       if (otaResponseTopics.contains(name)) return respTopics[respIdx++];
       return reqTopics[reqIdx++];
     }
@@ -350,9 +354,10 @@ void main() {
         () async {
       Get.reset();
       Get.put<Ros>(mockRos);
-      // F023 — extra slots for GetAppList response + request mocks.
-      final respTopics2 = List.generate(6, (_) => MockTopic());
-      final reqTopics2 = List.generate(5, (_) => MockTopic());
+      // Extra slots for GetAppList + DeleteOtaClientRegistration mocks
+      // (response + request channels each).
+      final respTopics2 = List.generate(7, (_) => MockTopic());
+      final reqTopics2 = List.generate(6, (_) => MockTopic());
       for (final t in [...respTopics2, ...reqTopics2]) {
         when(() => t.subscribe(any())).thenAnswer((_) async {});
         when(() => t.advertise()).thenAnswer((_) async {});
@@ -362,6 +367,7 @@ void main() {
       final c = OtaCollector(
         topicFactory: (ros, name, type) {
           if (name == otaGetAppListResTopic) return respTopics2[ri++];
+          if (name == otaDeleteClientResTopic) return respTopics2[ri++];
           if (otaResponseTopics.contains(name)) return respTopics2[ri++];
           return reqTopics2[qi++];
         },

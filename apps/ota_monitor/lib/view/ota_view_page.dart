@@ -145,6 +145,10 @@ class _OtaViewPageState extends State<OtaViewPage> {
           Divider(color: p.divider, height: 1),
           Expanded(
             child: Obx(() {
+              // Touch the reactive maps so Obx rebuilds on owner / name
+              // changes too, not just on appList replacement.
+              final _ = _otaCollector.appOwnerClientIds.length +
+                  _otaCollector.clientNamesById.length;
               if (_otaCollector.appList.isEmpty) {
                 return Center(
                   child: Padding(
@@ -160,18 +164,37 @@ class _OtaViewPageState extends State<OtaViewPage> {
                   ),
                 );
               }
+
+              // Group apps by owner client_id (apps with no owner are
+              // bucketed under -1 to stay visible — happens until the
+              // first GetAppListResponse arrives or for initialApps
+              // seeded locally).
+              final byOwner = <int, List<Map<String, dynamic>>>{};
+              for (final app in _otaCollector.appList) {
+                final name = app['name'] as String;
+                final ownerId =
+                    _otaCollector.appOwnerClientIds[name] ?? -1;
+                byOwner.putIfAbsent(ownerId, () => []).add(app);
+              }
+              final ownerIds = byOwner.keys.toList()..sort();
+
               return ListView.builder(
                 padding: const EdgeInsets.all(8),
-                itemCount: _otaCollector.appList.length,
+                itemCount: ownerIds.length,
                 itemBuilder: (_, i) {
-                  final app = _otaCollector.appList[i];
-                  final name = app['name'] as String;
-                  final status = app['status'] as String? ?? 'Unknown';
-                  return _AppListTile(
-                    appName: name,
-                    status: status,
-                    isSelected: name == _selectedAppName,
-                    onTap: () => _onAppSelected(name),
+                  final ownerId = ownerIds[i];
+                  final clientName =
+                      _otaCollector.clientNamesById[ownerId];
+                  final apps = byOwner[ownerId]!;
+                  return _ClientGroupTile(
+                    clientId: ownerId,
+                    clientName: clientName,
+                    apps: apps,
+                    selectedAppName: _selectedAppName,
+                    onAppTap: _onAppSelected,
+                    onDeleteClient: ownerId >= 0
+                        ? () => _confirmDeleteClient(ownerId, clientName)
+                        : null,
                   );
                 },
               );
@@ -180,6 +203,44 @@ class _OtaViewPageState extends State<OtaViewPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDeleteClient(int clientId, String? clientName) async {
+    final p = palette;
+    final label = clientName != null && clientName.isNotEmpty
+        ? 'Client #$clientId — $clientName'
+        : 'Client #$clientId';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('Delete client',
+            style: TextStyle(color: p.textPrimary, fontSize: 18)),
+        content: Text(
+          '$label 의 등록 및 모든 앱을 삭제할까요?',
+          style: TextStyle(color: p.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('취소'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: p.error),
+            child: const Text('삭제'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      _otaCollector.deleteClient(clientId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label 삭제 요청됨')),
+        );
+      }
+    }
   }
 
   // ─── Right panel: 4 Actor cards (inline, no modal) ────────────────────────
@@ -327,6 +388,96 @@ class _Panel extends StatelessWidget {
         border: Border.all(color: p.divider, width: 1),
       ),
       child: child,
+    );
+  }
+}
+
+/// Expandable group of apps owned by a single client. Renders the
+/// header as "Client #<id> — <name>" plus a trash icon (when the
+/// client_id is valid) that asks the parent to confirm + publish
+/// DeleteOtaClientRegistration.
+class _ClientGroupTile extends StatelessWidget {
+  const _ClientGroupTile({
+    required this.clientId,
+    required this.clientName,
+    required this.apps,
+    required this.selectedAppName,
+    required this.onAppTap,
+    this.onDeleteClient,
+  });
+
+  final int clientId;
+  final String? clientName;
+  final List<Map<String, dynamic>> apps;
+  final String? selectedAppName;
+  final void Function(String appName) onAppTap;
+  final VoidCallback? onDeleteClient;
+
+  String get _headerLabel {
+    if (clientId < 0) return 'Unassigned';
+    final name = clientName;
+    return (name != null && name.isNotEmpty)
+        ? 'Client #$clientId — $name'
+        : 'Client #$clientId';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = palette;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+      ),
+      child: Container(
+        key: Key('client_group_$clientId'),
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        decoration: BoxDecoration(
+          color: p.surfaceAlt.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: ExpansionTile(
+          initiallyExpanded: true,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.only(left: 8, right: 4, bottom: 4),
+          title: Text(
+            _headerLabel,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: p.textPrimary,
+            ),
+          ),
+          subtitle: Text(
+            '${apps.length} app${apps.length == 1 ? '' : 's'}',
+            style: TextStyle(fontSize: 11, color: p.textTertiary),
+          ),
+          trailing: onDeleteClient != null
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      key: Key('btn_delete_client_$clientId'),
+                      icon: Icon(Icons.delete_outline, size: 18, color: p.error),
+                      tooltip: 'Delete this client',
+                      onPressed: onDeleteClient,
+                    ),
+                    Icon(Icons.expand_more, color: p.textTertiary, size: 20),
+                  ],
+                )
+              : null,
+          children: [
+            for (final app in apps)
+              _AppListTile(
+                appName: app['name'] as String,
+                status: app['status'] as String? ?? 'Unknown',
+                isSelected: app['name'] == selectedAppName,
+                onTap: () => onAppTap(app['name'] as String),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

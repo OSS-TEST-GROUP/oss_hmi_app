@@ -47,6 +47,16 @@ const String otaGetAppListResTopic =
 const String otaGetAppListReqType = '$_pkg/GetAppList';
 const String otaGetAppListResType = '$_pkg/GetAppListResponse';
 
+// DeleteOtaClientRegistration — operator-driven removal of an entire
+// client (and all its apps) from the Manager's persisted registry.
+// Addressed by client_id.
+const String otaDeleteClientReqTopic =
+    '/mmf/otamanager/otaactor_service/DeleteOtaClientRegistration';
+const String otaDeleteClientResTopic =
+    '/mmf/otamanager/otaactor_service/DeleteOtaClientRegistrationResponse';
+const String otaDeleteClientReqType = '$_pkg/DeleteOtaClientRegistration';
+const String otaDeleteClientResType = '$_pkg/DeleteOtaClientRegistrationResponse';
+
 // ReturnValue enum (matches otamanager/msg/ReturnValue)
 enum ReturnValue {
   unknown(0),

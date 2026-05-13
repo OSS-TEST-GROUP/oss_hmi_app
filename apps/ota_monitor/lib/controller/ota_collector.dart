@@ -124,6 +124,13 @@ class OtaCollector extends GetxController {
   Topic? _getAppListResSub;
   int _nextGetAppListId = 1;
 
+  // DeleteOtaClientRegistration — operator-driven removal of a client
+  // and all its apps, addressed by client_id. Tracked separately from
+  // the Actor pending-request map because it doesn't carry an app_name.
+  Topic? _deleteClientReqPub;
+  Topic? _deleteClientResSub;
+  int _nextDeleteClientId = 1;
+
   /// Source label for the App List (F023).
   /// 'local' until the first GetAppListResponse arrives, then 'manager'.
   final RxString appListSource = 'local'.obs;
@@ -131,6 +138,13 @@ class OtaCollector extends GetxController {
   /// Per-app owner client_id from the most recent GetAppListResponse.
   /// Used by tooltips / debug overlays in the Apps tab.
   final RxMap<String, int> appOwnerClientIds = <String, int>{}.obs;
+
+  /// (client_id -> client_name) lookup populated from
+  /// GetAppListResponse.owner_client_names. The tree view on the App
+  /// List panel uses this to label each client node. Names are
+  /// best-effort: if the Manager hasn't published one for a given id,
+  /// the entry is just absent and the UI falls back to the id alone.
+  final RxMap<int, String> clientNamesById = <int, String>{}.obs;
 
   /// Monotonic counter incremented on every successful
   /// GetAppListResponse. Lets the UI's refresh button observe whether a
@@ -248,6 +262,16 @@ class OtaCollector extends GetxController {
       await _getAppListResSub?.subscribe(
           (m) async => onGetAppListResponse(m));
 
+      // DeleteOtaClientRegistration channel — used by the App List tree
+      // trash icon to ask the Manager to forget a client + its apps.
+      _deleteClientReqPub = topicFactory(
+          r, otaDeleteClientReqTopic, otaDeleteClientReqType);
+      _deleteClientResSub = topicFactory(
+          r, otaDeleteClientResTopic, otaDeleteClientResType);
+      await _deleteClientReqPub?.advertise();
+      await _deleteClientResSub?.subscribe(
+          (m) async => onDeleteClientResponse(m));
+
       _setup = true;
       readyNotifier.value = true;
       appLog('[OTA] Topics subscribed & advertised');
@@ -357,6 +381,33 @@ class OtaCollector extends GetxController {
     return id;
   }
 
+  // ── DeleteOtaClientRegistration ──────────────────────────────────────────
+  //
+  // Asks the Manager to forget the given client_id (and all its apps).
+  // The Manager persists the change, so a successful delete also takes
+  // effect across Manager restarts. Returns the request id; the
+  // response arrives asynchronously via onDeleteClientResponse, which
+  // automatically re-issues a GetAppList so the App List tree refreshes
+  // without an extra round-trip in the UI layer.
+  int deleteClient(int clientId) {
+    final id = _nextDeleteClientId++;
+    _publish(_deleteClientReqPub, {'id': id, 'client_id': clientId});
+    appLog('[OTA] DeleteOtaClientRegistration request id=$id client_id=$clientId');
+    return id;
+  }
+
+  /// Public for unit tests; called by the rosbridge subscription in
+  /// production.
+  void onDeleteClientResponse(Map<String, dynamic> msg) {
+    final retCode = msg['ret_code'] as int?;
+    final clientId = (msg['client_id'] as num?)?.toInt();
+    appLog('[OTA] DeleteOtaClientRegistrationResponse client_id=$clientId ret=$retCode');
+    if (retCode == ReturnValue.success.value) {
+      // Refresh the tree by re-querying the authoritative app list.
+      requestAppList();
+    }
+  }
+
   /// Public for unit tests; called by the rosbridge subscription in
   /// production.
   void onGetAppListResponse(Map<String, dynamic> msg) {
@@ -368,6 +419,10 @@ class OtaCollector extends GetxController {
             ?.map((v) => (v as num).toInt())
             .toList(growable: false) ??
         const <int>[];
+    final ownerNames = (msg['owner_client_names'] as List?)
+            ?.whereType<String>()
+            .toList(growable: false) ??
+        const <String>[];
 
     appLog('[OTA] GetAppListResponse apps=${names.length}');
 
@@ -379,6 +434,7 @@ class OtaCollector extends GetxController {
     }
     appList.clear();
     final newOwners = <String, int>{};
+    final newClientNames = <int, String>{};
     for (var i = 0; i < names.length; i++) {
       final n = names[i];
       final cached = preserved[n] ?? <String, dynamic>{
@@ -389,9 +445,15 @@ class OtaCollector extends GetxController {
       };
       cached['name'] = n;
       appList.add(cached);
-      if (i < owners.length) newOwners[n] = owners[i];
+      if (i < owners.length) {
+        newOwners[n] = owners[i];
+        if (i < ownerNames.length && ownerNames[i].isNotEmpty) {
+          newClientNames[owners[i]] = ownerNames[i];
+        }
+      }
     }
     appOwnerClientIds.assignAll(newOwners);
+    clientNamesById.assignAll(newClientNames);
     appListSource.value = 'manager';
     appListGeneration.value = appListGeneration.value + 1;
   }
