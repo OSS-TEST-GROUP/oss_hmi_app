@@ -15,11 +15,17 @@ class LauncherBotShell extends StatefulWidget {
   const LauncherBotShell({
     super.key,
     required this.registry,
+    required this.rosUrl,
+    required this.rosStatus,
+    required this.onRosUrlChanged,
     this.initialAppId,
     this.panelBuilder,
   });
 
   final PluginRegistry registry;
+  final Uri rosUrl;
+  final String rosStatus;
+  final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
 
@@ -154,6 +160,9 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       panelBuilder: widget.panelBuilder,
                       onAppLaunch: _openApp,
                       onSettingsLaunch: _openSettings,
+                      rosUrl: widget.rosUrl,
+                      rosStatus: widget.rosStatus,
+                      onRosUrlChanged: widget.onRosUrlChanged,
                     ),
                   ),
                 ],
@@ -172,6 +181,9 @@ class _AppStage extends StatelessWidget {
     required this.selectedAppId,
     required this.onAppLaunch,
     required this.onSettingsLaunch,
+    required this.rosUrl,
+    required this.rosStatus,
+    required this.onRosUrlChanged,
     this.panelBuilder,
   });
 
@@ -179,6 +191,9 @@ class _AppStage extends StatelessWidget {
   final String? selectedAppId;
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
+  final Uri rosUrl;
+  final String rosStatus;
+  final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final AppPanelBuilder? panelBuilder;
 
   @override
@@ -206,7 +221,12 @@ class _AppStage extends StatelessWidget {
       );
     }
     if (selectedAppId == _SettingsPage.appId) {
-      return const _SettingsPage(key: ValueKey('settings_panel'));
+      return _SettingsPage(
+        key: const ValueKey('settings_panel'),
+        rosUrl: rosUrl,
+        rosStatus: rosStatus,
+        onRosUrlChanged: onRosUrlChanged,
+      );
     }
 
     final app = apps.firstWhere((a) => a.id == selectedAppId);
@@ -283,10 +303,77 @@ class _HomeSurface extends StatelessWidget {
   }
 }
 
-class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({super.key});
+class _SettingsPage extends StatefulWidget {
+  const _SettingsPage({
+    super.key,
+    required this.rosUrl,
+    required this.rosStatus,
+    required this.onRosUrlChanged,
+  });
 
   static const appId = '__settings__';
+
+  final Uri rosUrl;
+  final String rosStatus;
+  final Future<void> Function(Uri rosUrl) onRosUrlChanged;
+
+  @override
+  State<_SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<_SettingsPage> {
+  late final TextEditingController _bridgeIpController;
+  late final TextEditingController _portController;
+  late final TextEditingController _vehicleProfileController;
+  String? _errorText;
+  bool _applying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _bridgeIpController = TextEditingController(text: widget.rosUrl.host);
+    _portController = TextEditingController(
+      text: widget.rosUrl.hasPort ? '${widget.rosUrl.port}' : '9090',
+    );
+    _vehicleProfileController = TextEditingController(text: 'AGL demo target');
+  }
+
+  @override
+  void didUpdateWidget(covariant _SettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.rosUrl != widget.rosUrl) {
+      _bridgeIpController.text = widget.rosUrl.host;
+      _portController.text =
+          widget.rosUrl.hasPort ? '${widget.rosUrl.port}' : '9090';
+    }
+  }
+
+  @override
+  void dispose() {
+    _bridgeIpController.dispose();
+    _portController.dispose();
+    _vehicleProfileController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _apply() async {
+    final host = _bridgeIpController.text.trim();
+    final port = int.tryParse(_portController.text.trim());
+    if (host.isEmpty || port == null || port <= 0 || port > 65535) {
+      setState(() => _errorText = 'Enter a valid bridge IP and port.');
+      return;
+    }
+
+    setState(() {
+      _applying = true;
+      _errorText = null;
+    });
+    try {
+      await widget.onRosUrlChanged(Uri.parse('ws://$host:$port'));
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -296,7 +383,7 @@ class _SettingsPage extends StatelessWidget {
       child: SingleChildScrollView(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Expanded(
               flex: 6,
               child: _SettingsPanel(
@@ -304,36 +391,62 @@ class _SettingsPage extends StatelessWidget {
                 children: [
                   _SettingField(
                     label: 'Bridge IP address',
-                    initialValue: '192.168.0.10',
-                    keyboardType: TextInputType.numberWithOptions(
+                    controller: _bridgeIpController,
+                    keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   _SettingField(
                     label: 'Port',
-                    initialValue: '9090',
+                    controller: _portController,
                     keyboardType: TextInputType.number,
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   _SettingField(
                     label: 'Vehicle profile',
-                    initialValue: 'AGL demo target',
+                    controller: _vehicleProfileController,
+                  ),
+                  if (_errorText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      _errorText!,
+                      style: const TextStyle(
+                        color: Color(0xFFDC2626),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.icon(
+                      onPressed: _applying ? null : _apply,
+                      icon: _applying
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync),
+                      label: Text(_applying ? 'Applying' : 'Apply'),
+                    ),
                   ),
                 ],
               ),
             ),
-            SizedBox(width: 16),
+            const SizedBox(width: 16),
             Expanded(
               flex: 4,
               child: _SettingsPanel(
                 title: 'Runtime',
                 children: [
-                  _SettingStatus(label: 'AI SDK', value: 'Enabled'),
-                  SizedBox(height: 10),
-                  _SettingStatus(label: 'ROS bridge', value: 'Ready'),
-                  SizedBox(height: 10),
-                  _SettingStatus(label: 'Input method', value: 'Shared'),
+                  const _SettingStatus(label: 'AI SDK', value: 'Enabled'),
+                  const SizedBox(height: 10),
+                  _SettingStatus(label: 'ROS bridge', value: widget.rosStatus),
+                  const SizedBox(height: 10),
+                  const _SettingStatus(label: 'Input method', value: 'Shared'),
                 ],
               ),
             ),
@@ -594,19 +707,19 @@ class _SettingsPanel extends StatelessWidget {
 class _SettingField extends StatelessWidget {
   const _SettingField({
     required this.label,
-    required this.initialValue,
+    required this.controller,
     this.keyboardType,
   });
 
   final String label;
-  final String initialValue;
+  final TextEditingController controller;
   final TextInputType? keyboardType;
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       key: Key('settings_field_$label'),
-      initialValue: initialValue,
+      controller: controller,
       keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
