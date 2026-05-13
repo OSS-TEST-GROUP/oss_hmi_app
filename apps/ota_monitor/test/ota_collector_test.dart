@@ -12,7 +12,7 @@ class MockTopic extends Mock implements Topic {}
 void main() {
   late MockRos mockRos;
   late OtaCollector collector;
-  late List<MockTopic> respTopics; // 4 response topics (NotifyAppUpdateStatus removed)
+  late List<MockTopic> respTopics; // 5 response topics
   late List<MockTopic> reqTopics;  // 4 request topics
 
   setUp(() {
@@ -22,10 +22,10 @@ void main() {
     Get.put<Ros>(mockRos);
 
     // F023: OtaCollector also wires the GetAppList request + response —
-    // reserve mock slots for both. respTopics now also covers
-    // GetAppListResponse (resp idx 4) and reqTopics covers GetAppList
-    // (req idx 4).
-    respTopics = List.generate(5, (_) => MockTopic());
+    // reserve mock slots for both. respTopics covers the 5 entries in
+    // otaResponseTopics plus GetAppListResponse (resp idx 5); reqTopics
+    // covers GetAppList (req idx 4) on top of the 4 standard requests.
+    respTopics = List.generate(6, (_) => MockTopic());
     reqTopics  = List.generate(5, (_) => MockTopic());
 
     for (final t in [...respTopics, ...reqTopics]) {
@@ -67,7 +67,7 @@ void main() {
   // ── startTopics ──────────────────────────────────────────────────────────
 
   group('startTopics', () {
-    test('subscribes 4 response topics and advertises 4 request topics',
+    test('subscribes 5 response topics and advertises 4 request topics',
         () async {
       await initTopics();
 
@@ -150,6 +150,25 @@ void main() {
           <String, dynamic>{'app_name': 'AppB', 'ret_code': 2});
 
       expect(collector.topicData['AppB_update_result'], ReturnValue.fail);
+    });
+  });
+
+  // ── onNotifyStatus (status-only — no history) ────────────────────────────
+
+  group('onNotifyStatus', () {
+    test('updates topicData and appList status', () {
+      collector.onNotifyStatus(
+          <String, dynamic>{'app_name': 'AppC', 'status': 'downloading'});
+
+      expect(collector.topicData['AppC_status'], 'downloading');
+      final app = collector.appList.firstWhere((a) => a['name'] == 'AppC');
+      expect(app['status'], 'downloading');
+    });
+
+    test('ignores when app_name or status is null', () {
+      collector.onNotifyStatus(
+          <String, dynamic>{'app_name': null, 'status': null});
+      expect(collector.appList, isEmpty);
     });
   });
 

@@ -112,6 +112,7 @@ class OtaCollector extends GetxController {
   Topic? _setSettingsRespSub;
   Topic? _stateRespSub;
   Topic? _updateRespSub;
+  Topic? _notifyStatusSub;
 
   Topic? _settingsReqPub;
   Topic? _setSettingsReqPub;
@@ -214,11 +215,14 @@ class OtaCollector extends GetxController {
           r, otaResponseTopics[2], otaRosResponseTypes[2]);
       _updateRespSub = topicFactory(
           r, otaResponseTopics[3], otaRosResponseTypes[3]);
+      _notifyStatusSub = topicFactory(
+          r, otaResponseTopics[4], otaRosResponseTypes[4]);
 
       await _settingsRespSub?.subscribe((m) async => onSettingsResponse(m));
       await _setSettingsRespSub?.subscribe((m) async => onSetSettingsResponse(m));
       await _stateRespSub?.subscribe((m) async => onStateResponse(m));
       await _updateRespSub?.subscribe((m) async => onUpdateResponse(m));
+      await _notifyStatusSub?.subscribe((m) async => onNotifyStatus(m));
 
       // ── Advertise: request topics ────────────────────────────────────────
       _settingsReqPub = topicFactory(
@@ -319,6 +323,25 @@ class OtaCollector extends GetxController {
     }
     _emitResponse(OtaRequestKind.setUpdate, msg, matched?.id, appName,
         retCode);
+  }
+
+  /// NotifyAppUpdateStatus handler — status-only. Populates the app
+  /// list's per-app status field so the left-panel tiles can show the
+  /// live state ("downloading", "complete", "error", …) instead of
+  /// the default "Unknown".
+  ///
+  /// We intentionally keep this lean: no update history, no
+  /// per-client filtering. The Client section (lib/view/client_page.dart)
+  /// owns its own dedicated subscription via ClientServiceController for
+  /// the App Update Status card.
+  void onNotifyStatus(Map<String, dynamic> msg) {
+    appLog('[OTA] NotifyAppUpdateStatus: $msg');
+    final appName = msg['app_name'] as String?;
+    final status = msg['status'] as String?;
+    if (appName != null && status != null) {
+      topicData['${appName}_status'] = status;
+      _updateAppList(appName, status: status);
+    }
   }
 
   // ── F023: GetAppList query ───────────────────────────────────────────────
