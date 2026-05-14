@@ -637,10 +637,22 @@ class _AppRail extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          if (aiMode)
-            _RailMicButton(active: assistantOpen, onTap: onAssistantToggle)
-          else
-            const _RailUtility(icon: Icons.volume_up_outlined),
+          _RailActionButton(
+            icon: Icons.mic_none,
+            enabled: aiMode,
+            tooltip: aiMode
+                ? 'Voice command'
+                : 'Voice command is available in AI SDK mode',
+          ),
+          const SizedBox(height: 8),
+          _RailActionButton(
+            icon:
+                assistantOpen ? Icons.close : Icons.chat_bubble_outline_rounded,
+            active: assistantOpen,
+            enabled: true,
+            tooltip: assistantOpen ? 'Hide Launcher Bot' : 'Open Launcher Bot',
+            onTap: onAssistantToggle,
+          ),
           const SizedBox(height: 8),
           const _RailUtility(icon: Icons.power_settings_new),
         ],
@@ -969,39 +981,51 @@ class _RailUtility extends StatelessWidget {
   }
 }
 
-class _RailMicButton extends StatelessWidget {
-  const _RailMicButton({required this.active, required this.onTap});
+class _RailActionButton extends StatelessWidget {
+  const _RailActionButton({
+    required this.icon,
+    required this.enabled,
+    required this.tooltip,
+    this.active = false,
+    this.onTap,
+  });
 
+  final IconData icon;
   final bool active;
-  final VoidCallback onTap;
+  final bool enabled;
+  final String tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final bg = enabled
+        ? active
+            ? _BotColors.ink
+            : _BotColors.surface
+        : _BotColors.canvas;
+    final fg = enabled
+        ? active
+            ? Colors.white
+            : _BotColors.ink
+        : _BotColors.muted.withValues(alpha: 0.42);
+    final borderColor =
+        enabled ? (active ? _BotColors.ink : _BotColors.line) : _BotColors.line;
+
     return Tooltip(
-      message: active ? 'Hide Launcher Bot' : 'Open Launcher Bot',
+      message: tooltip,
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           width: 60,
-          height: 60,
+          height: 56,
           decoration: BoxDecoration(
-            color: active ? _BotColors.ink : _BotColors.accent,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x22000000),
-                blurRadius: 12,
-                offset: Offset(0, 4),
-              ),
-            ],
+            color: bg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
           ),
-          child: Icon(
-            active ? Icons.close : Icons.mic_none,
-            color: Colors.white,
-            size: active ? 24 : 30,
-          ),
+          child: Icon(icon, color: fg, size: 24),
         ),
       ),
     );

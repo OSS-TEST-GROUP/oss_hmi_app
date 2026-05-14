@@ -160,7 +160,7 @@ class _PanelHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Launcher Bot',
+                  'Launcher Agent',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: _BotPanelColors.ink,
