@@ -41,6 +41,7 @@ class LauncherBotShell extends StatefulWidget {
 
 class _LauncherBotShellState extends State<LauncherBotShell> {
   late String? _selectedAppId;
+  late final List<String> _openedAppIds;
   late NluRouter _nluRouter;
   late LauncherBotController _launcherBotController;
   bool _aiMode = true;
@@ -50,6 +51,9 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   void initState() {
     super.initState();
     _selectedAppId = widget.initialAppId;
+    _openedAppIds = [
+      if (widget.initialAppId != null) widget.initialAppId!,
+    ];
     _nluRouter = NluRouter(widget.registry.apps);
     _launcherBotController = LauncherBotController(
       nluRouter: _nluRouter,
@@ -66,6 +70,12 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     if (oldWidget.registry != widget.registry) {
       _nluRouter = NluRouter(widget.registry.apps);
       _launcherBotController.updateRouter(_nluRouter);
+      final validIds = widget.registry.apps.map((app) => app.id).toSet()
+        ..add(_SettingsPage.appId);
+      _openedAppIds.removeWhere((id) => !validIds.contains(id));
+      if (_selectedAppId != null && !validIds.contains(_selectedAppId)) {
+        _selectedAppId = _openedAppIds.isEmpty ? null : _openedAppIds.last;
+      }
     }
   }
 
@@ -96,16 +106,29 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     setState(() => _aiMode = value);
   }
 
+  void _selectOpenedApp(String appId) {
+    _openedAppIds.remove(appId);
+    _openedAppIds.add(appId);
+    _selectedAppId = appId;
+  }
+
   void _openApp(AppManifest app) {
-    setState(() => _selectedAppId = app.id);
+    setState(() => _selectOpenedApp(app.id));
   }
 
   void _openSettings() {
-    setState(() => _selectedAppId = _SettingsPage.appId);
+    setState(() => _selectOpenedApp(_SettingsPage.appId));
   }
 
   void _closeApp() {
-    setState(() => _selectedAppId = null);
+    setState(() {
+      final current = _selectedAppId;
+      if (current == null) {
+        return;
+      }
+      _openedAppIds.remove(current);
+      _selectedAppId = _openedAppIds.isEmpty ? null : _openedAppIds.last;
+    });
   }
 
   @override
@@ -161,6 +184,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                   Expanded(
                     child: _AppStage(
                       apps: widget.registry.apps,
+                      openedAppIds: _openedAppIds,
                       selectedAppId: _selectedAppId,
                       panelBuilder: widget.panelBuilder,
                       onAppLaunch: _openApp,
@@ -186,6 +210,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 class _AppStage extends StatelessWidget {
   const _AppStage({
     required this.apps,
+    required this.openedAppIds,
     required this.selectedAppId,
     required this.onAppLaunch,
     required this.onSettingsLaunch,
@@ -199,6 +224,7 @@ class _AppStage extends StatelessWidget {
   });
 
   final List<AppManifest> apps;
+  final List<String> openedAppIds;
   final String? selectedAppId;
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
@@ -212,29 +238,38 @@ class _AppStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final panel = _buildPanel();
+    final visibleIds = _visibleOpenedAppIds();
+    final selectedIndex =
+        selectedAppId == null ? 0 : 1 + visibleIds.indexOf(selectedAppId!);
+
     return Container(
       key: const Key('launcher_app_area'),
       color: _BotColors.canvas,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: panel,
+      child: IndexedStack(
+        index: selectedIndex < 0 ? 0 : selectedIndex,
+        children: [
+          _HomeSurface(
+            key: const ValueKey('home_panel'),
+            apps: apps,
+            onAppLaunch: onAppLaunch,
+            onSettingsLaunch: onSettingsLaunch,
+          ),
+          for (final appId in visibleIds) _buildPanel(appId),
+        ],
       ),
     );
   }
 
-  Widget _buildPanel() {
-    if (selectedAppId == null) {
-      return _HomeSurface(
-        key: const ValueKey('home_panel'),
-        apps: apps,
-        onAppLaunch: onAppLaunch,
-        onSettingsLaunch: onSettingsLaunch,
-      );
-    }
-    if (selectedAppId == _SettingsPage.appId) {
+  List<String> _visibleOpenedAppIds() {
+    final appIds = apps.map((app) => app.id).toSet();
+    return [
+      for (final id in openedAppIds)
+        if (id == _SettingsPage.appId || appIds.contains(id)) id,
+    ];
+  }
+
+  Widget _buildPanel(String appId) {
+    if (appId == _SettingsPage.appId) {
       return _SettingsPage(
         key: const ValueKey('settings_panel'),
         rosUrl: rosUrl,
@@ -246,7 +281,7 @@ class _AppStage extends StatelessWidget {
       );
     }
 
-    final app = apps.firstWhere((a) => a.id == selectedAppId);
+    final app = apps.firstWhere((a) => a.id == appId);
     final key = Key('app_embedded_${app.id}');
     if (panelBuilder != null) {
       return KeyedSubtree(key: key, child: panelBuilder!(app));
