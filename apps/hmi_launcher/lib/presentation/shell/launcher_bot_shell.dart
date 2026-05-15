@@ -42,6 +42,7 @@ class LauncherBotShell extends StatefulWidget {
 class _LauncherBotShellState extends State<LauncherBotShell> {
   late String? _selectedAppId;
   late final List<String> _openedAppIds;
+  late final List<String> _focusedAppIds;
   late NluRouter _nluRouter;
   late LauncherBotController _launcherBotController;
   bool _aiMode = true;
@@ -52,6 +53,9 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     super.initState();
     _selectedAppId = widget.initialAppId;
     _openedAppIds = [
+      if (widget.initialAppId != null) widget.initialAppId!,
+    ];
+    _focusedAppIds = [
       if (widget.initialAppId != null) widget.initialAppId!,
     ];
     _nluRouter = NluRouter(widget.registry.apps);
@@ -73,8 +77,9 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       final validIds = widget.registry.apps.map((app) => app.id).toSet()
         ..add(_SettingsPage.appId);
       _openedAppIds.removeWhere((id) => !validIds.contains(id));
+      _focusedAppIds.removeWhere((id) => !validIds.contains(id));
       if (_selectedAppId != null && !validIds.contains(_selectedAppId)) {
-        _selectedAppId = _openedAppIds.isEmpty ? null : _openedAppIds.last;
+        _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
       }
     }
   }
@@ -107,8 +112,11 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _selectOpenedApp(String appId) {
-    _openedAppIds.remove(appId);
-    _openedAppIds.add(appId);
+    if (!_openedAppIds.contains(appId)) {
+      _openedAppIds.add(appId);
+    }
+    _focusedAppIds.remove(appId);
+    _focusedAppIds.add(appId);
     _selectedAppId = appId;
   }
 
@@ -127,7 +135,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
         return;
       }
       _openedAppIds.remove(current);
-      _selectedAppId = _openedAppIds.isEmpty ? null : _openedAppIds.last;
+      _focusedAppIds.remove(current);
+      _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
     });
   }
 
@@ -681,15 +690,19 @@ class _AppRail extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _RailActionButton(
-            icon:
-                assistantOpen ? Icons.close : Icons.chat_bubble_outline_rounded,
+            iconWidget: assistantOpen
+                ? Transform.flip(
+                    flipX: true,
+                    child: const Icon(Icons.start_outlined),
+                  )
+                : const Icon(Icons.chat_bubble_outline_rounded),
             active: assistantOpen,
             enabled: true,
             tooltip: assistantOpen ? 'Hide Launcher Bot' : 'Open Launcher Bot',
             onTap: onAssistantToggle,
           ),
-          const SizedBox(height: 8),
-          const _RailUtility(icon: Icons.power_settings_new),
+          //const SizedBox(height: 8),
+          //const _RailUtility(icon: Icons.power_settings_new),
         ],
       ),
     );
@@ -1018,14 +1031,16 @@ class _RailUtility extends StatelessWidget {
 
 class _RailActionButton extends StatelessWidget {
   const _RailActionButton({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.enabled,
     required this.tooltip,
     this.active = false,
     this.onTap,
   });
 
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final bool active;
   final bool enabled;
   final String tooltip;
@@ -1060,7 +1075,7 @@ class _RailActionButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: borderColor),
           ),
-          child: Icon(icon, color: fg, size: 24),
+          child: iconWidget ?? Icon(icon, color: fg, size: 24),
         ),
       ),
     );

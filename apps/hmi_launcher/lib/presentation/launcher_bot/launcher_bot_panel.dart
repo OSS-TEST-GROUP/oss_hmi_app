@@ -114,7 +114,7 @@ class _LauncherBotPanelState extends State<LauncherBotPanel> {
               controller: widget.controller,
             ),
           const SizedBox(height: 8),
-          _QuickCommandRow(controller: widget.controller),
+          //_QuickCommandRow(controller: widget.controller),
         ],
       ),
     );
