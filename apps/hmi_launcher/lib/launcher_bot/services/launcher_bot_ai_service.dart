@@ -13,6 +13,8 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
   GemmaLauncherBotAiService({GemmaChatbotService? chatbotService})
       : _chatbotService = chatbotService ?? GemmaChatbotService();
 
+  static bool isAvailable() => GemmaChatbotService.isRuntimeAvailable();
+
   final GemmaChatbotService _chatbotService;
 
   @override

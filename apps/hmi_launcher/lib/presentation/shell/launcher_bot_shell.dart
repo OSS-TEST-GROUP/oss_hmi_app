@@ -45,7 +45,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   late final List<String> _focusedAppIds;
   late NluRouter _nluRouter;
   late LauncherBotController _launcherBotController;
-  bool _aiMode = true;
+  late final bool _aiSdkAvailable;
+  late bool _aiMode;
   bool _assistantOpen = false;
 
   @override
@@ -58,10 +59,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _focusedAppIds = [
       if (widget.initialAppId != null) widget.initialAppId!,
     ];
+    _aiSdkAvailable = GemmaLauncherBotAiService.isAvailable();
+    _aiMode = _aiSdkAvailable;
     _nluRouter = NluRouter(widget.registry.apps);
     _launcherBotController = LauncherBotController(
       nluRouter: _nluRouter,
-      aiService: GemmaLauncherBotAiService(),
+      aiService: _aiSdkAvailable
+          ? GemmaLauncherBotAiService()
+          : const FallbackLauncherBotAiService(),
       onOpenApp: _openApp,
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
@@ -108,6 +113,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _setAiMode(bool value) {
+    if (value && !_aiSdkAvailable) return;
     setState(() => _aiMode = value);
   }
 
@@ -162,6 +168,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                   ? Icons.settings_outlined
                   : _iconFor(selected?.id),
               aiMode: _aiMode,
+              aiSdkAvailable: _aiSdkAvailable,
               canClose: canClose,
               onClose: _closeApp,
               onModeChanged: _setAiMode,
@@ -174,6 +181,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                     openedAppIds: _openedAppIds,
                     selectedAppId: _selectedAppId,
                     aiMode: _aiMode,
+                    aiSdkAvailable: _aiSdkAvailable,
                     assistantOpen: _assistantOpen,
                     onAppSelected: (appId) {
                       setState(() => _selectOpenedApp(appId));
@@ -190,7 +198,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       child: LauncherBotPanel(
                         controller: _launcherBotController,
                         selectedName: selectedName,
-                        aiMode: _aiMode,
+                        aiMode: _aiMode && _aiSdkAvailable,
                         apps: widget.registry.apps,
                         onClose: () => setState(() => _assistantOpen = false),
                       ),
@@ -209,6 +217,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       onRosUrlChanged: widget.onRosUrlChanged,
                       otaTheme: widget.otaTheme,
                       adswTheme: widget.adswTheme,
+                      aiSdkAvailable: _aiSdkAvailable,
                       onAppThemeChanged: widget.onAppThemeChanged,
                     ),
                   ),
@@ -234,6 +243,7 @@ class _AppStage extends StatelessWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.aiSdkAvailable,
     required this.onAppThemeChanged,
     this.panelBuilder,
   });
@@ -248,6 +258,7 @@ class _AppStage extends StatelessWidget {
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final bool aiSdkAvailable;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final AppPanelBuilder? panelBuilder;
 
@@ -292,6 +303,7 @@ class _AppStage extends StatelessWidget {
         onRosUrlChanged: onRosUrlChanged,
         otaTheme: otaTheme,
         adswTheme: adswTheme,
+        aiSdkAvailable: aiSdkAvailable,
         onAppThemeChanged: onAppThemeChanged,
       );
     }
@@ -378,6 +390,7 @@ class _SettingsPage extends StatefulWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.aiSdkAvailable,
     required this.onAppThemeChanged,
   });
 
@@ -388,6 +401,7 @@ class _SettingsPage extends StatefulWidget {
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final bool aiSdkAvailable;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
 
   @override
@@ -536,7 +550,10 @@ class _SettingsPageState extends State<_SettingsPage> {
                   _SettingsPanel(
                     title: 'Runtime',
                     children: [
-                      const _SettingStatus(label: 'AI SDK', value: 'Enabled'),
+                      _SettingStatus(
+                        label: 'AI SDK',
+                        value: widget.aiSdkAvailable ? 'Enabled' : 'Disabled',
+                      ),
                       const SizedBox(height: 10),
                       _SettingStatus(
                         label: 'ROS bridge',
@@ -565,6 +582,7 @@ class _TopBar extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.aiMode,
+    required this.aiSdkAvailable,
     required this.canClose,
     required this.onClose,
     required this.onModeChanged,
@@ -574,6 +592,7 @@ class _TopBar extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final bool aiMode;
+  final bool aiSdkAvailable;
   final bool canClose;
   final VoidCallback onClose;
   final ValueChanged<bool> onModeChanged;
@@ -637,6 +656,7 @@ class _TopBar extends StatelessWidget {
           _ModeButton(
             label: 'AI SDK',
             active: aiMode,
+            enabled: aiSdkAvailable,
             onTap: () => onModeChanged(true),
           ),
         ],
@@ -651,6 +671,7 @@ class _AppRail extends StatelessWidget {
     required this.openedAppIds,
     required this.selectedAppId,
     required this.aiMode,
+    required this.aiSdkAvailable,
     required this.assistantOpen,
     required this.onAppSelected,
     required this.onAssistantToggle,
@@ -660,6 +681,7 @@ class _AppRail extends StatelessWidget {
   final List<String> openedAppIds;
   final String? selectedAppId;
   final bool aiMode;
+  final bool aiSdkAvailable;
   final bool assistantOpen;
   final ValueChanged<String> onAppSelected;
   final VoidCallback onAssistantToggle;
@@ -698,10 +720,12 @@ class _AppRail extends StatelessWidget {
           const SizedBox(height: 8),
           _RailActionButton(
             icon: Icons.mic_none,
-            enabled: aiMode,
-            tooltip: aiMode
-                ? 'Voice command'
-                : 'Voice command is available in AI SDK mode',
+            enabled: aiMode && aiSdkAvailable,
+            tooltip: aiSdkAvailable
+                ? (aiMode
+                    ? 'Voice command'
+                    : 'Voice command is available in AI SDK mode')
+                : 'AI SDK is not available in this build',
           ),
           const SizedBox(height: 8),
           _RailActionButton(
@@ -1069,16 +1093,18 @@ class _ModeButton extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    this.enabled = true,
   });
 
   final String label;
   final bool active;
+  final bool enabled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(9),
       child: Container(
         height: 36,
@@ -1092,7 +1118,11 @@ class _ModeButton extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: active ? Colors.white : _BotColors.muted,
+            color: !enabled
+                ? _BotColors.muted.withValues(alpha: 0.42)
+                : active
+                    ? Colors.white
+                    : _BotColors.muted,
             fontWeight: FontWeight.w700,
             fontSize: 12,
           ),

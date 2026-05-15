@@ -70,6 +70,10 @@ class GemmaChatbotService {
   _ChatbotWorker? _worker;
   bool _initializing = false;
 
+  static bool isRuntimeAvailable() {
+    return GemmaChatbotService()._hasRuntime();
+  }
+
   Future<String> generate(String prompt) async {
     final worker = await _ensureWorker();
     return worker.generate(prompt);
@@ -273,6 +277,19 @@ class GemmaChatbotService {
     }
 
     return _executableBundleRoot;
+  }
+
+  bool _hasRuntime() {
+    for (final candidate in _bundleRootCandidates()) {
+      final hasConfig =
+          _firstExistingPath(_configPathCandidates(candidate)) != null;
+      final hasBridge =
+          _firstExistingPath(_bridgePathCandidates(candidate)) != null;
+      if (hasConfig && hasBridge) {
+        return true;
+      }
+    }
+    return false;
   }
 
   List<Directory> _bundleRootCandidates() {
