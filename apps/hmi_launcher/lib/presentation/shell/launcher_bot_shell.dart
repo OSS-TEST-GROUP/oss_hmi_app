@@ -170,8 +170,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
               child: Row(
                 children: [
                   _AppRail(
+                    apps: widget.registry.apps,
+                    openedAppIds: _openedAppIds,
+                    selectedAppId: _selectedAppId,
                     aiMode: _aiMode,
                     assistantOpen: _assistantOpen,
+                    onAppSelected: (appId) {
+                      setState(() => _selectOpenedApp(appId));
+                    },
                     onAssistantToggle: () {
                       setState(() => _assistantOpen = !_assistantOpen);
                     },
@@ -641,17 +647,27 @@ class _TopBar extends StatelessWidget {
 
 class _AppRail extends StatelessWidget {
   const _AppRail({
+    required this.apps,
+    required this.openedAppIds,
+    required this.selectedAppId,
     required this.aiMode,
     required this.assistantOpen,
+    required this.onAppSelected,
     required this.onAssistantToggle,
   });
 
+  final List<AppManifest> apps;
+  final List<String> openedAppIds;
+  final String? selectedAppId;
   final bool aiMode;
   final bool assistantOpen;
+  final ValueChanged<String> onAppSelected;
   final VoidCallback onAssistantToggle;
 
   @override
   Widget build(BuildContext context) {
+    final runningApps = _runningApps();
+
     return Container(
       width: 84,
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 14),
@@ -661,26 +677,25 @@ class _AppRail extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _BotColors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _BotColors.line),
-            ),
-            child: const Text(
-              'AGL',
-              style: TextStyle(
-                color: _BotColors.ink,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.4,
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final app in runningApps) ...[
+                    _RailAppButton(
+                      icon: _iconFor(app.id),
+                      color: app.color,
+                      tooltip: app.name,
+                      active: selectedAppId == app.id,
+                      onTap: () => onAppSelected(app.id),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ],
               ),
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 8),
           _RailActionButton(
             icon: Icons.mic_none,
             enabled: aiMode,
@@ -693,7 +708,10 @@ class _AppRail extends StatelessWidget {
             iconWidget: assistantOpen
                 ? Transform.flip(
                     flipX: true,
-                    child: const Icon(Icons.start_outlined),
+                    child: const Icon(
+                      Icons.start_outlined,
+                      color: Colors.white,
+                    ),
                   )
                 : const Icon(Icons.chat_bubble_outline_rounded),
             active: assistantOpen,
@@ -704,6 +722,81 @@ class _AppRail extends StatelessWidget {
           //const SizedBox(height: 8),
           //const _RailUtility(icon: Icons.power_settings_new),
         ],
+      ),
+    );
+  }
+
+  List<_RailRunningApp> _runningApps() {
+    final byId = {for (final app in apps) app.id: app};
+    return [
+      for (final id in openedAppIds)
+        if (id == _SettingsPage.appId)
+          const _RailRunningApp(
+            id: _SettingsPage.appId,
+            name: 'Settings',
+            color: _BotColors.ink,
+          )
+        else if (byId[id] != null)
+          _RailRunningApp(
+            id: byId[id]!.id,
+            name: byId[id]!.name,
+            color: _parseHex(byId[id]!.color),
+          ),
+    ];
+  }
+}
+
+class _RailRunningApp {
+  const _RailRunningApp({
+    required this.id,
+    required this.name,
+    required this.color,
+  });
+
+  final String id;
+  final String name;
+  final Color color;
+}
+
+class _RailAppButton extends StatelessWidget {
+  const _RailAppButton({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: 56,
+          height: 50,
+          decoration: BoxDecoration(
+            color: active ? _BotColors.ink : _BotColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: active ? _BotColors.ink : _BotColors.line,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: active ? Colors.white : color,
+            size: 22,
+          ),
+        ),
       ),
     );
   }
@@ -1005,26 +1098,6 @@ class _ModeButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _RailUtility extends StatelessWidget {
-  const _RailUtility({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 60,
-      height: 46,
-      decoration: BoxDecoration(
-        color: _BotColors.surface,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: _BotColors.line),
-      ),
-      child: Icon(icon, color: _BotColors.muted, size: 20),
     );
   }
 }
