@@ -46,13 +46,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Flutter SDK 설치
+#
+# The container is run with an arbitrary --user (host UID/GID) so every
+# path Flutter touches at runtime (its own cache under FLUTTER_ROOT,
+# PUB_CACHE, HOME) must be writable by any UID. `chmod -R go+rwX` keeps
+# existing executable bits intact while opening write access.
 RUN git clone --depth 1 \
       --branch ${FLUTTER_VERSION} \
       https://github.com/flutter/flutter.git \
       ${FLUTTER_ROOT} && \
     flutter config --no-analytics && \
     flutter precache --linux && \
-    flutter doctor -v
+    flutter doctor -v && \
+    chmod -R go+rwX ${FLUTTER_ROOT}
 
 # 엔트리포인트 설치
 COPY docker/build-entrypoint.sh /usr/local/bin/build-entrypoint.sh

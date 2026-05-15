@@ -3,18 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
 
-const _statusText = {
-  0: 'UNKNOWN',
-  1: 'PASS',
-  2: 'FATAL',
-  3: 'WARNING',
-};
+const _statusText = {0: 'UNKNOWN', 1: 'PASS', 2: 'FATAL', 3: 'WARNING'};
 
-const _retText = {
-  0: 'UNKNOWN',
-  1: 'PASS',
-  2: 'FAIL',
-};
+const _retText = {0: 'UNKNOWN', 1: 'PASS', 2: 'FAIL'};
 
 class DiagNotificationItem {
   final int diagCode;
@@ -49,7 +40,7 @@ class MwCollector extends GetxController {
 
   final Topic Function(Ros ros, String name, String type) topicFactory;
 
-  Ros get ros => Get.find<Ros>();            
+  Ros get ros => Get.find<Ros>();
 
   final RxList<Map<String, dynamic>> diagnostics = <Map<String, dynamic>>[].obs;
   final RxList<DiagNotificationItem> notificationLogs =
@@ -110,7 +101,7 @@ class MwCollector extends GetxController {
 
       final ready = await _ensureBoundAndReady(r);
       if (!ready) {
-        lastError.value  = 'Failed to prepare diagnostic communication';
+        lastError.value = 'Failed to prepare diagnostic communication';
         return;
       }
 
@@ -135,7 +126,9 @@ class MwCollector extends GetxController {
         r = ros;
       } catch (_) {
         if (_boundRos != null || _hasAnyCommObject()) {
-          debugPrint('[MW] ROS instance unavailable. clearing connection state');
+          debugPrint(
+            '[MW] ROS instance unavailable. clearing connection state',
+          );
           _clearConnectionState(resetBoundRos: true);
         }
         return;
@@ -143,7 +136,7 @@ class MwCollector extends GetxController {
 
       final connected = r.status == Status.connected;
       final rosChanged = _boundRos == null || !identical(_boundRos, r);
-      final notReady  = !_isCommReady();
+      final notReady = !_isCommReady();
 
       if (!connected) {
         if (_boundRos != null || _hasAnyCommObject() || _advertised) {
@@ -170,20 +163,20 @@ class MwCollector extends GetxController {
 
   bool _hasAnyCommObject() {
     return _infoReqPub != null ||
-    _infoListReqPub != null ||
-    _infoRespSub != null ||
-    _infoListRespSub != null ||
-    _notificationSub != null;
+        _infoListReqPub != null ||
+        _infoRespSub != null ||
+        _infoListRespSub != null ||
+        _notificationSub != null;
   }
 
   bool _isCommReady() {
     return _boundRos != null &&
-          _infoReqPub != null &&
-          _infoListReqPub != null &&
-          _infoRespSub != null &&
-          _infoListRespSub != null &&
-          _notificationSub != null &&
-          _advertised;
+        _infoReqPub != null &&
+        _infoListReqPub != null &&
+        _infoRespSub != null &&
+        _infoListRespSub != null &&
+        _notificationSub != null &&
+        _advertised;
   }
 
   Future<bool> _ensureBoundAndReady(Ros r) async {
@@ -335,10 +328,7 @@ class MwCollector extends GetxController {
 
     try {
       debugPrint('[MW] send request code=$code name=$name');
-      await _infoReqPub!.publish({
-        'diag_code': code,
-        'diag_name': name,
-      });
+      await _infoReqPub!.publish({'diag_code': code, 'diag_name': name});
     } catch (e) {
       debugPrint('[MW] info request failed: $e');
     }
@@ -451,8 +441,9 @@ class MwCollector extends GetxController {
     final String diagName = '${msg['diag_name'] ?? ''}'.trim();
 
     final int? stat = _extractNotiStatus(msg['status']);
-    final String? statText =
-        stat != null ? (_statusText[stat] ?? '$stat') : null;
+    final String? statText = stat != null
+        ? (_statusText[stat] ?? '$stat')
+        : null;
 
     final item = DiagNotificationItem(
       diagCode: code,
@@ -466,5 +457,47 @@ class MwCollector extends GetxController {
     );
 
     notificationLogs.insert(0, item);
+    if (_isSecurityNotification(item)) {
+      securityData.value = _formatSecurityAlert(item);
+    }
+  }
+
+  bool _isSecurityNotification(DiagNotificationItem item) {
+    final haystack = [
+      item.diagName,
+      item.sourceMessageName,
+      item.message,
+      item.rawData,
+    ].join(' ').toLowerCase();
+
+    return haystack.contains('security') ||
+        haystack.contains('securitymgr') ||
+        haystack.contains('security_mgr') ||
+        haystack.contains('security manager') ||
+        haystack.contains('secmgr');
+  }
+
+  String _formatSecurityAlert(DiagNotificationItem item) {
+    final lines = <String>[
+      'Security event detected.',
+      'time: ${item.receivedAt.toIso8601String()}',
+      'diagnostic: ${item.label}',
+    ];
+
+    if (item.status != null) {
+      final status = item.statusText ?? '${item.status}';
+      lines.add('status: $status (${item.status})');
+    }
+    if (item.message.trim().isNotEmpty) {
+      lines.add('message: ${item.message}');
+    }
+    if (item.sourceMessageName.trim().isNotEmpty) {
+      lines.add('source: ${item.sourceMessageName}');
+    }
+    if (item.rawData.trim().isNotEmpty) {
+      lines.add('raw_data: ${item.rawData}');
+    }
+
+    return lines.join('\n');
   }
 }

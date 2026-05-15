@@ -18,6 +18,9 @@ import 'package:ota_monitor/view/settings_page.dart';
 import 'package:ota_monitor/view/log_overlay.dart';
 import 'package:ota_monitor/theme/app_palette.dart';
 
+// L009: Export view widget for launcher embedding
+export 'view/ota_view_page.dart' show OtaViewPage;
+
 late AppConfig appConfig;
 String? startupConfigWarning;
 

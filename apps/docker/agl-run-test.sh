@@ -28,17 +28,21 @@ fi
 # Weston 컴포지터 시작
 # VNC_PORT가 설정되면 VNC 백엔드(libneatvnc, SHM 불필요), 없으면 헤드리스
 VNC_PORT=${VNC_PORT:-0}
-WESTON_WIDTH=${WESTON_WIDTH:-1920}
+WESTON_WIDTH=${WESTON_WIDTH:-1280}
 WESTON_HEIGHT=${WESTON_HEIGHT:-720}
+WESTON_REFRESH=${WESTON_REFRESH:-30000}   # mHz (30 Hz). Caps flutter vsync → fewer frames to render+encode
 
 if [ "${VNC_PORT}" -gt 0 ] 2>/dev/null; then
     # LISTEN 상태 포트만 확인 (TIME_WAIT 등 제외)
     if ss -tlnH 2>/dev/null | awk '{print $4}' | grep -q ":${VNC_PORT}$"; then
-        echo "[ERROR] 포트 ${VNC_PORT}이 이미 사용 중입니다. 기존 컨테이너를 먼저 중지하세요:"
-        echo "        docker stop adsw_monitor_arm64_test"
+        echo "[ERROR] 포트 ${VNC_PORT}이 이미 사용 중입니다."
+        echo "        실행 중인 arm64 테스트 컨테이너 확인:"
+        echo "          docker ps | grep arm64_test"
+        echo "        중지 예시:"
+        echo "          docker rm -f hmi_launcher_arm64_test"
         exit 1
     fi
-    echo "[INFO] Weston VNC 백엔드 시작 (포트 ${VNC_PORT}, ${WESTON_WIDTH}x${WESTON_HEIGHT})..."
+    echo "[INFO] Weston VNC 백엔드 시작 (포트 ${VNC_PORT}, ${WESTON_WIDTH}x${WESTON_HEIGHT}, ${WESTON_REFRESH}mHz)..."
     # VNC 백엔드는 TLS 인증서 필수 — 자체서명 인증서 생성
     VNC_TLS_DIR="/tmp/weston-vnc-tls"
     mkdir -p "${VNC_TLS_DIR}"
@@ -47,14 +51,37 @@ if [ "${VNC_PORT}" -gt 0 ] 2>/dev/null; then
         -out "${VNC_TLS_DIR}/cert.pem" \
         -subj "/CN=weston-vnc" \
         2>/dev/null
+
+    # Weston config: cap refresh rate to reduce frames rendered per second.
+    # The VNC backend names its output 'vnc' (verified from weston log).
+    WESTON_CFG="/tmp/weston-test.ini"
+    cat > "${WESTON_CFG}" <<WINI
+[output]
+name=vnc
+refresh=${WESTON_REFRESH}
+WINI
+
+    # Use GL renderer (llvmpipe JIT via libgl1-mesa-dri) when the swrast DRI
+    # driver is present; fall back to pixman otherwise.
+    if [ -f "/usr/lib/aarch64-linux-gnu/dri/swrast_dri.so" ]; then
+        WESTON_RENDERER=gl
+        echo "[INFO] renderer=gl (llvmpipe)"
+    else
+        WESTON_RENDERER=pixman
+        echo "[INFO] renderer=pixman (swrast DRI not found)"
+    fi
+
     env -u LIBGL_ALWAYS_SOFTWARE -u MESA_LOADER_DRIVER_OVERRIDE \
+        LIBGL_ALWAYS_SOFTWARE=1 \
+        GALLIUM_DRIVER=llvmpipe \
+        LP_NUM_THREADS="${LP_NUM_THREADS:-8}" \
     weston --backend=vnc-backend.so \
-           --renderer=pixman \
+           --renderer="${WESTON_RENDERER}" \
            --width="${WESTON_WIDTH}" \
            --height="${WESTON_HEIGHT}" \
            --socket="${WAYLAND_DISPLAY}" \
            --idle-time=0 \
-           --no-config \
+           --config="${WESTON_CFG}" \
            --port="${VNC_PORT}" \
            --vnc-tls-cert="${VNC_TLS_DIR}/cert.pem" \
            --vnc-tls-key="${VNC_TLS_DIR}/key.pem" &
@@ -91,10 +118,14 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# flutter-auto: QEMU arm64 이진, GPU 없을 때 소프트웨어 렌더링 강제
-exec env LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1} \
-         MESA_LOADER_DRIVER_OVERRIDE=${MESA_LOADER_DRIVER_OVERRIDE:-softpipe} \
+# flutter-auto: software GL via llvmpipe (LLVM JIT, multi-threaded).
+# LP_NUM_THREADS lets llvmpipe use multiple cores for tile rasterization.
+exec env LIBGL_ALWAYS_SOFTWARE=1 \
+         GALLIUM_DRIVER=llvmpipe \
+         LP_NUM_THREADS="${LP_NUM_THREADS:-8}" \
     /usr/bin/flutter-auto \
     -b "${BUNDLE_PATH}" \
     --xdg-shell-app-id "${APP_NAME}" \
+    --width="${WESTON_WIDTH}" \
+    --height="${WESTON_HEIGHT}" \
     "$@"

@@ -1,0 +1,19 @@
+{
+  "type": "llamacpp",
+  "model_path": "models/gemma-4-E2B-it-Q4_K_M.gguf",
+  "mmproj_path": "models/mmproj-gemma-4-E2B-it-bf16.gguf",
+  "llamacpp_mmproj_path": "models/mmproj-gemma-4-E2B-it-bf16.gguf",
+  "model_template": "gemma",
+  "max_tokens": 96,
+  "temperature": 0.4,
+  "llamacpp": {
+    "n_ctx": 2048,
+    "n_batch": 512,
+    "n_gpu_layers": 0,
+    "n_threads": 0,
+    "mmproj_path": "models/mmproj-gemma-4-E2B-it-bf16.gguf",
+    "mm_projector_path": "models/mmproj-gemma-4-E2B-it-bf16.gguf",
+    "flash_attn": false,
+    "chat_template": "__raw_gemma4__"
+  }
+}

@@ -30,12 +30,15 @@ FROM --platform=linux/arm64 ubuntu:22.04
 
 ARG APP_NAME=adsw_monitor
 ARG APP_VERSION=3.32.2
+ARG CONFIG_FILE=config.json
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV APP_NAME=${APP_NAME}
 ENV APP_VERSION=${APP_VERSION}
+ENV CONFIG_FILE=${CONFIG_FILE}
 ENV BUNDLE_PATH=/usr/share/flutter/${APP_NAME}/${APP_VERSION}/release
 ENV XDG_RUNTIME_DIR=/run/user/1001
+ENV HMI_APPS_ROOT=/apps
 
 # Install AGL flutter-auto runtime dependencies.
 # (GTK not needed — flutter-auto is Wayland/EGL based.)
@@ -68,8 +71,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     lib/libflutter_engine.so
 ADD output/${APP_NAME}-arm64-release.tar.gz /
 
-# Bake config.json into the image (can be overridden at runtime via volume).
-COPY ${APP_NAME}/config/config.json ${BUNDLE_PATH}/data/flutter_assets/assets/config/config.json
+# Bake the app config into the image (can be overridden at runtime via
+# volume). CONFIG_FILE defaults to config.json for adsw / ota; hmi_launcher
+# passes launcher_config.json via the --build-arg.
+COPY ${APP_NAME}/config/${CONFIG_FILE} ${BUNDLE_PATH}/data/flutter_assets/assets/config/${CONFIG_FILE}
+
+# Plugin manifests: hmi_launcher scans HMI_APPS_ROOT for <app>/manifest.json.
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor
+COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
+COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
 
 # flutter-auto entrypoint script.
 # The flutter-auto binary is expected to be mounted from the host, or it
