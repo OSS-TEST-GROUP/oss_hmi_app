@@ -12,14 +12,20 @@ typedef TopicFactory = Topic Function(Ros ros, String name, String type);
 ///
 /// Subscribes to:
 ///   - NotifyServiceState              (real-time state transitions; crash events)
+///   - NotifyContainerState            (F013: container start/stop transitions)
 ///   - GetServiceStateResponse         (poll cycle; full snapshot)
 ///   - UpdateServiceListResponse       (registry confirms)
-///   - StartServiceResponse / StopServiceResponse / SetServiceModeResponse (control acks)
 ///   - LifecycleDiagReport             (periodic richer status)
+///   - ctrl/{StartService,StopService,SetServiceMode,StartContainer,
+///          StopContainer}Response     (F013: ctrl/* gate acks)
 ///
 /// Publishes:
 ///   - GetServiceStateRequest          (poll triggered by [pollIntervalSec])
-///   - StartServiceRequest / StopServiceRequest / SetServiceModeRequest (user actions)
+///   - ctrl/{StartService,StopService,SetServiceMode,StartContainer,
+///          StopContainer}             (F013: user-initiated mutations go
+///                                       through lifecycle_mgr's policy gate
+///                                       rather than the actuator topics
+///                                       directly)
 ///
 /// State is exposed as Rx maps/lists so the view can rebuild via Obx().
 class LifecycleCollector extends GetxController {
@@ -32,8 +38,14 @@ class LifecycleCollector extends GetxController {
   final TopicFactory topicFactory;
 
   // ─── Public observable state ────────────────────────────────────────────
-  /// service_name → ServiceInfo (state, recovery, exit_code).
+  /// service_name → ServiceInfo (state, recovery, exit_code, containerName).
   final RxMap<String, ServiceInfo> services = <String, ServiceInfo>{}.obs;
+
+  /// F013: container_name → ContainerInfo (state, exit_code, ...).
+  /// Currently populated incrementally from NotifyContainerState arrivals.
+  /// image/deploy_file/namespace stay blank until the inventory channel
+  /// reaches us — see TODO at the subscription site.
+  final RxMap<String, ContainerInfo> containers = <String, ContainerInfo>{}.obs;
 
   /// Newest-first ring of recent lifecycle events.
   final RxList<LifecycleEvent> events = <LifecycleEvent>[].obs;
@@ -46,17 +58,26 @@ class LifecycleCollector extends GetxController {
 
   // ─── Internal subscriptions / publishers ────────────────────────────────
   Topic? _notifyStateSub;
+  Topic? _notifyContainerStateSub;
   Topic? _getStateRespSub;
   Topic? _updateListRespSub;
-  Topic? _startRespSub;
-  Topic? _stopRespSub;
-  Topic? _setModeRespSub;
   Topic? _diagReportSub;
+  // F013: ctrl/* response subscriptions (one per command shape).
+  Topic? _ctrlStartServiceRespSub;
+  Topic? _ctrlStopServiceRespSub;
+  Topic? _ctrlSetServiceModeRespSub;
+  Topic? _ctrlStartContainerRespSub;
+  Topic? _ctrlStopContainerRespSub;
 
   Topic? _getStateReqPub;
-  Topic? _startReqPub;
-  Topic? _stopReqPub;
-  Topic? _setModeReqPub;
+  // F013: ctrl/* request publishers — replace direct Start/Stop/SetMode
+  // publishers from the F012 baseline.  All mutations now route through
+  // lifecycle_mgr's policy gate.
+  Topic? _ctrlStartServiceReqPub;
+  Topic? _ctrlStopServiceReqPub;
+  Topic? _ctrlSetServiceModeReqPub;
+  Topic? _ctrlStartContainerReqPub;
+  Topic? _ctrlStopContainerReqPub;
 
   Timer? _rosWatchdog;
   Timer? _pollTimer;
@@ -89,32 +110,50 @@ class LifecycleCollector extends GetxController {
     _boundRos = r;
     connected.value = true;
 
-    // Subscribe topics (lifecycle_mgr → us)
-    _notifyStateSub   = topicFactory(r, LifecycleTopics.notifyServiceState,  LifecycleTypes.notifyServiceState);
-    _getStateRespSub  = topicFactory(r, LifecycleTopics.getStateResponse,    LifecycleTypes.getStateResponse);
-    _updateListRespSub= topicFactory(r, LifecycleTopics.updateListResponse,  LifecycleTypes.updateListResponse);
-    _startRespSub     = topicFactory(r, LifecycleTopics.startResponse,       LifecycleTypes.startResponse);
-    _stopRespSub      = topicFactory(r, LifecycleTopics.stopResponse,        LifecycleTypes.stopResponse);
-    _setModeRespSub   = topicFactory(r, LifecycleTopics.setModeResponse,     LifecycleTypes.setModeResponse);
-    _diagReportSub    = topicFactory(r, LifecycleTopics.diagReport,          LifecycleTypes.diagReport);
+    // ── Subscribe (lifecycle_mgr / adsw_manager → us) ─────────────────────
+    _notifyStateSub          = topicFactory(r, LifecycleTopics.notifyServiceState,    LifecycleTypes.notifyServiceState);
+    _notifyContainerStateSub = topicFactory(r, LifecycleTopics.notifyContainerState,  LifecycleTypes.notifyContainerState);
+    _getStateRespSub         = topicFactory(r, LifecycleTopics.getStateResponse,      LifecycleTypes.getStateResponse);
+    _updateListRespSub       = topicFactory(r, LifecycleTopics.updateListResponse,    LifecycleTypes.updateListResponse);
+    _diagReportSub           = topicFactory(r, LifecycleTopics.diagReport,            LifecycleTypes.diagReport);
+
+    // F013: ctrl/* response acks. All five payloads share CtrlResponse, so
+    // the dart-side handler is just a `kind → label` switch.
+    _ctrlStartServiceRespSub    = topicFactory(r, LifecycleTopics.ctrlStartServiceResp,    LifecycleTypes.ctrlResponse);
+    _ctrlStopServiceRespSub     = topicFactory(r, LifecycleTopics.ctrlStopServiceResp,     LifecycleTypes.ctrlResponse);
+    _ctrlSetServiceModeRespSub  = topicFactory(r, LifecycleTopics.ctrlSetServiceModeResp,  LifecycleTypes.ctrlResponse);
+    _ctrlStartContainerRespSub  = topicFactory(r, LifecycleTopics.ctrlStartContainerResp,  LifecycleTypes.ctrlResponse);
+    _ctrlStopContainerRespSub   = topicFactory(r, LifecycleTopics.ctrlStopContainerResp,   LifecycleTypes.ctrlResponse);
 
     await _notifyStateSub!.subscribe(_onNotifyServiceState);
+    await _notifyContainerStateSub!.subscribe(_onNotifyContainerState);
     await _getStateRespSub!.subscribe(_onGetStateResponse);
     await _updateListRespSub!.subscribe(_onUpdateListResponse);
-    await _startRespSub!.subscribe((m) async => _onCommandResponse(LifecycleEventKind.startResponse, m));
-    await _stopRespSub!.subscribe((m) async => _onCommandResponse(LifecycleEventKind.stopResponse, m));
-    await _setModeRespSub!.subscribe((m) async => _onCommandResponse(LifecycleEventKind.setModeResponse, m));
     await _diagReportSub!.subscribe(_onDiagReport);
+    await _ctrlStartServiceRespSub!.subscribe(
+        (m) async => _onCommandResponse(LifecycleEventKind.ctrlStartServiceResponse, m));
+    await _ctrlStopServiceRespSub!.subscribe(
+        (m) async => _onCommandResponse(LifecycleEventKind.ctrlStopServiceResponse, m));
+    await _ctrlSetServiceModeRespSub!.subscribe(
+        (m) async => _onCommandResponse(LifecycleEventKind.ctrlSetServiceModeResponse, m));
+    await _ctrlStartContainerRespSub!.subscribe(
+        (m) async => _onCommandResponse(LifecycleEventKind.ctrlStartContainerResponse, m));
+    await _ctrlStopContainerRespSub!.subscribe(
+        (m) async => _onCommandResponse(LifecycleEventKind.ctrlStopContainerResponse, m));
 
-    // Publish topics (us → lifecycle_mgr)
-    _getStateReqPub = topicFactory(r, LifecycleTopics.getStateRequest, LifecycleTypes.getStateRequest);
-    _startReqPub    = topicFactory(r, LifecycleTopics.startRequest,    LifecycleTypes.startRequest);
-    _stopReqPub     = topicFactory(r, LifecycleTopics.stopRequest,     LifecycleTypes.stopRequest);
-    _setModeReqPub  = topicFactory(r, LifecycleTopics.setModeRequest,  LifecycleTypes.setModeRequest);
-    try { await _getStateReqPub?.advertise(); } catch (_) {}
-    try { await _startReqPub?.advertise();    } catch (_) {}
-    try { await _stopReqPub?.advertise();     } catch (_) {}
-    try { await _setModeReqPub?.advertise();  } catch (_) {}
+    // ── Publish (us → lifecycle_mgr) ──────────────────────────────────────
+    _getStateReqPub          = topicFactory(r, LifecycleTopics.getStateRequest,         LifecycleTypes.getStateRequest);
+    _ctrlStartServiceReqPub  = topicFactory(r, LifecycleTopics.ctrlStartServiceReq,     LifecycleTypes.ctrlStartServiceReq);
+    _ctrlStopServiceReqPub   = topicFactory(r, LifecycleTopics.ctrlStopServiceReq,      LifecycleTypes.ctrlStopServiceReq);
+    _ctrlSetServiceModeReqPub= topicFactory(r, LifecycleTopics.ctrlSetServiceModeReq,   LifecycleTypes.ctrlSetServiceModeReq);
+    _ctrlStartContainerReqPub= topicFactory(r, LifecycleTopics.ctrlStartContainerReq,   LifecycleTypes.ctrlStartContainerReq);
+    _ctrlStopContainerReqPub = topicFactory(r, LifecycleTopics.ctrlStopContainerReq,    LifecycleTypes.ctrlStopContainerReq);
+    try { await _getStateReqPub?.advertise();           } catch (_) {}
+    try { await _ctrlStartServiceReqPub?.advertise();   } catch (_) {}
+    try { await _ctrlStopServiceReqPub?.advertise();    } catch (_) {}
+    try { await _ctrlSetServiceModeReqPub?.advertise(); } catch (_) {}
+    try { await _ctrlStartContainerReqPub?.advertise(); } catch (_) {}
+    try { await _ctrlStopContainerReqPub?.advertise();  } catch (_) {}
 
     // Kick off the poll timer
     _pollTimer?.cancel();
@@ -154,6 +193,40 @@ class LifecycleCollector extends GetxController {
   Future<void> _onGetStateResponse(Map<String, dynamic> msg) async {
     // Same payload shape as NotifyServiceState for the GUI's purposes.
     await _onNotifyServiceState(msg);
+  }
+
+  // F013: NotifyContainerState arrives whenever ContainerHealthMonitor sees
+  // a container transition. Payload is parallel arrays
+  // {container_list, container_state_list, exit_code_list}, same shape as
+  // NotifyServiceState but for the container surface.
+  Future<void> _onNotifyContainerState(Map<String, dynamic> msg) async {
+    final list   = (msg['container_list']       as List?)?.cast<dynamic>() ?? const [];
+    final states = (msg['container_state_list'] as List?)?.cast<dynamic>() ?? const [];
+    final exits  = (msg['exit_code_list']       as List?)?.cast<dynamic>() ?? const [];
+    final n = list.length < states.length ? list.length : states.length;
+    for (int i = 0; i < n; i++) {
+      final name = list[i].toString();
+      final newState = ContainerState.fromInt((states[i] as num?)?.toInt());
+      final info = containers[name] ?? ContainerInfo(name: name);
+      final prevState = info.state;
+      info.state = newState;
+      info.exitCode = (i < exits.length) ? (exits[i] as num?)?.toInt() : info.exitCode;
+      info.lastChangedAt = DateTime.now();
+      containers[name] = info;
+      if (prevState != newState) {
+        _pushEvent(LifecycleEvent(
+          timestamp: DateTime.now(),
+          serviceName: name,           // overloaded — could split to a dedicated
+                                       // `target` field; keep tight for now.
+          from: ServiceState.unknown,  // container state ≠ service state; use
+                                       // unknown sentinels in the legacy field.
+          to: ServiceState.unknown,
+          kind: LifecycleEventKind.containerStateChange,
+          detail: '${prevState.label} → ${newState.label}',
+        ));
+      }
+    }
+    containers.refresh();
   }
 
   Future<void> _onUpdateListResponse(Map<String, dynamic> msg) async {
@@ -233,28 +306,42 @@ class LifecycleCollector extends GetxController {
     }
   }
 
+  // F013: all mutation commands route through ctrl/* so lifecycle_mgr can
+  // policy-gate (e.g. reject if a service is in OTA_MODE). The actuator
+  // topic shape (with os_type / is_group) is no longer used from here —
+  // lifecycle_mgr's StateManager re-derives those from its registry.
+
   void startService(String name) {
-    _publish(_startReqPub, 'start', {
-      'os_type': OsType.ros2.value,
+    _publish(_ctrlStartServiceReqPub, 'ctrlStartService', {
       'service_list': [name],
-      'is_group': false,
     });
   }
 
   void stopService(String name) {
-    _publish(_stopReqPub, 'stop', {
-      'os_type': OsType.ros2.value,
+    _publish(_ctrlStopServiceReqPub, 'ctrlStopService', {
       'service_list': [name],
-      'is_group': false,
     });
   }
 
   void setServiceMode(String name, ServiceMode mode) {
-    _publish(_setModeReqPub, 'setMode', {
-      'os_type': OsType.ros2.value,
+    _publish(_ctrlSetServiceModeReqPub, 'ctrlSetServiceMode', {
       'service_list': [name],
-      'is_group': false,
       'service_mode': mode.value,
+    });
+  }
+
+  // F013: container-level commands. Container is identified by name only;
+  // lifecycle_mgr's StateManager looks the type up in its registry to know
+  // which docker / docker-compose / k3s op to issue via adsw_manager.
+  void startContainer(String name) {
+    _publish(_ctrlStartContainerReqPub, 'ctrlStartContainer', {
+      'container_list': [name],
+    });
+  }
+
+  void stopContainer(String name) {
+    _publish(_ctrlStopContainerReqPub, 'ctrlStopContainer', {
+      'container_list': [name],
     });
   }
 

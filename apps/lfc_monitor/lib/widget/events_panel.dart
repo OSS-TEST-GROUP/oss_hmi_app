@@ -95,7 +95,16 @@ class _EventRow extends StatelessWidget {
       case LifecycleEventKind.stopResponse:
       case LifecycleEventKind.setModeResponse:
       case LifecycleEventKind.updateList:
+      case LifecycleEventKind.ctrlStartServiceResponse:
+      case LifecycleEventKind.ctrlStopServiceResponse:
+      case LifecycleEventKind.ctrlSetServiceModeResponse:
+      case LifecycleEventKind.ctrlStartContainerResponse:
+      case LifecycleEventKind.ctrlStopContainerResponse:
         text = '${event.kind.name}  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.containerStateChange:
+        text = 'container ${event.serviceName}: ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
     }
