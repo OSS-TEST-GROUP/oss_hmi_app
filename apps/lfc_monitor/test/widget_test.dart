@@ -7,6 +7,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lfc_monitor/config/app_config.dart';
+import 'package:lfc_monitor/controller/settings_controller.dart';
 import 'package:lfc_monitor/data/lifecycle_data.dart';
 
 void main() {
@@ -15,6 +16,25 @@ void main() {
     expect(cfg.rosUrl.toString(), 'ws://127.0.0.1:9090');
     expect(cfg.statusTopic, '/app_status/lfc_monitor');
     expect(cfg.pollIntervalSec, 5);
+    expect(cfg.theme, 'dark');
+  });
+
+  test('AppConfig.copyWith only swaps named fields', () {
+    final base = AppConfig.defaults();
+    final next = base.copyWith(theme: 'light', rosUrl: Uri.parse('ws://10.0.0.1:9090'));
+    expect(next.theme, 'light');
+    expect(next.rosUrl.toString(), 'ws://10.0.0.1:9090');
+    expect(next.statusTopic, base.statusTopic);
+    expect(next.pollIntervalSec, base.pollIntervalSec);
+    expect(next.knownServices, same(base.knownServices));
+  });
+
+  test('AppConfig.fromJson honors theme key', () {
+    final j = AppConfig.fromJson(<String, dynamic>{'theme': 'light'});
+    expect(j.theme, 'light');
+    // Missing theme → defaults to dark for backward compat.
+    final j2 = AppConfig.fromJson(const <String, dynamic>{});
+    expect(j2.theme, 'dark');
   });
 
   test('ServiceState.fromInt maps IDL declaration order', () {
@@ -33,5 +53,61 @@ void main() {
     expect(ServiceMode.fromInt(0), ServiceMode.normal);
     expect(ServiceMode.fromInt(1), ServiceMode.otaMode);
     expect(ServiceMode.fromInt(null), ServiceMode.normal);
+  });
+
+  test('ContainerState.fromInt maps IDL declaration order', () {
+    expect(ContainerState.fromInt(0), ContainerState.unknownState);
+    expect(ContainerState.fromInt(1), ContainerState.stopped);
+    expect(ContainerState.fromInt(2), ContainerState.running);
+    expect(ContainerState.fromInt(3), ContainerState.paused);
+    expect(ContainerState.fromInt(99), ContainerState.unknownState);
+    expect(ContainerState.fromInt(null), ContainerState.unknownState);
+  });
+
+  test('ContainerType.fromInt maps IDL declaration order', () {
+    expect(ContainerType.fromInt(0), ContainerType.unknownType);
+    expect(ContainerType.fromInt(1), ContainerType.docker);
+    expect(ContainerType.fromInt(2), ContainerType.dockerCompose);
+    expect(ContainerType.fromInt(3), ContainerType.k3s);
+    expect(ContainerType.fromInt(99), ContainerType.unknownType);
+  });
+
+  test('LifecycleTopics carry the F013 ctrl/* + container surface', () {
+    // Pin the wire topic strings — these must stay byte-identical with
+    // lifecycle_mgr's MessageType::GetTopicStr() and the dds_bridge
+    // entries in service/extension/ros2/ext_comm/dds_bridge/main.cc.
+    expect(LifecycleTopics.notifyContainerState,
+        '/mmf/lifecyclemgr/NotifyContainerState');
+    expect(LifecycleTopics.ctrlStartServiceReq,
+        '/mmf/lifecyclemgr/ctrl/StartService');
+    expect(LifecycleTopics.ctrlStartServiceResp,
+        '/mmf/lifecyclemgr/ctrl/StartServiceResponse');
+    expect(LifecycleTopics.ctrlSetServiceModeReq,
+        '/mmf/lifecyclemgr/ctrl/SetServiceMode');
+    expect(LifecycleTopics.ctrlStartContainerReq,
+        '/mmf/lifecyclemgr/ctrl/StartContainer');
+    expect(LifecycleTopics.ctrlStopContainerResp,
+        '/mmf/lifecyclemgr/ctrl/StopContainerResponse');
+  });
+
+  test('LifecycleTypes carry the F013 ROS msg names', () {
+    expect(LifecycleTypes.notifyContainerState, 'lifecyclemgr/NotifyContainerState');
+    // All five ctrl/* responses share CtrlResponse on the wire.
+    expect(LifecycleTypes.ctrlResponse, 'lifecyclemgr/CtrlResponse');
+    expect(LifecycleTypes.ctrlStartContainerReq,
+        'lifecyclemgr/CtrlStartContainerRequest');
+  });
+
+  test('SettingsController.isValidUrl accepts ws/wss only', () {
+    expect(SettingsController.isValidUrl('ws://127.0.0.1:9090'), isTrue);
+    expect(SettingsController.isValidUrl('wss://host.example/ros'), isTrue);
+    expect(SettingsController.isValidUrl('ws://host'), isTrue);
+    // Negative cases.
+    expect(SettingsController.isValidUrl(''), isFalse);
+    expect(SettingsController.isValidUrl('http://host:9090'), isFalse);
+    expect(SettingsController.isValidUrl('//host:9090'), isFalse);
+    expect(SettingsController.isValidUrl('ws:/host'), isFalse);
+    // Oversized URL.
+    expect(SettingsController.isValidUrl('ws://${'x' * 2100}'), isFalse);
   });
 }

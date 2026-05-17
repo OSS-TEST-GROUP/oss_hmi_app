@@ -261,12 +261,20 @@ class LifecycleCollector extends GetxController {
       final name = (entry['name'] ?? entry['service_name'] ?? '').toString();
       if (name.isEmpty) continue;
       final info = services[name] ?? ServiceInfo(name: name);
-      final stateInt = (entry['state'] as num?)?.toInt();
+      // service_state matches the IDL field name; legacy `state` retained
+      // as a fallback in case the bridge sends a flattened payload.
+      final stateInt =
+          (entry['service_state'] as num?)?.toInt() ?? (entry['state'] as num?)?.toInt();
       if (stateInt != null) info.state = ServiceState.fromInt(stateInt);
       final recovery = entry['recovery_policy'];
       if (recovery is num) info.recoveryPolicy = _recoveryLabel(recovery.toInt());
       final ec = entry['exit_code'];
       if (ec is num) info.exitCode = ec.toInt();
+      // F013/F014 follow-up: ServiceStatus now carries container_name from
+      // lifecycle_mgr, so the ServicesPanel filter against a selected
+      // container actually has something to match against.
+      final cn = entry['container_name'];
+      if (cn is String) info.containerName = cn;
       services[name] = info;
     }
     services.refresh();
