@@ -43,3 +43,19 @@ Color stateColor(ServiceState s, LfcPalette p) {
       return p.subtext;
   }
 }
+
+/// F013: container-state hint, intentionally close to service stateColor so
+/// the two badges look related but reuses dedicated values for the new
+/// states (paused has no service-side counterpart).
+Color containerStateColor(ContainerState s, LfcPalette p) {
+  switch (s) {
+    case ContainerState.running:
+      return const Color(0xFF4CAF50);
+    case ContainerState.paused:
+      return const Color(0xFFFFC107);
+    case ContainerState.stopped:
+      return const Color(0xFFF44336);
+    case ContainerState.unknownState:
+      return p.subtext;
+  }
+}

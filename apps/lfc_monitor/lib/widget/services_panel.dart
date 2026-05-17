@@ -15,12 +15,19 @@ class ServicesPanel extends StatelessWidget {
     required this.palette,
     this.onTapService,
     this.selectedService,
+    this.filterContainer,
   });
 
   final LifecycleCollector collector;
   final LfcPalette palette;
   final void Function(String name)? onTapService;
   final String? selectedService;
+  // F014: optional container scope. When set, the panel hides services
+  // whose ServiceInfo.containerName doesn't match. ServiceInfo.containerName
+  // is populated by UpdateServiceListRequest — until that reaches the
+  // monitor, services have empty container_name and the filter shows
+  // nothing rather than guessing.
+  final String? filterContainer;
 
   @override
   Widget build(BuildContext context) {
@@ -34,17 +41,25 @@ class ServicesPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(palette: palette),
+          _Header(palette: palette, filterContainer: filterContainer),
           const SizedBox(height: 8),
           Expanded(
             child: Obx(() {
-              final entries = collector.services.entries.toList()
+              var entries = collector.services.entries.toList()
                 ..sort((a, b) => a.key.compareTo(b.key));
+              if (filterContainer != null) {
+                entries = entries
+                    .where((e) => e.value.containerName == filterContainer)
+                    .toList();
+              }
               if (entries.isEmpty) {
                 return Center(
                   child: Text(
-                    'no services yet — waiting for UpdateServiceListRequest…',
+                    filterContainer != null
+                        ? 'no services tagged for container "$filterContainer"'
+                        : 'no services yet — waiting for UpdateServiceListRequest…',
                     style: TextStyle(color: palette.subtext),
+                    textAlign: TextAlign.center,
                   ),
                 );
               }
@@ -72,8 +87,9 @@ class ServicesPanel extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.palette});
+  const _Header({required this.palette, this.filterContainer});
   final LfcPalette palette;
+  final String? filterContainer;
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +105,16 @@ class _Header extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
+        if (filterContainer != null) ...[
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '· $filterContainer',
+              style: TextStyle(color: palette.subtext, fontSize: 12),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ],
     );
   }
