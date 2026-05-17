@@ -8,6 +8,7 @@ class AppConfig {
     required this.statusTopic,
     required this.pollIntervalSec,
     required this.knownServices,
+    this.theme = 'dark',
   });
 
   /// rosbridge_server WebSocket URL — typically the ext-ros2 container on
@@ -28,11 +29,16 @@ class AppConfig {
   /// cosmetic. Empty list = wait for the registry handshake to populate.
   final List<String> knownServices;
 
+  /// F014: UI theme name — `'dark'` (legacy default) or `'light'`. Persisted
+  /// by SettingsController so the choice survives restarts.
+  final String theme;
+
   factory AppConfig.defaults() => AppConfig(
         rosUrl: Uri.parse('ws://127.0.0.1:9090'),
         statusTopic: '/app_status/lfc_monitor',
         pollIntervalSec: 5,
         knownServices: const <String>[],
+        theme: 'dark',
       );
 
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
@@ -45,5 +51,24 @@ class AppConfig {
         knownServices: ((j['knownServices'] as List?) ?? const [])
             .map((e) => e.toString())
             .toList(growable: false),
+        theme: (j['theme'] as String?) ?? 'dark',
+      );
+
+  /// F014: settings-driven mutation — used by SettingsController when the
+  /// user edits rosUrl / theme at runtime so the live RosKeeper is rebuilt
+  /// against a fresh config rather than the startup-time one.
+  AppConfig copyWith({
+    Uri? rosUrl,
+    String? statusTopic,
+    int? pollIntervalSec,
+    List<String>? knownServices,
+    String? theme,
+  }) =>
+      AppConfig(
+        rosUrl: rosUrl ?? this.rosUrl,
+        statusTopic: statusTopic ?? this.statusTopic,
+        pollIntervalSec: pollIntervalSec ?? this.pollIntervalSec,
+        knownServices: knownServices ?? this.knownServices,
+        theme: theme ?? this.theme,
       );
 }
