@@ -130,50 +130,53 @@ class _LfcViewPageState extends State<LfcViewPage> {
       body: LayoutBuilder(
         builder: (context, c) {
           final wide = c.maxWidth >= 1280;
-          // Width budget across the four columns sums to 1.00:
-          //   containers .26  services .24  events .28  control .22
-          final containers = SizedBox(
-            width: wide ? c.maxWidth * 0.26 : double.infinity,
-            child: ContainersPanel(
-              collector: _collector,
-              palette: p,
-              selectedContainer: _selectedContainer,
-              onTapContainer: (name) => setState(() {
-                _selectedContainer =
-                    (name == null || name == _selectedContainer) ? null : name;
-              }),
-            ),
+
+          // Panel widgets — kept naked here so wide layout can drop each
+          // into an Expanded (which subtracts gaps + outer padding from
+          // the available width itself) and narrow layout can stack them
+          // in a ListView.  An earlier attempt fixed each panel to
+          // `c.maxWidth * frac` and added gaps on top — that overflowed by
+          // exactly (gaps + outer padding) since the fractions already
+          // summed to 1.00.
+          final containersWidget = ContainersPanel(
+            collector: _collector,
+            palette: p,
+            selectedContainer: _selectedContainer,
+            onTapContainer: (name) => setState(() {
+              _selectedContainer =
+                  (name == null || name == _selectedContainer) ? null : name;
+            }),
           );
-          final services = SizedBox(
-            width: wide ? c.maxWidth * 0.24 : double.infinity,
-            child: ServicesPanel(
-              collector: _collector,
-              palette: p,
-              selectedService: _selectedService,
-              filterContainer: _selectedContainer,
-              onTapService: (name) => setState(() => _selectedService = name),
-            ),
+          final servicesWidget = ServicesPanel(
+            collector: _collector,
+            palette: p,
+            selectedService: _selectedService,
+            filterContainer: _selectedContainer,
+            onTapService: (name) => setState(() => _selectedService = name),
           );
-          final events = SizedBox(
-            width: wide ? c.maxWidth * 0.28 : double.infinity,
-            child: EventsPanel(collector: _collector, palette: p),
-          );
-          final control = SizedBox(
-            width: wide ? c.maxWidth * 0.22 : double.infinity,
-            child: ControlPanel(
-              collector: _collector,
-              palette: p,
-              selectedService: _selectedService,
-            ),
+          final eventsWidget = EventsPanel(collector: _collector, palette: p);
+          final controlWidget = ControlPanel(
+            collector: _collector,
+            palette: p,
+            selectedService: _selectedService,
           );
           const gap = SizedBox(width: 12, height: 12);
 
           if (wide) {
+            // flex weights mirror the original .26/.24/.28/.22 ratio.
             return Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [containers, gap, services, gap, events, gap, control],
+                children: [
+                  Expanded(flex: 26, child: containersWidget),
+                  gap,
+                  Expanded(flex: 24, child: servicesWidget),
+                  gap,
+                  Expanded(flex: 28, child: eventsWidget),
+                  gap,
+                  Expanded(flex: 22, child: controlWidget),
+                ],
               ),
             );
           }
@@ -181,13 +184,13 @@ class _LfcViewPageState extends State<LfcViewPage> {
             padding: const EdgeInsets.all(12),
             child: ListView(
               children: [
-                SizedBox(height: 240, child: containers),
+                SizedBox(height: 240, child: containersWidget),
                 gap,
-                SizedBox(height: 240, child: services),
+                SizedBox(height: 240, child: servicesWidget),
                 gap,
-                SizedBox(height: 240, child: events),
+                SizedBox(height: 240, child: eventsWidget),
                 gap,
-                control,
+                controlWidget,
               ],
             ),
           );
