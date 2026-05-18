@@ -27,7 +27,7 @@ class LfcViewPage extends StatefulWidget {
   const LfcViewPage({
     super.key,
     required this.cfg,
-    this.palette = LfcPalette.dark,
+    this.palette = LfcPalette.light,
     this.keeperHolder,
   });
 

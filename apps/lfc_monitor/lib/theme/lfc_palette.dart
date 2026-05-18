@@ -45,8 +45,7 @@ class LfcPalette {
   final Color error;
   final Color errorBg;
 
-  /// Dark theme — preserves the F012 baseline so the existing
-  /// LfcPalette.defaults colors keep their look on a dark surface.
+  /// Dark theme — preserves the F012 baseline colours on a dark surface.
   static const LfcPalette dark = LfcPalette(
     name: 'dark',
     brightness: Brightness.dark,
@@ -84,17 +83,18 @@ class LfcPalette {
   );
 
   /// Existing alias — code that imported `LfcPalette.defaults` from the
-  /// F012 baseline keeps working. Default kept as dark to match the
-  /// pre-F014 look out of the box.
-  static const LfcPalette defaults = dark;
+  /// F012 baseline keeps working. Now resolves to the light theme so a
+  /// fresh launch lands on the Tesla-inspired surface; flip via Settings
+  /// → Theme → Dark for the legacy dark look.
+  static const LfcPalette defaults = light;
 
   static LfcPalette fromName(String? name) {
     switch (name) {
-      case 'light':
-        return LfcPalette.light;
       case 'dark':
-      default:
         return LfcPalette.dark;
+      case 'light':
+      default:
+        return LfcPalette.light;
     }
   }
 
@@ -131,10 +131,11 @@ class LfcPalette {
 }
 
 /// Top-level notifier — set `paletteNotifier.value = LfcPalette.xxx` to
-/// swap themes app-wide. Default tracks the F012 dark look; loadConfig may
-/// override it at startup from the `theme` field.
+/// swap themes app-wide. Default lands on the Tesla-inspired light theme;
+/// loadConfig may override it at startup from the `theme` field, and the
+/// user can flip at runtime via Settings.
 final ValueNotifier<LfcPalette> paletteNotifier =
-    ValueNotifier<LfcPalette>(LfcPalette.dark);
+    ValueNotifier<LfcPalette>(LfcPalette.light);
 
 /// Convenience accessor inside `build()` methods. Wrapped via the root
 /// MaterialApp's ValueListenableBuilder, so a notifier update rebuilds

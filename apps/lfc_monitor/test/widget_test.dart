@@ -16,13 +16,13 @@ void main() {
     expect(cfg.rosUrl.toString(), 'ws://127.0.0.1:9090');
     expect(cfg.statusTopic, '/app_status/lfc_monitor');
     expect(cfg.pollIntervalSec, 5);
-    expect(cfg.theme, 'dark');
+    expect(cfg.theme, 'light');
   });
 
   test('AppConfig.copyWith only swaps named fields', () {
     final base = AppConfig.defaults();
-    final next = base.copyWith(theme: 'light', rosUrl: Uri.parse('ws://10.0.0.1:9090'));
-    expect(next.theme, 'light');
+    final next = base.copyWith(theme: 'dark', rosUrl: Uri.parse('ws://10.0.0.1:9090'));
+    expect(next.theme, 'dark');
     expect(next.rosUrl.toString(), 'ws://10.0.0.1:9090');
     expect(next.statusTopic, base.statusTopic);
     expect(next.pollIntervalSec, base.pollIntervalSec);
@@ -30,11 +30,11 @@ void main() {
   });
 
   test('AppConfig.fromJson honors theme key', () {
-    final j = AppConfig.fromJson(<String, dynamic>{'theme': 'light'});
-    expect(j.theme, 'light');
-    // Missing theme → defaults to dark for backward compat.
+    final j = AppConfig.fromJson(<String, dynamic>{'theme': 'dark'});
+    expect(j.theme, 'dark');
+    // Missing theme → defaults to light (the post-F014 default).
     final j2 = AppConfig.fromJson(const <String, dynamic>{});
-    expect(j2.theme, 'dark');
+    expect(j2.theme, 'light');
   });
 
   test('ServiceState.fromInt maps IDL declaration order', () {

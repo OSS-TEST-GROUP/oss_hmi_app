@@ -8,7 +8,7 @@ class AppConfig {
     required this.statusTopic,
     required this.pollIntervalSec,
     required this.knownServices,
-    this.theme = 'dark',
+    this.theme = 'light',
   });
 
   /// rosbridge_server WebSocket URL — typically the ext-ros2 container on
@@ -29,8 +29,8 @@ class AppConfig {
   /// cosmetic. Empty list = wait for the registry handshake to populate.
   final List<String> knownServices;
 
-  /// F014: UI theme name — `'dark'` (legacy default) or `'light'`. Persisted
-  /// by SettingsController so the choice survives restarts.
+  /// F014: UI theme name — `'light'` (default) or `'dark'`. Persisted by
+  /// SettingsController so the user's choice survives restarts.
   final String theme;
 
   factory AppConfig.defaults() => AppConfig(
@@ -38,7 +38,7 @@ class AppConfig {
         statusTopic: '/app_status/lfc_monitor',
         pollIntervalSec: 5,
         knownServices: const <String>[],
-        theme: 'dark',
+        theme: 'light',
       );
 
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
@@ -51,7 +51,7 @@ class AppConfig {
         knownServices: ((j['knownServices'] as List?) ?? const [])
             .map((e) => e.toString())
             .toList(growable: false),
-        theme: (j['theme'] as String?) ?? 'dark',
+        theme: (j['theme'] as String?) ?? 'light',
       );
 
   /// F014: settings-driven mutation — used by SettingsController when the
