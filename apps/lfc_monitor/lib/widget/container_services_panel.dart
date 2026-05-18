@@ -82,6 +82,7 @@ class ContainerServicesPanel extends StatelessWidget {
                     onTapService: onTapService,
                     onStart: () => collector.startContainer(c.name),
                     onStop: () => collector.stopContainer(c.name),
+                    onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
                   );
                 },
               );
@@ -125,6 +126,7 @@ class _ContainerCard extends StatelessWidget {
     required this.onTapService,
     required this.onStart,
     required this.onStop,
+    required this.onChangeServiceRecovery,
   });
 
   final ContainerInfo info;
@@ -134,6 +136,8 @@ class _ContainerCard extends StatelessWidget {
   final void Function(String name)? onTapService;
   final VoidCallback onStart;
   final VoidCallback onStop;
+  final void Function(String serviceName, RecoveryPolicy policy)
+      onChangeServiceRecovery;
 
   @override
   Widget build(BuildContext context) {
@@ -232,6 +236,8 @@ class _ContainerCard extends StatelessWidget {
                     palette: p,
                     selected: services[i].name == selectedService,
                     onTap: () => onTapService?.call(services[i].name),
+                    onChangeRecovery: (policy) =>
+                        onChangeServiceRecovery(services[i].name, policy),
                   ),
                   if (i != services.length - 1)
                     Divider(color: p.panelBorder, height: 1),
@@ -250,16 +256,21 @@ class _ServiceRow extends StatelessWidget {
     required this.palette,
     required this.selected,
     required this.onTap,
+    required this.onChangeRecovery,
   });
 
   final ServiceInfo info;
   final LfcPalette palette;
   final bool selected;
   final VoidCallback onTap;
+  final void Function(RecoveryPolicy policy) onChangeRecovery;
 
   @override
   Widget build(BuildContext context) {
     final color = stateColor(info.state, palette);
+    final currentPolicy = info.recoveryPolicy.isEmpty
+        ? RecoveryPolicy.defaultPolicy
+        : RecoveryPolicy.fromLabel(info.recoveryPolicy);
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -294,8 +305,6 @@ class _ServiceRow extends StatelessWidget {
                   Text(
                     [
                       info.state.label,
-                      if (info.recoveryPolicy.isNotEmpty)
-                        'recovery=${info.recoveryPolicy}',
                       if (info.exitCode != null) 'exit=${info.exitCode}',
                     ].join('  ·  '),
                     style: TextStyle(color: palette.subtext, fontSize: 10.5),
@@ -304,7 +313,55 @@ class _ServiceRow extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(width: 6),
+            _RecoveryDropdown(
+              current: currentPolicy,
+              palette: palette,
+              onChanged: onChangeRecovery,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecoveryDropdown extends StatelessWidget {
+  const _RecoveryDropdown({
+    required this.current,
+    required this.palette,
+    required this.onChanged,
+  });
+
+  final RecoveryPolicy current;
+  final LfcPalette palette;
+  final void Function(RecoveryPolicy policy) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: palette.panelBorder),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<RecoveryPolicy>(
+          value: current,
+          isDense: true,
+          icon: Icon(Icons.arrow_drop_down, color: palette.subtext, size: 16),
+          style: TextStyle(color: palette.text, fontSize: 10.5),
+          dropdownColor: palette.panel,
+          items: RecoveryPolicy.values
+              .map((p) => DropdownMenuItem<RecoveryPolicy>(
+                    value: p,
+                    child: Text(p.label, style: TextStyle(fontSize: 10.5, color: palette.text)),
+                  ))
+              .toList(),
+          onChanged: (next) {
+            if (next == null || next == current) return;
+            onChanged(next);
+          },
         ),
       ),
     );

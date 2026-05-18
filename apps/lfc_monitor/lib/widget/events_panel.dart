@@ -100,6 +100,7 @@ class _EventRow extends StatelessWidget {
       case LifecycleEventKind.ctrlSetServiceModeResponse:
       case LifecycleEventKind.ctrlStartContainerResponse:
       case LifecycleEventKind.ctrlStopContainerResponse:
+      case LifecycleEventKind.ctrlSetRecoveryPolicyResponse:
         text = '${event.kind.name}  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;

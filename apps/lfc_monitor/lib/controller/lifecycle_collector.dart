@@ -68,6 +68,8 @@ class LifecycleCollector extends GetxController {
   Topic? _ctrlSetServiceModeRespSub;
   Topic? _ctrlStartContainerRespSub;
   Topic? _ctrlStopContainerRespSub;
+  // F014 follow-up: recovery policy
+  Topic? _ctrlSetRecoveryPolicyRespSub;
 
   Topic? _getStateReqPub;
   // F013: ctrl/* request publishers — replace direct Start/Stop/SetMode
@@ -78,6 +80,8 @@ class LifecycleCollector extends GetxController {
   Topic? _ctrlSetServiceModeReqPub;
   Topic? _ctrlStartContainerReqPub;
   Topic? _ctrlStopContainerReqPub;
+  // F014 follow-up
+  Topic? _ctrlSetRecoveryPolicyReqPub;
 
   Timer? _rosWatchdog;
   Timer? _pollTimer;
@@ -124,6 +128,7 @@ class LifecycleCollector extends GetxController {
     _ctrlSetServiceModeRespSub  = topicFactory(r, LifecycleTopics.ctrlSetServiceModeResp,  LifecycleTypes.ctrlResponse);
     _ctrlStartContainerRespSub  = topicFactory(r, LifecycleTopics.ctrlStartContainerResp,  LifecycleTypes.ctrlResponse);
     _ctrlStopContainerRespSub   = topicFactory(r, LifecycleTopics.ctrlStopContainerResp,   LifecycleTypes.ctrlResponse);
+    _ctrlSetRecoveryPolicyRespSub = topicFactory(r, LifecycleTopics.ctrlSetRecoveryPolicyResp, LifecycleTypes.ctrlResponse);
 
     await _notifyStateSub!.subscribe(_onNotifyServiceState);
     await _notifyContainerStateSub!.subscribe(_onNotifyContainerState);
@@ -140,6 +145,8 @@ class LifecycleCollector extends GetxController {
         (m) async => _onCommandResponse(LifecycleEventKind.ctrlStartContainerResponse, m));
     await _ctrlStopContainerRespSub!.subscribe(
         (m) async => _onCommandResponse(LifecycleEventKind.ctrlStopContainerResponse, m));
+    await _ctrlSetRecoveryPolicyRespSub!.subscribe(
+        (m) async => _onCommandResponse(LifecycleEventKind.ctrlSetRecoveryPolicyResponse, m));
 
     // ── Publish (us → lifecycle_mgr) ──────────────────────────────────────
     _getStateReqPub          = topicFactory(r, LifecycleTopics.getStateRequest,         LifecycleTypes.getStateRequest);
@@ -148,12 +155,14 @@ class LifecycleCollector extends GetxController {
     _ctrlSetServiceModeReqPub= topicFactory(r, LifecycleTopics.ctrlSetServiceModeReq,   LifecycleTypes.ctrlSetServiceModeReq);
     _ctrlStartContainerReqPub= topicFactory(r, LifecycleTopics.ctrlStartContainerReq,   LifecycleTypes.ctrlStartContainerReq);
     _ctrlStopContainerReqPub = topicFactory(r, LifecycleTopics.ctrlStopContainerReq,    LifecycleTypes.ctrlStopContainerReq);
-    try { await _getStateReqPub?.advertise();           } catch (_) {}
-    try { await _ctrlStartServiceReqPub?.advertise();   } catch (_) {}
-    try { await _ctrlStopServiceReqPub?.advertise();    } catch (_) {}
-    try { await _ctrlSetServiceModeReqPub?.advertise(); } catch (_) {}
-    try { await _ctrlStartContainerReqPub?.advertise(); } catch (_) {}
-    try { await _ctrlStopContainerReqPub?.advertise();  } catch (_) {}
+    _ctrlSetRecoveryPolicyReqPub = topicFactory(r, LifecycleTopics.ctrlSetRecoveryPolicyReq, LifecycleTypes.ctrlSetRecoveryPolicyReq);
+    try { await _getStateReqPub?.advertise();             } catch (_) {}
+    try { await _ctrlStartServiceReqPub?.advertise();     } catch (_) {}
+    try { await _ctrlStopServiceReqPub?.advertise();      } catch (_) {}
+    try { await _ctrlSetServiceModeReqPub?.advertise();   } catch (_) {}
+    try { await _ctrlStartContainerReqPub?.advertise();   } catch (_) {}
+    try { await _ctrlStopContainerReqPub?.advertise();    } catch (_) {}
+    try { await _ctrlSetRecoveryPolicyReqPub?.advertise();} catch (_) {}
 
     // Kick off the poll timer
     _pollTimer?.cancel();
@@ -366,6 +375,16 @@ class LifecycleCollector extends GetxController {
   void stopContainer(String name) {
     _publish(_ctrlStopContainerReqPub, 'ctrlStopContainer', {
       'container_list': [name],
+    });
+  }
+
+  /// F014 follow-up: change a single service's recovery policy.
+  /// lifecycle_mgr policy-gates + forwards to adsw_manager which
+  /// persists to saved-service-list.yaml.
+  void setServiceRecoveryPolicy(String name, RecoveryPolicy policy) {
+    _publish(_ctrlSetRecoveryPolicyReqPub, 'ctrlSetRecoveryPolicy', {
+      'service_list': [name],
+      'recovery_policy': policy.value,
     });
   }
 

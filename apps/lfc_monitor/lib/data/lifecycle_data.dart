@@ -43,6 +43,9 @@ class LifecycleTopics {
   static const String ctrlStartContainerResp     = '/mmf/lifecyclemgr/ctrl/StartContainerResponse';
   static const String ctrlStopContainerReq       = '/mmf/lifecyclemgr/ctrl/StopContainer';
   static const String ctrlStopContainerResp      = '/mmf/lifecyclemgr/ctrl/StopContainerResponse';
+  // F014 follow-up: per-service recovery policy mutation
+  static const String ctrlSetRecoveryPolicyReq   = '/mmf/lifecyclemgr/ctrl/SetRecoveryPolicy';
+  static const String ctrlSetRecoveryPolicyResp  = '/mmf/lifecyclemgr/ctrl/SetRecoveryPolicyResponse';
 }
 
 class LifecycleTypes {
@@ -66,7 +69,8 @@ class LifecycleTypes {
   static const String ctrlSetServiceModeReq    = 'lifecyclemgr/CtrlSetServiceModeRequest';
   static const String ctrlStartContainerReq    = 'lifecyclemgr/CtrlStartContainerRequest';
   static const String ctrlStopContainerReq     = 'lifecyclemgr/CtrlStopContainerRequest';
-  // All five ctrl/* responses share the CtrlResponse IDL struct.
+  static const String ctrlSetRecoveryPolicyReq = 'lifecyclemgr/CtrlSetRecoveryPolicyRequest';
+  // All six ctrl/* responses share the CtrlResponse IDL struct.
   static const String ctrlResponse             = 'lifecyclemgr/CtrlResponse';
 }
 
@@ -159,6 +163,58 @@ enum ContainerState {
   }
 }
 
+// F014 follow-up: recovery policy enum.  IDL declaration order in
+// LifecycleCommon.idl: R_DEFAULT, ALWAYS, ON_FAILURE, ON_SUCCESS,
+// ON_NOT_RESPONDING, MANUAL.
+enum RecoveryPolicy {
+  defaultPolicy,    // 0
+  always,           // 1
+  onFailure,        // 2
+  onSuccess,        // 3
+  onNotResponding,  // 4
+  manual;           // 5
+
+  int get value {
+    switch (this) {
+      case RecoveryPolicy.defaultPolicy:   return 0;
+      case RecoveryPolicy.always:          return 1;
+      case RecoveryPolicy.onFailure:       return 2;
+      case RecoveryPolicy.onSuccess:       return 3;
+      case RecoveryPolicy.onNotResponding: return 4;
+      case RecoveryPolicy.manual:          return 5;
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case RecoveryPolicy.defaultPolicy:   return 'DEFAULT';
+      case RecoveryPolicy.always:          return 'ALWAYS';
+      case RecoveryPolicy.onFailure:       return 'ON_FAILURE';
+      case RecoveryPolicy.onSuccess:       return 'ON_SUCCESS';
+      case RecoveryPolicy.onNotResponding: return 'ON_NOT_RESPONDING';
+      case RecoveryPolicy.manual:          return 'MANUAL';
+    }
+  }
+
+  static RecoveryPolicy fromInt(int? v) {
+    switch (v) {
+      case 1: return RecoveryPolicy.always;
+      case 2: return RecoveryPolicy.onFailure;
+      case 3: return RecoveryPolicy.onSuccess;
+      case 4: return RecoveryPolicy.onNotResponding;
+      case 5: return RecoveryPolicy.manual;
+      default: return RecoveryPolicy.defaultPolicy;
+    }
+  }
+
+  static RecoveryPolicy fromLabel(String? label) {
+    for (final v in RecoveryPolicy.values) {
+      if (v.label == label) return v;
+    }
+    return RecoveryPolicy.defaultPolicy;
+  }
+}
+
 enum ContainerType {
   unknownType,    // 0 (CT_UNKNOWN)
   docker,         // 1 (DOCKER)
@@ -198,7 +254,7 @@ class ServiceInfo {
   final String name;
   ServiceState state;
   ServiceMode mode;
-  String recoveryPolicy;
+  String recoveryPolicy;  // label form (e.g. 'ALWAYS') — see RecoveryPolicy.fromLabel
   int? exitCode;
   // F013: which container hosts this service (empty = native).
   // Populated from UpdateServiceListRequest.service_list[i].container_name.
@@ -262,4 +318,5 @@ enum LifecycleEventKind {
   ctrlSetServiceModeResponse,
   ctrlStartContainerResponse,
   ctrlStopContainerResponse,
+  ctrlSetRecoveryPolicyResponse,
 }
