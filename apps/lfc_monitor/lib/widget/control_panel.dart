@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../controller/lifecycle_collector.dart';
-import '../data/lifecycle_data.dart';
 import '../theme/lfc_palette.dart';
 
 /// Right panel — control actions against the currently selected service.
-/// Three rows: Start, Stop, ServiceMode toggle.
-class ControlPanel extends StatefulWidget {
+/// Two rows: Start, Stop.  ServiceMode lives in the Settings dialog now
+/// (global NORMAL/OTA toggle applies to every registered service in one
+/// ctrl/SetServiceMode publish).
+class ControlPanel extends StatelessWidget {
   const ControlPanel({
     super.key,
     required this.collector,
@@ -20,17 +21,9 @@ class ControlPanel extends StatefulWidget {
   final String? selectedService;
 
   @override
-  State<ControlPanel> createState() => _ControlPanelState();
-}
-
-class _ControlPanelState extends State<ControlPanel> {
-  ServiceMode _mode = ServiceMode.normal;
-
-  @override
   Widget build(BuildContext context) {
-    final p = widget.palette;
-    final hasTarget =
-        widget.selectedService != null && widget.selectedService!.isNotEmpty;
+    final p = palette;
+    final hasTarget = selectedService != null && selectedService!.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -73,9 +66,10 @@ class _ControlPanelState extends State<ControlPanel> {
                 Expanded(
                   child: Text(
                     hasTarget
-                        ? 'target: ${widget.selectedService}'
+                        ? 'target: $selectedService'
                         : 'select a service on the left',
                     style: TextStyle(color: p.text, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -90,10 +84,9 @@ class _ControlPanelState extends State<ControlPanel> {
                 child: _ActionButton(
                   label: 'Start',
                   icon: Icons.play_arrow,
-                  color: const Color(0xFF4CAF50),
+                  color: p.success,
                   enabled: hasTarget,
-                  onPressed: () => widget.collector
-                      .startService(widget.selectedService!),
+                  onPressed: () => collector.startService(selectedService!),
                 ),
               ),
               const SizedBox(width: 8),
@@ -101,60 +94,27 @@ class _ControlPanelState extends State<ControlPanel> {
                 child: _ActionButton(
                   label: 'Stop',
                   icon: Icons.stop,
-                  color: const Color(0xFFF44336),
+                  color: p.error,
                   enabled: hasTarget,
-                  onPressed: () =>
-                      widget.collector.stopService(widget.selectedService!),
+                  onPressed: () => collector.stopService(selectedService!),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
 
-          // ServiceMode toggle
-          Text('ServiceMode', style: TextStyle(color: p.subtext, fontSize: 11)),
-          const SizedBox(height: 6),
-          SegmentedButton<ServiceMode>(
-            segments: const [
-              ButtonSegment(
-                value: ServiceMode.normal,
-                label: Text('NORMAL'),
-                icon: Icon(Icons.directions_run),
-              ),
-              ButtonSegment(
-                value: ServiceMode.otaMode,
-                label: Text('OTA_MODE'),
-                icon: Icon(Icons.system_update_alt),
-              ),
-            ],
-            selected: {_mode},
-            onSelectionChanged: hasTarget
-                ? (s) {
-                    setState(() => _mode = s.first);
-                    widget.collector
-                        .setServiceMode(widget.selectedService!, _mode);
-                  }
-                : null,
-          ),
-          const SizedBox(height: 14),
-
           // Last error / status
           Obx(() {
-            final err = widget.collector.lastError.value;
+            final err = collector.lastError.value;
             if (err == null || err.isEmpty) {
               return Text(
-                widget.collector.connected.value
-                    ? 'connected'
-                    : 'waiting for ROS…',
+                collector.connected.value ? 'connected' : 'waiting for ROS…',
                 style: TextStyle(color: p.subtext, fontSize: 11),
               );
             }
             return Text(
               err,
-              style: const TextStyle(
-                color: Color(0xFFFFB4A9),
-                fontSize: 11,
-              ),
+              style: TextStyle(color: p.error, fontSize: 11),
             );
           }),
         ],

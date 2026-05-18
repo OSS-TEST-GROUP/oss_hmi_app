@@ -93,10 +93,10 @@ class LifecycleCollector extends GetxController {
       _bind(r);
     });
 
-    // Seed services from config so UI isn't blank pre-handshake.
-    for (final n in cfg.knownServices) {
-      services.putIfAbsent(n, () => ServiceInfo(name: n));
-    }
+    // cfg.knownServices seed deliberately dropped: the UI only shows
+    // services adsw_manager has registered (i.e. those carrying a
+    // container_name in LifecycleDiagReport).  Pre-seeded ghost entries
+    // would never match a container and clutter the panel.
   }
 
   @override
@@ -334,6 +334,22 @@ class LifecycleCollector extends GetxController {
   void setServiceMode(String name, ServiceMode mode) {
     _publish(_ctrlSetServiceModeReqPub, 'ctrlSetServiceMode', {
       'service_list': [name],
+      'service_mode': mode.value,
+    });
+  }
+
+  /// Apply [mode] to every currently-registered service in a single
+  /// ctrl/SetServiceMode publish. Used by the Settings dialog's global
+  /// NORMAL/OTA toggle so an operator can flip the whole vehicle to OTA
+  /// mode without touching each service individually.
+  void setAllServicesMode(ServiceMode mode) {
+    final names = services.keys.toList(growable: false);
+    if (names.isEmpty) {
+      lastError.value = 'no registered services to apply mode to';
+      return;
+    }
+    _publish(_ctrlSetServiceModeReqPub, 'ctrlSetServiceMode(all)', {
+      'service_list': names,
       'service_mode': mode.value,
     });
   }

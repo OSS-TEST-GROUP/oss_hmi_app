@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../controller/settings_controller.dart';
+import '../data/lifecycle_data.dart';
 import '../theme/lfc_palette.dart';
 
-/// F014 / S5-4: rosbridge WebSocket URL editor + theme picker, rendered
-/// inside a Dialog from the header Settings button. Stateful only for
-/// the busy flag + text field controller.
+/// F014 / S5-4: rosbridge WebSocket URL editor + theme picker + global
+/// ServiceMode toggle, rendered inside a Dialog from the header Settings
+/// button. Stateful only for transient form state.
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
     required this.controller,
     required this.currentUrlProvider,
+    this.onApplyServiceMode,
   });
 
   final SettingsController controller;
@@ -19,6 +21,11 @@ class SettingsPage extends StatefulWidget {
   /// keeper state.
   final String Function() currentUrlProvider;
 
+  /// Apply a NORMAL/OTA mode to every registered service in one publish.
+  /// Wired from LfcViewPage to LifecycleCollector.setAllServicesMode.
+  /// Optional so widget tests can pump SettingsPage standalone.
+  final void Function(ServiceMode mode)? onApplyServiceMode;
+
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
@@ -26,6 +33,10 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _urlField;
   bool _busy = false;
+  // Local form state for the global ServiceMode card. We don't track the
+  // current per-service mode (it'd require per-service introspection on
+  // every rebuild); the operator just picks a target mode and hits Apply.
+  ServiceMode _modePick = ServiceMode.normal;
 
   @override
   void initState() {
@@ -113,6 +124,10 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildUrlCard(p),
           const SizedBox(height: 16),
           _buildThemeCard(p),
+          if (widget.onApplyServiceMode != null) ...[
+            const SizedBox(height: 16),
+            _buildServiceModeCard(p),
+          ],
         ],
       ),
     );
@@ -271,6 +286,136 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildServiceModeCard(LfcPalette p) {
+    return Container(
+      key: const Key('card_settings_service_mode'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: p.panel,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: p.panelBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.system_update_alt, color: p.accent, size: 20),
+              const SizedBox(width: 10),
+              Text(
+                'Service Mode (global)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: p.text,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '모든 등록된 서비스에 일괄적으로 적용 — ctrl/SetServiceMode로 한 번에 publish.',
+            style: TextStyle(fontSize: 11, color: p.subtext),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _ServiceModeOption(
+                keyName: 'btn_mode_normal',
+                label: 'NORMAL',
+                selected: _modePick == ServiceMode.normal,
+                onTap: () => setState(() => _modePick = ServiceMode.normal),
+              ),
+              const SizedBox(width: 10),
+              _ServiceModeOption(
+                keyName: 'btn_mode_ota',
+                label: 'OTA_MODE',
+                selected: _modePick == ServiceMode.otaMode,
+                onTap: () => setState(() => _modePick = ServiceMode.otaMode),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ElevatedButton.icon(
+              key: const Key('btn_apply_service_mode'),
+              onPressed: () {
+                widget.onApplyServiceMode?.call(_modePick);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('서비스 모드 ${_modePick.label} 적용 요청'),
+                  duration: const Duration(seconds: 2),
+                ));
+              },
+              icon: const Icon(Icons.send, size: 16),
+              label: const Text('Apply to all services'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: p.accent,
+                foregroundColor:
+                    p.brightness == Brightness.dark ? Colors.black : Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceModeOption extends StatelessWidget {
+  const _ServiceModeOption({
+    required this.keyName,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String keyName;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = palette;
+    return InkWell(
+      key: Key(keyName),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? p.accent.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: selected ? p.accent : p.panelBorder,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected ? p.accent : p.subtext,
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: p.text,
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
