@@ -96,6 +96,8 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
 사용자 요청이 앱 실행, 현재 앱 종료, 설정 열기인지 판단해라.
 등록된 앱 목록에 없는 앱은 선택하지 마라.
 일반 질문이나 대화면 answer를 선택해라.
+사용자가 앱 이름 없이 "닫아줘", "종료해줘", "닫기"처럼 말하면 현재 화면 종료로 판단하고 appId를 넣지 마라.
+앱 이름이 명확할 때만 close_app에 appId를 넣어라.
 반드시 JSON 한 개만 출력해라. 설명, markdown, 코드블록은 출력하지 마라.
 
 출력 형식:

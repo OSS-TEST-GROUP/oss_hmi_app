@@ -10,7 +10,7 @@ class LauncherBotController extends ChangeNotifier {
     required NluRouter nluRouter,
     required LauncherBotAiService aiService,
     required ValueChanged<AppManifest> onOpenApp,
-    required VoidCallback onCloseApp,
+    required String? Function() onCloseApp,
     required VoidCallback onOpenSettings,
     String contextName = 'Launcher',
   })  : _nluRouter = nluRouter,
@@ -33,7 +33,7 @@ class LauncherBotController extends ChangeNotifier {
   NluRouter _nluRouter;
   final LauncherBotAiService _aiService;
   final ValueChanged<AppManifest> _onOpenApp;
-  final VoidCallback _onCloseApp;
+  final String? Function() _onCloseApp;
   final VoidCallback _onOpenSettings;
   String _contextName;
 
@@ -58,6 +58,8 @@ class LauncherBotController extends ChangeNotifier {
     if (input.isEmpty || _isGenerating) return;
 
     _addUserMessage(input);
+
+    if (_handleDirectCommand(input)) return;
 
     _isGenerating = true;
     notifyListeners();
@@ -145,24 +147,14 @@ class LauncherBotController extends ChangeNotifier {
   }
 
   bool _handleLocalCommand(String input) {
-    if (_isCloseCommand(input)) {
-      _onCloseApp();
-      _addBotMessage('홈 화면으로 돌아왔어요.', intent: 'Close');
-      return true;
-    }
-
-    if (_isSettingsCommand(input)) {
-      _onOpenSettings();
-      _addBotMessage('설정 화면을 열었어요.', intent: 'Open Settings');
-      return true;
-    }
+    if (_handleDirectCommand(input)) return true;
 
     final route = _nluRouter.resolveIntent(input);
     if (route != null) {
       if (route.action == NluRouteAction.close) {
         if (_contextName == route.app.name) {
-          _onCloseApp();
-          _addBotMessage('${route.app.name}을 닫았어요.', intent: 'Close App');
+          final closedName = _onCloseApp();
+          _addCloseMessage(closedName, intent: 'Close App');
         } else {
           _addBotMessage(
             '${route.app.name}은 현재 열려 있지 않아요.',
@@ -173,6 +165,22 @@ class LauncherBotController extends ChangeNotifier {
         _onOpenApp(route.app);
         _addBotMessage('${route.app.name}을 실행했어요.', intent: 'Open App');
       }
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _handleDirectCommand(String input) {
+    if (_isCloseCommand(input)) {
+      final closedName = _onCloseApp();
+      _addCloseMessage(closedName, intent: 'Close');
+      return true;
+    }
+
+    if (_isSettingsCommand(input)) {
+      _onOpenSettings();
+      _addBotMessage('설정 화면을 열었어요.', intent: 'Open Settings');
       return true;
     }
 
@@ -205,11 +213,8 @@ class LauncherBotController extends ChangeNotifier {
           );
           return true;
         }
-        _onCloseApp();
-        _addBotMessage(
-          app == null ? '홈 화면으로 돌아왔어요.' : '${app.name}을 닫았어요.',
-          intent: 'AI Close App',
-        );
+        final closedName = _onCloseApp();
+        _addCloseMessage(closedName ?? app?.name, intent: 'AI Close App');
         return true;
       case LauncherBotAiIntentAction.openSettings:
         _onOpenSettings();
@@ -229,16 +234,17 @@ class LauncherBotController extends ChangeNotifier {
   }
 
   bool _isCloseCommand(String input) {
+    final normalized = _normalizeCommand(input);
     const commands = {
       'close',
-      'close app',
+      'closeapp',
       'exit',
-      'exit app',
+      'exitapp',
       'quit',
       'back',
       'home',
-      'go home',
-      'back to home',
+      'gohome',
+      'backtohome',
       '홈',
       '홈으로',
       '닫기',
@@ -247,9 +253,9 @@ class LauncherBotController extends ChangeNotifier {
       '종료',
       '나가기',
       '뒤로',
-      '뒤로 가기',
+      '뒤로가기',
     };
-    return commands.contains(input.trim().toLowerCase());
+    return commands.contains(normalized);
   }
 
   bool _isSettingsCommand(String input) {
@@ -257,6 +263,10 @@ class LauncherBotController extends ChangeNotifier {
     return normalized.contains('settings') ||
         normalized.contains('setting') ||
         input.contains('설정');
+  }
+
+  String _normalizeCommand(String input) {
+    return input.toLowerCase().replaceAll(RegExp(r'[^a-z0-9가-힣]+'), '');
   }
 
   List<String> _buildContexts() {
@@ -275,6 +285,14 @@ class LauncherBotController extends ChangeNotifier {
         intent: intent,
       ),
     );
+  }
+
+  void _addCloseMessage(String? closedName, {String? intent}) {
+    if (closedName == null || closedName == 'Launcher') {
+      _addBotMessage('닫을 앱이 없어요.', intent: intent);
+      return;
+    }
+    _addBotMessage('$closedName을 닫았어요.', intent: intent);
   }
 
   void _addMessage(LauncherBotMessage message) {

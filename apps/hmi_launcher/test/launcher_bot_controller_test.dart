@@ -33,6 +33,33 @@ void main() {
     expect(controller.messages.last.text, 'OTA Monitor을 실행했어요.');
     expect(controller.messages.last.intent, 'AI Open App');
   });
+
+  test('generic close closes current context before AI intent routing',
+      () async {
+    var closeCalled = false;
+    final controller = LauncherBotController(
+      nluRouter: NluRouter(const []),
+      aiService: const _FakeAiService(
+        LauncherBotAiIntent(
+          action: LauncherBotAiIntentAction.openApp,
+          appId: 'ota_monitor',
+        ),
+      ),
+      onOpenApp: (_) => fail('open should not be called'),
+      onCloseApp: () {
+        closeCalled = true;
+        return 'AD SW';
+      },
+      onOpenSettings: () => fail('settings should not be called'),
+      contextName: 'AD SW',
+    );
+
+    await controller.submit('닫아줘.');
+
+    expect(closeCalled, isTrue);
+    expect(controller.messages.last.text, 'AD SW을 닫았어요.');
+    expect(controller.messages.last.intent, 'Close');
+  });
 }
 
 class _FakeAiService implements LauncherBotAiService {

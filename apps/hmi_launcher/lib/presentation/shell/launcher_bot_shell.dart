@@ -134,16 +134,21 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     setState(() => _selectOpenedApp(_SettingsPage.appId));
   }
 
-  void _closeApp() {
+  String? _closeApp() {
+    String? closedName;
     setState(() {
       final current = _selectedAppId;
       if (current == null) {
         return;
       }
+      closedName = current == _SettingsPage.appId
+          ? 'Settings'
+          : widget.registry.findById(current)?.name;
       _openedAppIds.remove(current);
       _focusedAppIds.remove(current);
       _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
     });
+    return closedName;
   }
 
   @override
