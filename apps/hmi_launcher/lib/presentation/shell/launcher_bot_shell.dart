@@ -5,6 +5,7 @@ import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
 import '../../launcher_bot/services/launcher_bot_ai_service.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
+import '../../launcher_bot/services/voice_input_service.dart';
 import '../launcher_bot/launcher_bot_panel.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
@@ -45,9 +46,11 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   late final List<String> _focusedAppIds;
   late NluRouter _nluRouter;
   late LauncherBotController _launcherBotController;
+  final VoiceInputService _voiceInputService = const VoiceInputService();
   late final bool _aiSdkAvailable;
   late bool _aiMode;
   bool _assistantOpen = false;
+  bool _voiceCapturing = false;
 
   @override
   void initState() {
@@ -134,6 +137,42 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     setState(() => _selectOpenedApp(_SettingsPage.appId));
   }
 
+  Future<void> _handleVoiceCommand() async {
+    if (!_aiMode || !_aiSdkAvailable || _voiceCapturing) return;
+
+    setState(() {
+      _voiceCapturing = true;
+      _assistantOpen = true;
+    });
+    _showSnackBar('음성을 듣고 있어요.');
+
+    try {
+      final voice = await _voiceInputService.capture();
+      await _launcherBotController.submitVoice(voice);
+    } on VoiceInputException catch (error) {
+      _showSnackBar(error.message);
+    } catch (error) {
+      _showSnackBar('음성 입력 처리에 실패했습니다. $error');
+    } finally {
+      if (mounted) {
+        setState(() => _voiceCapturing = false);
+      }
+    }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+  }
+
   String? _closeApp() {
     String? closedName;
     setState(() {
@@ -187,10 +226,12 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                     selectedAppId: _selectedAppId,
                     aiMode: _aiMode,
                     aiSdkAvailable: _aiSdkAvailable,
+                    voiceCapturing: _voiceCapturing,
                     assistantOpen: _assistantOpen,
                     onAppSelected: (appId) {
                       setState(() => _selectOpenedApp(appId));
                     },
+                    onVoiceCommand: _handleVoiceCommand,
                     onAssistantToggle: () {
                       setState(() => _assistantOpen = !_assistantOpen);
                     },
@@ -677,8 +718,10 @@ class _AppRail extends StatelessWidget {
     required this.selectedAppId,
     required this.aiMode,
     required this.aiSdkAvailable,
+    required this.voiceCapturing,
     required this.assistantOpen,
     required this.onAppSelected,
+    required this.onVoiceCommand,
     required this.onAssistantToggle,
   });
 
@@ -687,8 +730,10 @@ class _AppRail extends StatelessWidget {
   final String? selectedAppId;
   final bool aiMode;
   final bool aiSdkAvailable;
+  final bool voiceCapturing;
   final bool assistantOpen;
   final ValueChanged<String> onAppSelected;
+  final VoidCallback onVoiceCommand;
   final VoidCallback onAssistantToggle;
 
   @override
@@ -726,11 +771,13 @@ class _AppRail extends StatelessWidget {
           _RailActionButton(
             icon: Icons.mic_none,
             enabled: aiMode && aiSdkAvailable,
+            active: voiceCapturing,
             tooltip: aiSdkAvailable
                 ? (aiMode
-                    ? 'Voice command'
+                    ? (voiceCapturing ? 'Listening...' : 'Voice command')
                     : 'Voice command is available in AI SDK mode')
                 : 'AI SDK is not available in this build',
+            onTap: onVoiceCommand,
           ),
           const SizedBox(height: 8),
           _RailActionButton(

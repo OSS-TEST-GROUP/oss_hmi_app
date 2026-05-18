@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../../domain/app_manifest.dart';
 import 'gemma_chatbot_service.dart';
@@ -19,6 +20,12 @@ abstract class LauncherBotAiService {
   Future<String> generate({
     required String prompt,
     required List<String> contexts,
+  });
+
+  Future<String> transcribeAudio({
+    required Float32List pcm,
+    required int sampleRate,
+    required int channels,
   });
 
   Future<LauncherBotAiIntent?> resolveIntent({
@@ -47,6 +54,29 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
   }) {
     final request = _buildRequest(prompt: prompt, contexts: contexts);
     return _chatbotService.generate(request);
+  }
+
+  @override
+  Future<String> transcribeAudio({
+    required Float32List pcm,
+    required int sampleRate,
+    required int channels,
+  }) async {
+    final hasAudio = await _chatbotService.hasAudio();
+    if (!hasAudio) {
+      throw const GemmaChatbotException(
+        '현재 모델이 오디오 입력을 지원하지 않습니다. mmproj 설정을 확인해 주세요.',
+      );
+    }
+
+    return _chatbotService.generateAudio(
+      prompt: '이 오디오를 한국어 텍스트로 정확히 받아쓰기만 해줘. '
+          '명령 의도 설명이나 부가 설명은 쓰지 말고, 사용자가 말한 문장만 출력해. '
+          '특수 토큰, turn marker, markdown은 출력하지 마.',
+      pcm: pcm,
+      sampleRate: sampleRate,
+      channels: channels,
+    );
   }
 
   @override
@@ -197,6 +227,15 @@ class FallbackLauncherBotAiService implements LauncherBotAiService {
     await Future<void>.delayed(const Duration(milliseconds: 280));
     final contextLabel = contexts.isEmpty ? 'Launcher' : contexts.first;
     return 'AI SDK is ready to be connected. For now I received "$prompt" in $contextLabel.';
+  }
+
+  @override
+  Future<String> transcribeAudio({
+    required Float32List pcm,
+    required int sampleRate,
+    required int channels,
+  }) {
+    throw const GemmaChatbotException('AI SDK 오디오 입력을 사용할 수 없습니다.');
   }
 
   @override

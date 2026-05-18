@@ -4,6 +4,7 @@ import '../../domain/app_manifest.dart';
 import '../../domain/nlu_router.dart';
 import '../models/launcher_bot_message.dart';
 import 'launcher_bot_ai_service.dart';
+import 'voice_input_service.dart';
 
 class LauncherBotController extends ChangeNotifier {
   LauncherBotController({
@@ -58,7 +59,10 @@ class LauncherBotController extends ChangeNotifier {
     if (input.isEmpty || _isGenerating) return;
 
     _addUserMessage(input);
+    await _handleSubmittedInput(input);
+  }
 
+  Future<void> _handleSubmittedInput(String input) async {
     if (_handleDirectCommand(input)) return;
 
     _isGenerating = true;
@@ -103,6 +107,57 @@ class LauncherBotController extends ChangeNotifier {
         timestamp: _nowLabel(),
         intent: 'Error',
       );
+    } finally {
+      _isGenerating = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> submitVoice(CapturedVoiceInput voice) async {
+    if (_isGenerating) return;
+
+    final userIndex = _messages.length;
+    _addMessage(
+      LauncherBotMessage(
+        speaker: LauncherBotSpeaker.user,
+        text: '음성 인식 중...',
+        timestamp: _nowLabel(),
+      ),
+    );
+
+    _isGenerating = true;
+    notifyListeners();
+
+    try {
+      final recognizedText = (await _aiService.transcribeAudio(
+        pcm: voice.pcm,
+        sampleRate: voice.sampleRate,
+        channels: voice.channels,
+      ))
+          .trim();
+
+      if (recognizedText.isEmpty) {
+        _messages[userIndex] = _messages[userIndex].copyWith(
+          text: '음성 인식 결과가 비어 있습니다.',
+          timestamp: _nowLabel(),
+        );
+        _addBotMessage('음성 내용을 인식하지 못했습니다.', intent: 'Voice');
+        return;
+      }
+
+      _messages[userIndex] = _messages[userIndex].copyWith(
+        text: recognizedText,
+        timestamp: _nowLabel(),
+      );
+      notifyListeners();
+      _isGenerating = false;
+      await _handleSubmittedInput(recognizedText);
+    } catch (error) {
+      _messages[userIndex] = _messages[userIndex].copyWith(
+        text: '음성 인식 실패',
+        timestamp: _nowLabel(),
+      );
+      _addBotMessage('음성 인식에 실패했습니다. $error', intent: 'Voice Error');
     } finally {
       _isGenerating = false;
       notifyListeners();

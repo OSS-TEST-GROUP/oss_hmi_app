@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
@@ -82,6 +84,15 @@ class _FakeAiService implements LauncherBotAiService {
     required String currentContext,
   }) async {
     return intent;
+  }
+
+  @override
+  Future<String> transcribeAudio({
+    required Float32List pcm,
+    required int sampleRate,
+    required int channels,
+  }) async {
+    return 'recognized voice';
   }
 
   @override
