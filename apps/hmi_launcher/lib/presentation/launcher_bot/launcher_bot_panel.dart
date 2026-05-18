@@ -101,20 +101,19 @@ class _LauncherBotPanelState extends State<LauncherBotPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          if (widget.aiMode)
+          _StandardCommandPanel(
+            apps: widget.apps,
+            selectedName: widget.selectedName,
+            controller: widget.controller,
+          ),
+          if (widget.aiMode) ...[
+            const SizedBox(height: 8),
             _BotInput(
               controller: _inputController,
               enabled: !widget.controller.isGenerating,
               onSubmit: _submit,
-            )
-          else
-            _StandardCommandPanel(
-              apps: widget.apps,
-              selectedName: widget.selectedName,
-              controller: widget.controller,
             ),
-          const SizedBox(height: 8),
-          //_QuickCommandRow(controller: widget.controller),
+          ],
         ],
       ),
     );
@@ -231,7 +230,7 @@ class _StandardCommandPanel extends StatelessWidget {
               for (final app in apps)
                 _StandardCommandChip(
                   label: '${app.name} 실행',
-                  icon: _iconForApp(app.id),
+                  icon: _iconForAppId(app.id),
                   onTap: () =>
                       controller.submitLocalCommand('${app.name} 실행해줘'),
                 ),
@@ -252,16 +251,16 @@ class _StandardCommandPanel extends StatelessWidget {
       ),
     );
   }
+}
 
-  IconData _iconForApp(String id) {
-    switch (id) {
-      case 'ota_monitor':
-        return Icons.inventory_2_outlined;
-      case 'adsw_monitor':
-        return Icons.satellite_alt_outlined;
-      default:
-        return Icons.apps_outlined;
-    }
+IconData _iconForAppId(String id) {
+  switch (id) {
+    case 'ota_monitor':
+      return Icons.inventory_2_outlined;
+    case 'adsw_monitor':
+      return Icons.satellite_alt_outlined;
+    default:
+      return Icons.apps_outlined;
   }
 }
 
@@ -436,99 +435,6 @@ class _BotInput extends StatelessWidget {
       ),
     );
   }
-}
-
-class _QuickCommandRow extends StatelessWidget {
-  const _QuickCommandRow({required this.controller});
-
-  final LauncherBotController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final commands = [
-      _CommandSpec(
-        Icons.monitor_heart_outlined,
-        'Analyze',
-        controller.analyzeCurrentContext,
-      ),
-      _CommandSpec(
-        Icons.warning_amber_outlined,
-        'Alerts',
-        controller.showAlerts,
-      ),
-      _CommandSpec(
-        Icons.summarize_outlined,
-        'Summary',
-        controller.summarizeCurrentContext,
-      ),
-    ];
-    return Container(
-      height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: _BotPanelColors.canvas,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: _BotPanelColors.line),
-      ),
-      child: Row(
-        children: [
-          for (var i = 0; i < commands.length; i++) ...[
-            Expanded(child: _CommandChip(spec: commands[i])),
-            if (i != commands.length - 1) const SizedBox(width: 6),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _CommandChip extends StatelessWidget {
-  const _CommandChip({required this.spec});
-
-  final _CommandSpec spec;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: spec.onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: _BotPanelColors.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _BotPanelColors.line),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(spec.icon, color: _BotPanelColors.accent, size: 16),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
-                spec.label,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _BotPanelColors.ink,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CommandSpec {
-  const _CommandSpec(this.icon, this.label, this.onTap);
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
 }
 
 abstract final class _BotPanelColors {

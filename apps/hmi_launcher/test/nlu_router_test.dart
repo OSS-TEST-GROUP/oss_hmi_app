@@ -82,8 +82,10 @@ void main() {
       final r = NluRouter(apps);
       expect(r.resolve('OTA')?.id, 'ota_monitor');
       expect(r.resolve('ota monitor')?.id, 'ota_monitor');
+      expect(r.resolve('ota 모니터 실행해줘')?.id, 'ota_monitor');
       expect(r.resolve('AD SW')?.id, 'adsw_monitor');
       expect(r.resolve('adsw')?.id, 'adsw_monitor');
+      expect(r.resolve('ad sw 실행해줘')?.id, 'adsw_monitor');
     });
 
     test('name fallback ignores single-char queries', () {
