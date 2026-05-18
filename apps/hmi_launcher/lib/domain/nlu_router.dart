@@ -36,6 +36,7 @@ class NluRouter {
   NluRouteResult? resolveIntent(String input) {
     final query = input.trim().toLowerCase();
     if (query.isEmpty) return null;
+    final normalizedQuery = _normalize(query);
 
     final action =
         _isCloseIntent(input) ? NluRouteAction.close : NluRouteAction.open;
@@ -46,8 +47,8 @@ class NluRouter {
 
     for (final app in apps) {
       for (final prompt in app.prompts) {
-        final p = prompt.toLowerCase();
-        if (!query.contains(p)) continue;
+        final p = _normalize(prompt);
+        if (!normalizedQuery.contains(p)) continue;
         final len = p.length;
         if (len > bestPromptLen ||
             (len == bestPromptLen &&
@@ -72,15 +73,14 @@ class NluRouter {
     AppManifest? bestByName;
     var bestNameScore = -1;
     for (final app in apps) {
-      final name = app.name.toLowerCase();
-      final id = app.id.toLowerCase();
+      final aliases = _aliasesFor(app);
       var score = -1;
-      if (name.contains(query) || query.contains(name)) {
-        score = name.length;
-      }
-      if (id.contains(query) || query.contains(id)) {
-        final s = id.length;
-        if (s > score) score = s;
+      for (final alias in aliases) {
+        if (alias.length < 2) continue;
+        if (alias.contains(normalizedQuery) ||
+            normalizedQuery.contains(alias)) {
+          if (alias.length > score) score = alias.length;
+        }
       }
       if (score < 0) continue;
       if (score > bestNameScore ||
@@ -104,5 +104,27 @@ class NluRouter {
         query.contains('꺼') ||
         query.contains('나가') ||
         query.contains('뒤로');
+  }
+
+  String _normalize(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9가-힣]+'), '');
+  }
+
+  Set<String> _aliasesFor(AppManifest app) {
+    final rawAliases = <String>{
+      app.id,
+      app.id.replaceAll('_', ''),
+      app.id.replaceAll('_', ' '),
+      app.name,
+      ...app.name.split(RegExp(r'\s+')),
+      ...app.prompts,
+    };
+
+    final normalized = <String>{};
+    for (final alias in rawAliases) {
+      final value = _normalize(alias);
+      if (value.length >= 2) normalized.add(value);
+    }
+    return normalized;
   }
 }
