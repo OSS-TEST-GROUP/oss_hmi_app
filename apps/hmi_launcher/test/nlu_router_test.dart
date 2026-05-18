@@ -60,7 +60,7 @@ void main() {
       expect(NluRouter(tied).resolve('hello')?.id, 'aaa');
     });
 
-    test('falls back to app name when no prompt matches', () {
+    test('falls back only to exact app name or id', () {
       final apps = [
         AppManifest(
           id: 'ota_monitor',
@@ -80,12 +80,14 @@ void main() {
         ),
       ];
       final r = NluRouter(apps);
-      expect(r.resolve('OTA')?.id, 'ota_monitor');
       expect(r.resolve('ota monitor')?.id, 'ota_monitor');
-      expect(r.resolve('ota 모니터 실행해줘')?.id, 'ota_monitor');
+      expect(r.resolve('ota_monitor')?.id, 'ota_monitor');
+      expect(r.resolve('otamonitor')?.id, 'ota_monitor');
       expect(r.resolve('AD SW')?.id, 'adsw_monitor');
       expect(r.resolve('adsw')?.id, 'adsw_monitor');
-      expect(r.resolve('ad sw 실행해줘')?.id, 'adsw_monitor');
+      expect(r.resolve('OTA'), isNull);
+      expect(r.resolve('ota 모니터 실행해줘'), isNull);
+      expect(r.resolve('ad sw 실행해줘'), isNull);
     });
 
     test('name fallback ignores single-char queries', () {

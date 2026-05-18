@@ -59,6 +59,19 @@ class LauncherBotController extends ChangeNotifier {
 
     _addUserMessage(input);
 
+    _isGenerating = true;
+    notifyListeners();
+
+    try {
+      if (await _handleAiCommand(input)) return;
+    } catch (_) {
+      // If the model cannot produce a valid route, fall back to the local
+      // router and finally to normal answer generation below.
+    } finally {
+      _isGenerating = false;
+      notifyListeners();
+    }
+
     if (_handleLocalCommand(input)) return;
 
     final pendingIndex = _messages.length;
@@ -166,6 +179,55 @@ class LauncherBotController extends ChangeNotifier {
     return false;
   }
 
+  Future<bool> _handleAiCommand(String input) async {
+    final intent = await _aiService.resolveIntent(
+      prompt: input,
+      apps: _nluRouter.apps,
+      currentContext: _contextName,
+    );
+    if (intent == null || intent.action == LauncherBotAiIntentAction.answer) {
+      return false;
+    }
+
+    switch (intent.action) {
+      case LauncherBotAiIntentAction.openApp:
+        final app = _appById(intent.appId);
+        if (app == null) return false;
+        _onOpenApp(app);
+        _addBotMessage('${app.name}을 실행했어요.', intent: 'AI Open App');
+        return true;
+      case LauncherBotAiIntentAction.closeApp:
+        final app = _appById(intent.appId);
+        if (app != null && _contextName != app.name) {
+          _addBotMessage(
+            '${app.name}은 현재 열려 있지 않아요.',
+            intent: 'AI Close App',
+          );
+          return true;
+        }
+        _onCloseApp();
+        _addBotMessage(
+          app == null ? '홈 화면으로 돌아왔어요.' : '${app.name}을 닫았어요.',
+          intent: 'AI Close App',
+        );
+        return true;
+      case LauncherBotAiIntentAction.openSettings:
+        _onOpenSettings();
+        _addBotMessage('설정 화면을 열었어요.', intent: 'AI Open Settings');
+        return true;
+      case LauncherBotAiIntentAction.answer:
+        return false;
+    }
+  }
+
+  AppManifest? _appById(String? appId) {
+    if (appId == null) return null;
+    for (final app in _nluRouter.apps) {
+      if (app.id == appId) return app;
+    }
+    return null;
+  }
+
   bool _isCloseCommand(String input) {
     const commands = {
       'close',
@@ -200,7 +262,7 @@ class LauncherBotController extends ChangeNotifier {
   List<String> _buildContexts() {
     return [
       '현재 화면: $_contextName',
-      '앱 실행, 설정 열기, 앱 닫기는 런처가 AI 호출 전에 먼저 처리합니다.',
+      '앱 실행, 설정 열기, 앱 닫기는 AI intent router와 런처가 먼저 처리합니다.',
     ];
   }
 

@@ -6,9 +6,7 @@
   "category": "monitoring",
   "color": "#FCD34D",
   "prompts": [
-    "OTA 모니터 열어줘",
-    "OTA 업데이트 상태 확인",
-    "버전 확인해줘"
+    "OTA Monitor 실행해줘"
   ],
   "entry": "ota_monitor/main.dart",
   "permissions": ["vss", "can_bus"],
