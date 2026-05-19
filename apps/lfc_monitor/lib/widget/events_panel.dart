@@ -84,6 +84,9 @@ class _EventRow extends StatelessWidget {
     final ss = event.timestamp.second.toString().padLeft(2, '0');
     final ms = event.timestamp.millisecond.toString().padLeft(3, '0');
 
+    // Map verbose enum names ("ctrlStartContainerResponse") to short
+    // operator-facing labels.  Keeps the events ring scannable on
+    // narrow viewports without losing the kind distinction.
     final String text;
     final Color dotColor;
     switch (event.kind) {
@@ -91,21 +94,48 @@ class _EventRow extends StatelessWidget {
         text = '${event.serviceName}: ${event.from.label} → ${event.to.label}';
         dotColor = stateColor(event.to, palette);
         break;
-      case LifecycleEventKind.startResponse:
-      case LifecycleEventKind.stopResponse:
-      case LifecycleEventKind.setModeResponse:
-      case LifecycleEventKind.updateList:
-      case LifecycleEventKind.ctrlStartServiceResponse:
-      case LifecycleEventKind.ctrlStopServiceResponse:
-      case LifecycleEventKind.ctrlSetServiceModeResponse:
-      case LifecycleEventKind.ctrlStartContainerResponse:
-      case LifecycleEventKind.ctrlStopContainerResponse:
-      case LifecycleEventKind.ctrlSetRecoveryPolicyResponse:
-        text = '${event.kind.name}  ${event.detail ?? ''}';
-        dotColor = palette.accent;
-        break;
       case LifecycleEventKind.containerStateChange:
         text = 'container ${event.serviceName}: ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.startResponse:
+        text = 'start svc  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.stopResponse:
+        text = 'stop svc  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.setModeResponse:
+        text = 'set mode  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.updateList:
+        text = 'update list  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.ctrlStartServiceResponse:
+        text = 'ctrl start svc  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.ctrlStopServiceResponse:
+        text = 'ctrl stop svc  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.ctrlSetServiceModeResponse:
+        text = 'ctrl set mode  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.ctrlStartContainerResponse:
+        text = 'ctrl start ctr  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.ctrlStopContainerResponse:
+        text = 'ctrl stop ctr  ${event.detail ?? ''}';
+        dotColor = palette.accent;
+        break;
+      case LifecycleEventKind.ctrlSetRecoveryPolicyResponse:
+        text = 'ctrl set recovery  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
     }

@@ -110,4 +110,53 @@ void main() {
     // Oversized URL.
     expect(SettingsController.isValidUrl('ws://${'x' * 2100}'), isFalse);
   });
+
+  test('RecoveryPolicy declaration order matches IDL', () {
+    // LifecycleCommon.idl: R_DEFAULT=0, ALWAYS=1, ON_FAILURE=2,
+    // ON_SUCCESS=3, ON_NOT_RESPONDING=4, MANUAL=5.  These values are
+    // wire-critical — they're sent in CtrlSetRecoveryPolicyRequest
+    // .recovery_policy and parsed by lifecycle_mgr / adsw_manager.
+    expect(RecoveryPolicy.defaultPolicy.value, 0);
+    expect(RecoveryPolicy.always.value, 1);
+    expect(RecoveryPolicy.onFailure.value, 2);
+    expect(RecoveryPolicy.onSuccess.value, 3);
+    expect(RecoveryPolicy.onNotResponding.value, 4);
+    expect(RecoveryPolicy.manual.value, 5);
+  });
+
+  test('RecoveryPolicy.fromInt is total + safe', () {
+    expect(RecoveryPolicy.fromInt(0), RecoveryPolicy.defaultPolicy);
+    expect(RecoveryPolicy.fromInt(1), RecoveryPolicy.always);
+    expect(RecoveryPolicy.fromInt(5), RecoveryPolicy.manual);
+    // Unknown / null fall back to defaultPolicy — keeps the UI safe
+    // even if a future IDL extension lands first.
+    expect(RecoveryPolicy.fromInt(99), RecoveryPolicy.defaultPolicy);
+    expect(RecoveryPolicy.fromInt(null), RecoveryPolicy.defaultPolicy);
+  });
+
+  test('RecoveryPolicy.fromLabel matches Save() / LoadServiceSaved tokens', () {
+    // Mirrors adsw_manager ServiceRegistry::Save() string tokens so
+    // ServiceInfo.recoveryPolicy (label form) round-trips cleanly to
+    // the dropdown's selected enum.
+    expect(RecoveryPolicy.fromLabel('DEFAULT'), RecoveryPolicy.defaultPolicy);
+    expect(RecoveryPolicy.fromLabel('ALWAYS'), RecoveryPolicy.always);
+    expect(RecoveryPolicy.fromLabel('ON_FAILURE'), RecoveryPolicy.onFailure);
+    expect(RecoveryPolicy.fromLabel('MANUAL'), RecoveryPolicy.manual);
+    expect(RecoveryPolicy.fromLabel('unknown_token'),
+        RecoveryPolicy.defaultPolicy);
+    expect(RecoveryPolicy.fromLabel(null), RecoveryPolicy.defaultPolicy);
+  });
+
+  test('Recovery ctrl/* topic + type strings pinned', () {
+    // Wire strings must stay byte-identical with lifecycle_mgr
+    // MessageType::GetTopicStr() and the dds_bridge entries.
+    expect(LifecycleTopics.ctrlSetRecoveryPolicyReq,
+        '/mmf/lifecyclemgr/ctrl/SetRecoveryPolicy');
+    expect(LifecycleTopics.ctrlSetRecoveryPolicyResp,
+        '/mmf/lifecyclemgr/ctrl/SetRecoveryPolicyResponse');
+    expect(LifecycleTypes.ctrlSetRecoveryPolicyReq,
+        'lifecyclemgr/CtrlSetRecoveryPolicyRequest');
+    // Response shares CtrlResponse with the rest of the ctrl/* family.
+    expect(LifecycleTypes.ctrlResponse, 'lifecyclemgr/CtrlResponse');
+  });
 }
