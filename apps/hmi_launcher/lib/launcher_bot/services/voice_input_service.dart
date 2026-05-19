@@ -24,7 +24,7 @@ class CapturedVoiceInput {
 
 class VoiceInputService {
   const VoiceInputService({
-    this.duration = const Duration(seconds: 4),
+    this.duration = const Duration(seconds: 10),
     this.sampleRate = 16000,
   });
 
@@ -59,14 +59,8 @@ class VoiceInputService {
       );
     }
 
-    try {
-      final bytes = await file.readAsBytes();
-      return _decodeWavPcm(ByteData.sublistView(bytes));
-    } finally {
-      if (await file.exists()) {
-        await file.delete();
-      }
-    }
+    final bytes = await file.readAsBytes();
+    return _decodeWavPcm(ByteData.sublistView(bytes));
   }
 
   Future<void> _ensureAudioInputAvailable() async {
