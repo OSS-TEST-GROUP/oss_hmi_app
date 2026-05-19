@@ -329,18 +329,34 @@ class LifecycleCollector extends GetxController {
   // lifecycle_mgr's StateManager re-derives those from its registry.
 
   void startService(String name) {
+    // F014 follow-up instrumentation: log every call site so we can
+    // tell whether a real button click is fired or some Flutter
+    // re-render path is re-invoking us.  Stack trace cut short so the
+    // operator-visible logs stay readable.
+    _logCall('startService', name);
     _publish(_ctrlStartServiceReqPub, 'ctrlStartService', {
       'service_list': [name],
     });
   }
 
   void stopService(String name) {
+    _logCall('stopService', name);
     _publish(_ctrlStopServiceReqPub, 'ctrlStopService', {
       'service_list': [name],
     });
   }
 
+  void _logCall(String label, String arg) {
+    final stack = StackTrace.current.toString().split('\n');
+    // Skip frames 0-1 (this helper + the caller itself); keep next 4
+    // so we see the click handler (or whatever invoked it).
+    final relevant = stack.skip(2).take(4).join('\n  ');
+    // ignore: avoid_print
+    print('[collector] $label($arg) caller:\n  $relevant');
+  }
+
   void setServiceMode(String name, ServiceMode mode) {
+    _logCall('setServiceMode', '$name:${mode.label}');
     _publish(_ctrlSetServiceModeReqPub, 'ctrlSetServiceMode', {
       'service_list': [name],
       'service_mode': mode.value,
@@ -352,6 +368,7 @@ class LifecycleCollector extends GetxController {
   /// NORMAL/OTA toggle so an operator can flip the whole vehicle to OTA
   /// mode without touching each service individually.
   void setAllServicesMode(ServiceMode mode) {
+    _logCall('setAllServicesMode', mode.label);
     final names = services.keys.toList(growable: false);
     if (names.isEmpty) {
       lastError.value = 'no registered services to apply mode to';
@@ -367,12 +384,14 @@ class LifecycleCollector extends GetxController {
   // lifecycle_mgr's StateManager looks the type up in its registry to know
   // which docker / docker-compose / k3s op to issue via adsw_manager.
   void startContainer(String name) {
+    _logCall('startContainer', name);
     _publish(_ctrlStartContainerReqPub, 'ctrlStartContainer', {
       'container_list': [name],
     });
   }
 
   void stopContainer(String name) {
+    _logCall('stopContainer', name);
     _publish(_ctrlStopContainerReqPub, 'ctrlStopContainer', {
       'container_list': [name],
     });
@@ -382,6 +401,7 @@ class LifecycleCollector extends GetxController {
   /// lifecycle_mgr policy-gates + forwards to adsw_manager which
   /// persists to saved-service-list.yaml.
   void setServiceRecoveryPolicy(String name, RecoveryPolicy policy) {
+    _logCall('setServiceRecoveryPolicy', '$name:${policy.label}');
     _publish(_ctrlSetRecoveryPolicyReqPub, 'ctrlSetRecoveryPolicy', {
       'service_list': [name],
       'recovery_policy': policy.value,
