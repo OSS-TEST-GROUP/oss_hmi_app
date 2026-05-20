@@ -69,10 +69,23 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
       );
     }
 
-    return _chatbotService.generateAudio(
+    final response = await _chatbotService.generateAudio(
       prompt: '이 오디오를 한국어 텍스트로 정확히 받아쓰기만 해줘. '
+          '짧은 차량 명령어도 놓치지 말고 받아써. '
           '명령 의도 설명이나 부가 설명은 쓰지 말고, 사용자가 말한 문장만 출력해. '
           '특수 토큰, turn marker, markdown은 출력하지 마.',
+      pcm: pcm,
+      sampleRate: sampleRate,
+      channels: channels,
+    );
+    if (response.trim().isNotEmpty) {
+      return response;
+    }
+
+    return _chatbotService.generateAudio(
+      prompt: '오디오에 아주 짧은 한국어 명령이 들어있을 수 있다. '
+          '들리는 단어만 그대로 받아써. 예: "닫아줘", "설정 닫아줘", "OTA 실행해줘". '
+          '아무 설명 없이 들린 문장만 출력해.',
       pcm: pcm,
       sampleRate: sampleRate,
       channels: channels,

@@ -32,6 +32,11 @@ class VoiceInputService {
   final int sampleRate;
 
   Future<CapturedVoiceInput> capture() async {
+    final session = await startCapture();
+    return session.result;
+  }
+
+  Future<VoiceCaptureSession> startCapture() async {
     await _ensureAudioInputAvailable();
 
     final file = File(
@@ -52,15 +57,16 @@ class VoiceInputService {
       file.path,
     ];
 
-    final result = await Process.run('arecord', args);
-    if (result.exitCode != 0 || !await file.exists()) {
-      throw VoiceInputException(
-        '마이크 녹음에 실패했습니다. ${_processMessage(result)}',
+    final Process process;
+    try {
+      process = await Process.start('arecord', args);
+    } on ProcessException {
+      throw const VoiceInputException(
+        '오디오 녹음 도구(arecord)를 찾을 수 없습니다.',
       );
     }
 
-    final bytes = await file.readAsBytes();
-    return _decodeWavPcm(ByteData.sublistView(bytes));
+    return VoiceCaptureSession._(process: process, file: file);
   }
 
   Future<void> _ensureAudioInputAvailable() async {
@@ -95,6 +101,52 @@ class VoiceInputService {
         ? '${result.stderr}'.trim()
         : '${result.stdout}'.trim();
     return text.isEmpty ? '' : text;
+  }
+}
+
+class VoiceCaptureSession {
+  VoiceCaptureSession._({
+    required Process process,
+    required File file,
+  })  : _process = process,
+        _file = file {
+    _result = _finish();
+  }
+
+  final Process _process;
+  final File _file;
+  late final Future<CapturedVoiceInput> _result;
+  bool _stopRequested = false;
+
+  Future<CapturedVoiceInput> get result => _result;
+
+  void stop() {
+    if (_stopRequested) return;
+    _stopRequested = true;
+    _process.kill(ProcessSignal.sigint);
+  }
+
+  Future<CapturedVoiceInput> _finish() async {
+    final exitCode = await _process.exitCode;
+    if (!await _file.exists()) {
+      throw VoiceInputException(
+        '마이크 녹음 파일을 찾을 수 없습니다. exitCode=$exitCode',
+      );
+    }
+
+    final bytes = await _file.readAsBytes();
+    try {
+      if (bytes.length <= 44) {
+        throw VoiceInputException(
+          '녹음된 음성 데이터가 너무 짧습니다. exitCode=$exitCode',
+        );
+      }
+      return _decodeWavPcm(ByteData.sublistView(bytes));
+    } finally {
+      if (await _file.exists()) {
+        await _file.delete();
+      }
+    }
   }
 }
 

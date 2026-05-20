@@ -62,6 +62,33 @@ void main() {
     expect(controller.messages.last.text, 'AD SW을 닫았어요.');
     expect(controller.messages.last.intent, 'Close');
   });
+
+  test(
+      'settings close command closes current screen instead of opening settings',
+      () async {
+    var closeCalled = false;
+    var settingsCalled = false;
+    final controller = LauncherBotController(
+      nluRouter: NluRouter(const []),
+      aiService: const _FakeAiService(
+        LauncherBotAiIntent(action: LauncherBotAiIntentAction.openSettings),
+      ),
+      onOpenApp: (_) => fail('open should not be called'),
+      onCloseApp: () {
+        closeCalled = true;
+        return 'Settings';
+      },
+      onOpenSettings: () => settingsCalled = true,
+      contextName: 'Settings',
+    );
+
+    await controller.submit('설정 닫아줘.');
+
+    expect(closeCalled, isTrue);
+    expect(settingsCalled, isFalse);
+    expect(controller.messages.last.text, 'Settings을 닫았어요.');
+    expect(controller.messages.last.intent, 'Close');
+  });
 }
 
 class _FakeAiService implements LauncherBotAiService {

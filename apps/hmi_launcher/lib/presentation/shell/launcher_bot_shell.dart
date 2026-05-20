@@ -47,6 +47,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   late NluRouter _nluRouter;
   late LauncherBotController _launcherBotController;
   final VoiceInputService _voiceInputService = const VoiceInputService();
+  VoiceCaptureSession? _voiceSession;
   late final bool _aiSdkAvailable;
   late bool _aiMode;
   bool _assistantOpen = false;
@@ -94,6 +95,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
   @override
   void dispose() {
+    _voiceSession?.stop();
     _launcherBotController.dispose();
     super.dispose();
   }
@@ -138,7 +140,15 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   Future<void> _handleVoiceCommand() async {
-    if (!_aiMode || !_aiSdkAvailable || _voiceCapturing) return;
+    if (!_aiMode || !_aiSdkAvailable) return;
+
+    final activeSession = _voiceSession;
+    if (activeSession != null) {
+      _showSnackBar('음성 인식을 처리하고 있어요.');
+      activeSession.stop();
+      return;
+    }
+    if (_voiceCapturing) return;
 
     setState(() {
       _voiceCapturing = true;
@@ -147,15 +157,47 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _showSnackBar('음성을 듣고 있어요.');
 
     try {
-      final voice = await _voiceInputService.capture();
+      final session = await _voiceInputService.startCapture();
+      if (!mounted) {
+        session.stop();
+        return;
+      }
+      setState(() => _voiceSession = session);
+      _finishVoiceCapture(session);
+    } on VoiceInputException catch (error) {
+      _showSnackBar(error.message);
+      if (mounted) {
+        setState(() => _voiceCapturing = false);
+      }
+    } catch (error) {
+      _showSnackBar('음성 입력 처리에 실패했습니다. $error');
+      if (mounted) {
+        setState(() => _voiceCapturing = false);
+      }
+    }
+  }
+
+  Future<void> _finishVoiceCapture(VoiceCaptureSession session) async {
+    try {
+      final voice = await session.result;
+      if (!mounted) return;
+      if (_voiceSession == session) {
+        setState(() {
+          _voiceSession = null;
+          _voiceCapturing = false;
+        });
+      }
       await _launcherBotController.submitVoice(voice);
     } on VoiceInputException catch (error) {
       _showSnackBar(error.message);
     } catch (error) {
       _showSnackBar('음성 입력 처리에 실패했습니다. $error');
     } finally {
-      if (mounted) {
-        setState(() => _voiceCapturing = false);
+      if (mounted && _voiceSession == session) {
+        setState(() {
+          _voiceSession = null;
+          _voiceCapturing = false;
+        });
       }
     }
   }

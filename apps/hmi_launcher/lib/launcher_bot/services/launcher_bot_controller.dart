@@ -227,7 +227,7 @@ class LauncherBotController extends ChangeNotifier {
   }
 
   bool _handleDirectCommand(String input) {
-    if (_isCloseCommand(input)) {
+    if (_isCloseCommand(input) || _isCloseSettingsCommand(input)) {
       final closedName = _onCloseApp();
       _addCloseMessage(closedName, intent: 'Close');
       return true;
@@ -311,6 +311,24 @@ class LauncherBotController extends ChangeNotifier {
       '뒤로가기',
     };
     return commands.contains(normalized);
+  }
+
+  bool _isCloseSettingsCommand(String input) {
+    final normalized = _normalizeCommand(input);
+    final hasSettings =
+        normalized.contains('설정') || normalized.contains('setting');
+    return hasSettings && _hasCloseKeyword(normalized);
+  }
+
+  bool _hasCloseKeyword(String normalizedInput) {
+    return normalizedInput.contains('닫') ||
+        normalizedInput.contains('종료') ||
+        normalizedInput.contains('나가') ||
+        normalizedInput.contains('뒤로') ||
+        normalizedInput.contains('close') ||
+        normalizedInput.contains('exit') ||
+        normalizedInput.contains('quit') ||
+        normalizedInput.contains('back');
   }
 
   bool _isSettingsCommand(String input) {
