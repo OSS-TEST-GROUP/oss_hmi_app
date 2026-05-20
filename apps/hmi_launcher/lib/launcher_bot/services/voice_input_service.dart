@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 class VoiceInputException implements Exception {
@@ -15,11 +16,26 @@ class CapturedVoiceInput {
     required this.pcm,
     required this.sampleRate,
     required this.channels,
+    required this.wavPath,
+    required this.durationSeconds,
+    required this.peakAmplitude,
+    required this.rmsAmplitude,
+    required this.silentFrameRatio,
   });
 
   final Float32List pcm;
   final int sampleRate;
   final int channels;
+  final String wavPath;
+  final double durationSeconds;
+  final double peakAmplitude;
+  final double rmsAmplitude;
+  final double silentFrameRatio;
+
+  String get debugSummary => 'duration=${durationSeconds.toStringAsFixed(2)}s '
+      'peak=${peakAmplitude.toStringAsFixed(4)} '
+      'rms=${rmsAmplitude.toStringAsFixed(4)} '
+      'silent=${(silentFrameRatio * 100).toStringAsFixed(1)}%';
 }
 
 class VoiceInputService {
@@ -135,22 +151,26 @@ class VoiceCaptureSession {
     }
 
     final bytes = await _file.readAsBytes();
+    _logVoice(
+      'recorded wav=${_file.path} exitCode=$exitCode bytes=${bytes.length}',
+    );
     try {
       if (bytes.length <= 44) {
         throw VoiceInputException(
           '녹음된 음성 데이터가 너무 짧습니다. exitCode=$exitCode',
         );
       }
-      return _decodeWavPcm(ByteData.sublistView(bytes));
+      return _decodeWavPcm(ByteData.sublistView(bytes), wavPath: _file.path);
     } finally {
-      if (await _file.exists()) {
+      final keepAudio = Platform.environment['LAUNCHER_BOT_KEEP_AUDIO'] != '0';
+      if (!keepAudio && await _file.exists()) {
         await _file.delete();
       }
     }
   }
 }
 
-CapturedVoiceInput _decodeWavPcm(ByteData data) {
+CapturedVoiceInput _decodeWavPcm(ByteData data, {required String wavPath}) {
   String fourCc(int offset) {
     return String.fromCharCodes([
       data.getUint8(offset),
@@ -208,18 +228,52 @@ CapturedVoiceInput _decodeWavPcm(ByteData data) {
   final frameCount = dataSize ~/ (channels * 2);
   final pcm = Float32List(frameCount);
   var cursor = dataOffset;
+  var peak = 0.0;
+  var squareSum = 0.0;
+  var silentFrames = 0;
   for (var frame = 0; frame < frameCount; frame += 1) {
     var sum = 0.0;
     for (var channel = 0; channel < channels; channel += 1) {
       sum += data.getInt16(cursor, Endian.little) / 32768.0;
       cursor += 2;
     }
-    pcm[frame] = sum / channels;
+    final sample = sum / channels;
+    final absSample = sample.abs();
+    if (absSample > peak) peak = absSample;
+    squareSum += sample * sample;
+    if (absSample < 0.005) silentFrames += 1;
+    pcm[frame] = sample;
+  }
+
+  final durationSeconds = frameCount / sampleRate;
+  final rms = frameCount == 0 ? 0.0 : math.sqrt(squareSum / frameCount);
+  final silentFrameRatio = frameCount == 0 ? 1.0 : silentFrames / frameCount;
+  _logVoice(
+    'decoded wav=$wavPath sampleRate=$sampleRate channelsIn=$channels '
+    'bits=$bitsPerSample frames=$frameCount '
+    'duration=${durationSeconds.toStringAsFixed(2)}s '
+    'peak=${peak.toStringAsFixed(4)} rms=${rms.toStringAsFixed(4)} '
+    'silent=${(silentFrameRatio * 100).toStringAsFixed(1)}%',
+  );
+  if (peak < 0.02 || rms < 0.003 || silentFrameRatio > 0.95) {
+    _logVoice(
+      'warning low/quiet input detected. Check capture device, mic gain, '
+      'or whether speech was recorded.',
+    );
   }
 
   return CapturedVoiceInput(
     pcm: pcm,
     sampleRate: sampleRate,
     channels: 1,
+    wavPath: wavPath,
+    durationSeconds: durationSeconds,
+    peakAmplitude: peak,
+    rmsAmplitude: rms,
+    silentFrameRatio: silentFrameRatio,
   );
+}
+
+void _logVoice(String message) {
+  stderr.writeln('[launcher_bot_voice] $message');
 }

@@ -189,7 +189,9 @@ class LauncherBotController extends ChangeNotifier {
     _isGenerating = true;
     notifyListeners();
 
+    CapturedVoiceInput? capturedVoice;
     try {
+      capturedVoice = voice;
       final recognizedText = (await _aiService.transcribeAudio(
         pcm: voice.pcm,
         sampleRate: voice.sampleRate,
@@ -202,7 +204,11 @@ class LauncherBotController extends ChangeNotifier {
           text: '음성 인식 결과가 비어 있습니다.',
           timestamp: _nowLabel(),
         );
-        _addBotMessage('음성 내용을 인식하지 못했습니다.', intent: 'Voice');
+        _addBotMessage(
+          '음성 내용을 인식하지 못했습니다. 녹음 파일: ${voice.wavPath}\n'
+          '${voice.debugSummary}',
+          intent: 'Voice',
+        );
         return;
       }
 
@@ -219,6 +225,13 @@ class LauncherBotController extends ChangeNotifier {
         timestamp: _nowLabel(),
       );
       _addBotMessage('음성 인식에 실패했습니다. $error', intent: 'Voice Error');
+      if (capturedVoice != null) {
+        _addBotMessage(
+          '녹음 파일: ${capturedVoice.wavPath}\n'
+          '${capturedVoice.debugSummary}',
+          intent: 'Voice Debug',
+        );
+      }
     } finally {
       _isGenerating = false;
       notifyListeners();
