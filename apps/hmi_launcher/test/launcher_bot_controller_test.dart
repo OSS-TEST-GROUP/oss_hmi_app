@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
 import 'package:hmi_launcher/domain/nlu_router.dart';
+import 'package:hmi_launcher/launcher_bot/services/app_usage_store.dart';
 import 'package:hmi_launcher/launcher_bot/services/launcher_bot_ai_service.dart';
 import 'package:hmi_launcher/launcher_bot/services/launcher_bot_controller.dart';
 
@@ -102,6 +103,19 @@ class _FakeAiService implements LauncherBotAiService {
     required List<String> contexts,
   }) async {
     return 'fallback answer';
+  }
+
+  @override
+  Future<LauncherBotAiAppSuggestion?> suggestAppToOpen({
+    required List<AppManifest> apps,
+    required List<AppUsageStats> usages,
+    required String currentContext,
+  }) async {
+    if (apps.isEmpty) return null;
+    return LauncherBotAiAppSuggestion(
+      appId: apps.first.id,
+      message: '최근 ${apps.first.name}을 자주 열었어요. 지금 실행할까요?',
+    );
   }
 
   @override

@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../domain/app_manifest.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
 import '../../launcher_bot/services/launcher_bot_ai_service.dart';
+import '../../launcher_bot/services/app_usage_store.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
 import '../../launcher_bot/services/voice_input_service.dart';
 import '../launcher_bot/launcher_bot_panel.dart';
@@ -46,12 +49,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   late final List<String> _focusedAppIds;
   late NluRouter _nluRouter;
   late LauncherBotController _launcherBotController;
+  final AppUsageStore _usageStore = AppUsageStore();
   final VoiceInputService _voiceInputService = const VoiceInputService();
   VoiceCaptureSession? _voiceSession;
   late final bool _aiSdkAvailable;
   late bool _aiMode;
   bool _assistantOpen = false;
   bool _voiceCapturing = false;
+  bool _usageSuggestionShown = false;
 
   @override
   void initState() {
@@ -75,6 +80,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
     );
+    _loadUsageAndSuggest();
   }
 
   @override
@@ -120,6 +126,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   void _setAiMode(bool value) {
     if (value && !_aiSdkAvailable) return;
     setState(() => _aiMode = value);
+    if (value) unawaited(_maybeSuggestFrequentApp());
   }
 
   void _selectOpenedApp(String appId) {
@@ -132,11 +139,32 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _openApp(AppManifest app) {
+    unawaited(_usageStore.recordOpen(app.id));
     setState(() => _selectOpenedApp(app.id));
   }
 
   void _openSettings() {
     setState(() => _selectOpenedApp(_SettingsPage.appId));
+  }
+
+  Future<void> _loadUsageAndSuggest() async {
+    await _usageStore.load();
+    if (!mounted) return;
+    await _maybeSuggestFrequentApp();
+  }
+
+  Future<void> _maybeSuggestFrequentApp() async {
+    if (_usageSuggestionShown || !_aiSdkAvailable || !_aiMode) return;
+    if (_selectedAppId != null || widget.registry.apps.isEmpty) return;
+
+    final usages = _usageStore.suggestionCandidates(
+      widget.registry.apps.map((app) => app.id).toSet(),
+    );
+    if (usages.isEmpty) return;
+
+    _usageSuggestionShown = true;
+    setState(() => _assistantOpen = true);
+    await _launcherBotController.suggestFrequentApp(usages: usages);
   }
 
   Future<void> _handleVoiceCommand() async {

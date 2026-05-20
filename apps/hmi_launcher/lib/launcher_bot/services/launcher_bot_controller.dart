@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../domain/app_manifest.dart';
 import '../../domain/nlu_router.dart';
 import '../models/launcher_bot_message.dart';
+import 'app_usage_store.dart';
 import 'launcher_bot_ai_service.dart';
 import 'voice_input_service.dart';
 
@@ -40,10 +41,12 @@ class LauncherBotController extends ChangeNotifier {
 
   final List<LauncherBotMessage> _messages = [];
   bool _isGenerating = false;
+  String? _pendingSuggestionAppId;
 
   List<LauncherBotMessage> get messages => List.unmodifiable(_messages);
   bool get isGenerating => _isGenerating;
   String get contextName => _contextName;
+  String? get pendingSuggestionAppId => _pendingSuggestionAppId;
 
   void updateRouter(NluRouter router) {
     _nluRouter = router;
@@ -60,6 +63,64 @@ class LauncherBotController extends ChangeNotifier {
 
     _addUserMessage(input);
     await _handleSubmittedInput(input);
+  }
+
+  Future<void> suggestFrequentApp({
+    required List<AppUsageStats> usages,
+  }) async {
+    if (_isGenerating || _pendingSuggestionAppId != null) return;
+
+    _isGenerating = true;
+    notifyListeners();
+
+    try {
+      final suggestion = await _aiService.suggestAppToOpen(
+        apps: _nluRouter.apps,
+        usages: usages,
+        currentContext: _contextName,
+      );
+      final app = _appById(suggestion?.appId);
+      if (suggestion == null || app == null) return;
+
+      _pendingSuggestionAppId = app.id;
+      _addMessage(
+        LauncherBotMessage(
+          speaker: LauncherBotSpeaker.bot,
+          text: suggestion.message,
+          timestamp: _nowLabel(),
+          intent: 'Suggestion',
+          actions: const [
+            LauncherBotMessageAction(id: 'accept_suggestion', label: 'Yes'),
+            LauncherBotMessageAction(id: 'decline_suggestion', label: 'No'),
+          ],
+        ),
+      );
+    } catch (_) {
+      // A proactive suggestion is optional; failed AI selection should not
+      // interrupt launcher startup.
+    } finally {
+      _isGenerating = false;
+      notifyListeners();
+    }
+  }
+
+  void acceptSuggestion() {
+    final app = _appById(_pendingSuggestionAppId);
+    _pendingSuggestionAppId = null;
+    _addUserMessage('Yes');
+    if (app == null) {
+      _addBotMessage('추천 앱을 찾을 수 없어요.', intent: 'Suggestion');
+      return;
+    }
+    _onOpenApp(app);
+    _addBotMessage('${app.name}을 실행했어요.', intent: 'Suggestion');
+  }
+
+  void declineSuggestion() {
+    if (_pendingSuggestionAppId == null) return;
+    _pendingSuggestionAppId = null;
+    _addUserMessage('No');
+    _addBotMessage('알겠어요. 홈 화면을 유지할게요.', intent: 'Suggestion');
   }
 
   Future<void> _handleSubmittedInput(String input) async {
