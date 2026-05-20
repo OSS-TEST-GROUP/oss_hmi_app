@@ -172,8 +172,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
     final activeSession = _voiceSession;
     if (activeSession != null) {
-      _showSnackBar('음성 인식을 처리하고 있어요.');
-      activeSession.stop();
+      _showSnackBar('이미 음성을 듣고 있어요. 10초 녹음 후 자동으로 처리합니다.');
       return;
     }
     if (_voiceCapturing) return;
