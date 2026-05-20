@@ -299,6 +299,9 @@ class GemmaChatbotService {
   _RagRuntimeConfig? _resolveRagConfig(Directory bundleRoot) {
     final embeddingModelPath = _firstExistingDirectory([
       Platform.environment['HMI_LAUNCHER_RAG_EMBEDDING'],
+      '/tmp/models/k_sorberta',
+      '/tmp/models/rag/k_sorberta',
+      '/tmp/models/rag/embedding_model',
       '${bundleRoot.path}/data/models/k_sorberta',
       '${bundleRoot.path}/data/models/rag/k_sorberta',
       '${bundleRoot.path}/data/models/rag/embedding_model',
@@ -309,24 +312,39 @@ class GemmaChatbotService {
 
     final pdfPath = _firstExistingPath([
           Platform.environment['HMI_LAUNCHER_RAG_PDF'],
+          '/tmp/models/rag/docs/NE1_2024_ko_KR.pdf',
           '${bundleRoot.path}/data/models/rag/docs/NE1_2024_ko_KR.pdf',
           '${Directory.current.path}/models/rag/docs/NE1_2024_ko_KR.pdf',
         ].whereType<String>().toList()) ??
         _firstPdfInDirectory([
+          '/tmp/models/rag/docs',
           '${bundleRoot.path}/data/models/rag/docs',
           '${Directory.current.path}/models/rag/docs',
         ]);
 
     if (embeddingModelPath == null || pdfPath == null) {
+      stderr.writeln(
+        '[GemmaChatbotService] RAG config not found. '
+        'embedding=$embeddingModelPath pdf=$pdfPath '
+        'bundle=${bundleRoot.path} '
+        'envEmbedding=${Platform.environment['HMI_LAUNCHER_RAG_EMBEDDING']} '
+        'envPdf=${Platform.environment['HMI_LAUNCHER_RAG_PDF']}',
+      );
       return null;
     }
 
-    return _RagRuntimeConfig(
+    final config = _RagRuntimeConfig(
       embeddingModelPath: embeddingModelPath,
       pdfPath: pdfPath,
       indexPath: Platform.environment['HMI_LAUNCHER_RAG_INDEX'] ??
           _defaultRagIndexPath,
     );
+    stderr.writeln(
+      '[GemmaChatbotService] RAG config found. '
+      'embedding=${config.embeddingModelPath} '
+      'pdf=${config.pdfPath} index=${config.indexPath}',
+    );
+    return config;
   }
 
   Directory _resolveBundleRoot() {
