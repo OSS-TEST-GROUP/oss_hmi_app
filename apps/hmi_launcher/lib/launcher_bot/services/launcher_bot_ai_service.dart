@@ -70,7 +70,7 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
     required List<String> contexts,
   }) {
     final request = _buildRequest(prompt: prompt, contexts: contexts);
-    return _chatbotService.generate(request);
+    return _chatbotService.generateRag(request);
   }
 
   @override

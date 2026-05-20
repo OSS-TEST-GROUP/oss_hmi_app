@@ -3,6 +3,7 @@
 #include "multimodal_types.hpp"
 #include "rag_engine.hpp"
 #include <algorithm>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -15,6 +16,9 @@
 struct ChatbotHandle {
     std::shared_ptr<ai_common::ILLMProvider> provider;
     std::shared_ptr<ai_common::LlamaCppProvider> llama;
+    std::unique_ptr<ai_rag::RAGEngine> rag;
+    std::mutex rag_mutex;
+    bool rag_ready = false;
     std::mutex metrics_mutex;
     int last_tokens = 0;
     float last_generation_time_ms = 0.0f;
@@ -258,6 +262,128 @@ char* chatbot_generate_with_contexts(
             req.contexts.emplace_back(contexts[i]);
         }
     }
+
+    auto res = h->provider->generate(req);
+    update_metrics(h, res);
+    const std::string out = res.success
+        ? clean_response(string_value(res.content))
+        : error_message_to_string(res.error_message);
+    return copy_string(out);
+}
+
+int chatbot_rag_init(
+    ChatbotHandle* h,
+    const char* embedding_model_path,
+    const char* pdf_path,
+    const char* index_path) {
+    if (!h || !embedding_model_path || !pdf_path || !index_path) {
+        std::cerr << "[chatbot_bridge] rag_init invalid input" << std::endl;
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(h->rag_mutex);
+    if (h->rag_ready) {
+        return 1;
+    }
+
+    try {
+        auto engine = std::make_unique<ai_rag::RAGEngine>();
+        std::cerr << "[chatbot_bridge] rag_init embedding_model_path="
+                  << embedding_model_path
+                  << ", pdf_path=" << pdf_path
+                  << ", index_path=" << index_path
+                  << std::endl;
+
+        if (!engine->load_embedding_model(embedding_model_path)) {
+            std::cerr << "[chatbot_bridge] rag_init failed to load embedding model"
+                      << std::endl;
+            return 0;
+        }
+
+        const std::filesystem::path index(index_path);
+        bool loaded_index = false;
+        if (std::filesystem::exists(index)) {
+            loaded_index = engine->load_index(index_path);
+            std::cerr << "[chatbot_bridge] rag_init load_index="
+                      << loaded_index << std::endl;
+        }
+
+        if (!loaded_index) {
+            ai_rag::ChunkOptions options;
+            options.max_chunk_size = 800;
+            options.chunk_overlap = 120;
+            options.split_by_page = false;
+            options.split_by_paragraph = true;
+
+            const int loaded_docs = engine->load_pdf(pdf_path, options);
+            std::cerr << "[chatbot_bridge] rag_init load_pdf docs="
+                      << loaded_docs << std::endl;
+            if (loaded_docs <= 0) {
+                return 0;
+            }
+
+            const auto parent = index.parent_path();
+            if (!parent.empty()) {
+                std::filesystem::create_directories(parent);
+            }
+            if (!engine->save_index(index_path)) {
+                std::cerr << "[chatbot_bridge] rag_init save_index failed"
+                          << std::endl;
+            }
+        }
+
+        h->rag = std::move(engine);
+        h->rag_ready = true;
+        std::cerr << "[chatbot_bridge] rag_init ready documents="
+                  << h->rag->document_count() << std::endl;
+        return 1;
+    } catch (const std::exception& e) {
+        std::cerr << "[chatbot_bridge] rag_init exception: " << e.what()
+                  << std::endl;
+        return 0;
+    } catch (...) {
+        std::cerr << "[chatbot_bridge] rag_init unknown exception" << std::endl;
+        return 0;
+    }
+}
+
+char* chatbot_generate_rag(ChatbotHandle* h, const char* prompt, int top_k) {
+    if (!h || !h->provider || !prompt) return nullptr;
+
+    std::vector<std::string> contexts;
+    {
+        std::lock_guard<std::mutex> lock(h->rag_mutex);
+        if (h->rag_ready && h->rag) {
+            try {
+                const int safe_top_k = std::max(1, std::min(top_k, 8));
+                const auto results = h->rag->search(prompt, safe_top_k, "");
+                std::cerr << "[chatbot_bridge] rag_search results="
+                          << results.size() << std::endl;
+                for (const auto& result : results) {
+                    if (!result.content.empty()) {
+                        contexts.emplace_back(
+                            "[source=" + result.metadata +
+                            ", score=" + std::to_string(result.score) + "]\n" +
+                            result.content);
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[chatbot_bridge] rag_search exception: "
+                          << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[chatbot_bridge] rag_search unknown exception"
+                          << std::endl;
+            }
+        }
+    }
+
+    ai_common::GenerateRequest req;
+    req.user_prompt = build_gemma4_prompt(prompt);
+    req.max_tokens = 192;
+    req.temperature = 0.35f;
+    req.top_p = 0.9f;
+    req.top_k = 40;
+    req.contexts = contexts;
 
     auto res = h->provider->generate(req);
     update_metrics(h, res);
