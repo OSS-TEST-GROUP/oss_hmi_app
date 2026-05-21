@@ -21,7 +21,7 @@
 
 FROM ubuntu:22.04
 
-ARG FLUTTER_VERSION=3.41.2
+ARG FLUTTER_VERSION=3.41.8
 ARG AGL_SDK_URL=https://repo.obigo.com/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
 ARG AGL_SDK_USER=ossdev
 ARG AGL_SDK_PASSWORD=ossdev1234
