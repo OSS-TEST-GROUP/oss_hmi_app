@@ -28,6 +28,11 @@ struct ChatbotHandle {
 
 namespace {
 
+constexpr size_t kRagMaxContextChars = 1150;
+constexpr size_t kRagMaxSingleContextChars = 360;
+constexpr int kRagMaxContexts = 3;
+constexpr int kRagMaxOutputTokens = 96;
+
 constexpr const char* kSystemPrompt =
     "당신은 AGL 차량용 HMI 런처의 한국어 AI 어시스턴트입니다. "
     "사용자의 의도와 상황에 맞게 필요한 만큼 자연스럽게 답하세요. "
@@ -69,6 +74,13 @@ std::string build_rag_user_prompt(
     prompt += "\n[사용자 질문]\n";
     prompt += q;
     return prompt;
+}
+
+std::string truncate_chars(const std::string& text, size_t max_chars) {
+    if (text.size() <= max_chars) {
+        return text;
+    }
+    return text.substr(0, max_chars) + "\n...[truncated]";
 }
 
 std::string trim(const std::string& value) {
@@ -468,22 +480,32 @@ char* chatbot_generate_rag(ChatbotHandle* h, const char* prompt, int top_k) {
         std::lock_guard<std::mutex> lock(h->rag_mutex);
         if (h->rag_ready && h->rag) {
             try {
-                const int safe_top_k = std::max(1, std::min(top_k, 8));
+                const int safe_top_k = std::max(1, std::min(top_k, kRagMaxContexts));
                 const auto results = h->rag->search(prompt, safe_top_k, "");
                 std::cerr << "[chatbot_bridge] rag_search results="
                           << results.size() << std::endl;
+                size_t context_chars = 0;
                 for (const auto& result : results) {
                     if (!result.content.empty()) {
+                        if (static_cast<int>(contexts.size()) >= kRagMaxContexts ||
+                            context_chars >= kRagMaxContextChars) {
+                            break;
+                        }
+                        const size_t remaining = kRagMaxContextChars - context_chars;
+                        const size_t limit = std::min(kRagMaxSingleContextChars, remaining);
+                        const std::string clipped = truncate_chars(result.content, limit);
                         std::cerr << "[chatbot_bridge] rag_context score="
                                   << result.score
                                   << ", metadata=[" << result.metadata << "]"
+                                  << ", clipped_size=" << clipped.size()
                                   << ", preview=["
-                                  << result.content.substr(0, 180)
+                                  << clipped.substr(0, 180)
                                   << "]" << std::endl;
                         contexts.emplace_back(
                             "[source=" + result.metadata +
                             ", score=" + std::to_string(result.score) + "]\n" +
-                            result.content);
+                            clipped);
+                        context_chars += clipped.size();
                     }
                 }
             } catch (const std::exception& e) {
@@ -499,11 +521,15 @@ char* chatbot_generate_rag(ChatbotHandle* h, const char* prompt, int top_k) {
     ai_common::GenerateRequest req;
     const std::string rag_prompt = build_rag_user_prompt(prompt, contexts);
     req.user_prompt = build_gemma4_prompt(rag_prompt.c_str());
-    req.max_tokens = 192;
+    req.max_tokens = kRagMaxOutputTokens;
     req.temperature = 0.35f;
     req.top_p = 0.9f;
     req.top_k = 40;
-    req.contexts = contexts;
+    std::cerr << "[chatbot_bridge] rag_prompt size="
+              << req.user_prompt.size()
+              << ", contexts=" << contexts.size()
+              << ", max_tokens=" << req.max_tokens
+              << std::endl;
 
     auto res = h->provider->generate(req);
     update_metrics(h, res);
