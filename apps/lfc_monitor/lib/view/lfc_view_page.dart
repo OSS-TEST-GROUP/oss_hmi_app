@@ -8,20 +8,19 @@ import '../controller/settings_controller.dart';
 import '../main.dart' show RosKeeperHolder, rosKeeperHolder;
 import '../theme/lfc_palette.dart';
 import '../widget/container_services_panel.dart';
-import '../widget/control_panel.dart';
 import '../widget/events_panel.dart';
 import 'settings_page.dart';
 
-/// Single screen with three panels arranged horizontally on wide viewports:
-///   ┌─────────────────────────┬───────────┬──────────┐
-///   │ Containers & Services   │  Events   │ Control  │
-///   └─────────────────────────┴───────────┴──────────┘
+/// Single screen with two panels arranged horizontally on wide viewports:
+///   ┌─────────────────────────┬─────────────┐
+///   │ Containers & Services   │   Events    │
+///   └─────────────────────────┴─────────────┘
 /// On narrow viewports the panels stack vertically.
 ///
-/// F014 follow-up: Containers + Services merged into one column.  Each
-/// container card lists the services adsw_manager registered under it
-/// (services without a container_name are hidden — adsw_manager-managed
-/// view only).  ServiceMode lives in Settings (global NORMAL/OTA toggle).
+/// Each container card carries its own Start/Stop buttons, and so does
+/// each service row inside it — the operator drives lifecycle actions
+/// directly from the roster instead of through a separate Control panel.
+/// ServiceMode lives in Settings (global NORMAL/OTA toggle).
 class LfcViewPage extends StatefulWidget {
   const LfcViewPage({
     super.key,
@@ -45,8 +44,6 @@ class _LfcViewPageState extends State<LfcViewPage> {
   late final LifecycleCollector _collector;
   late final SettingsController _settings;
   late final RosKeeperHolder _keeperHolder;
-
-  String? _selectedService;
 
   @override
   void initState() {
@@ -127,35 +124,24 @@ class _LfcViewPageState extends State<LfcViewPage> {
       ),
       body: LayoutBuilder(
         builder: (context, c) {
-          final wide = c.maxWidth >= 1100;
+          final wide = c.maxWidth >= 900;
 
           final containerServicesWidget = ContainerServicesPanel(
             collector: _collector,
             palette: p,
-            selectedService: _selectedService,
-            onTapService: (name) => setState(() => _selectedService = name),
           );
           final eventsWidget = EventsPanel(collector: _collector, palette: p);
-          final controlWidget = ControlPanel(
-            collector: _collector,
-            palette: p,
-            selectedService: _selectedService,
-          );
           const gap = SizedBox(width: 12, height: 12);
 
           if (wide) {
-            // 3-column flex: ContainerServices wider than the rest since
-            // each card holds both header + service list.
             return Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(flex: 40, child: containerServicesWidget),
+                  Expanded(flex: 55, child: containerServicesWidget),
                   gap,
-                  Expanded(flex: 35, child: eventsWidget),
-                  gap,
-                  Expanded(flex: 25, child: controlWidget),
+                  Expanded(flex: 45, child: eventsWidget),
                 ],
               ),
             );
@@ -164,11 +150,9 @@ class _LfcViewPageState extends State<LfcViewPage> {
             padding: const EdgeInsets.all(12),
             child: ListView(
               children: [
-                SizedBox(height: 320, child: containerServicesWidget),
+                SizedBox(height: 360, child: containerServicesWidget),
                 gap,
-                SizedBox(height: 240, child: eventsWidget),
-                gap,
-                controlWidget,
+                SizedBox(height: 280, child: eventsWidget),
               ],
             ),
           );
