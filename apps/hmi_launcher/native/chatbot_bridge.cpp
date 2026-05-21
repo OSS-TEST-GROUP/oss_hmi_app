@@ -384,9 +384,31 @@ char* chatbot_generate(ChatbotHandle* h, const char* prompt) {
 
     auto res = h->provider->generate(req);
     update_metrics(h, res);
+    const std::string raw_content = string_value(res.content);
+    const std::string error_message = error_message_to_string(res.error_message);
+    std::cerr << "[chatbot_bridge] rag_generate result: "
+              << "success=" << res.success
+              << ", content_size=" << raw_content.size()
+              << ", error_size=" << error_message.size()
+              << ", tokens=" << res.tokens_used
+              << ", generation_time_ms=" << res.generation_time_ms
+              << ", ttft_ms=" << res.first_token_time_ms
+              << std::endl;
+    if (!raw_content.empty()) {
+        std::cerr << "[chatbot_bridge] rag_generate raw_content: ["
+                  << raw_content.substr(0, 500) << "]" << std::endl;
+    }
+    if (!error_message.empty()) {
+        std::cerr << "[chatbot_bridge] rag_generate error: "
+                  << error_message << std::endl;
+    }
     const std::string out = res.success
-        ? clean_response(string_value(res.content))
-        : error_message_to_string(res.error_message);
+        ? clean_response(raw_content)
+        : error_message;
+    if (res.success) {
+        std::cerr << "[chatbot_bridge] rag_generate cleaned_content: ["
+                  << out.substr(0, 500) << "]" << std::endl;
+    }
     return copy_string(out);
 }
 

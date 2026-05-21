@@ -182,19 +182,40 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   Future<void> _maybeSuggestFrequentApp() async {
-    if (_usageSuggestionShown || !_aiSdkAvailable || !_aiMode) return;
-    if (_selectedAppId != null || widget.registry.apps.isEmpty) return;
+    if (_usageSuggestionShown || !_aiSdkAvailable || !_aiMode) {
+      debugPrint(
+        '[LauncherBotShell] suggestion skip: '
+        'shown=$_usageSuggestionShown aiAvailable=$_aiSdkAvailable aiMode=$_aiMode',
+      );
+      return;
+    }
+    if (_selectedAppId != null || widget.registry.apps.isEmpty) {
+      debugPrint(
+        '[LauncherBotShell] suggestion skip: '
+        'selected=$_selectedAppId appCount=${widget.registry.apps.length}',
+      );
+      return;
+    }
 
     final usages = _usageStore.suggestionCandidates(
       widget.registry.apps.map((app) => app.id).toSet(),
     );
-    if (usages.isEmpty) return;
+    if (usages.isEmpty) {
+      debugPrint('[LauncherBotShell] suggestion skip: no usage candidates');
+      return;
+    }
+
+    debugPrint(
+      '[LauncherBotShell] suggestion candidates: '
+      '${usages.map((usage) => '${usage.appId}(open=${usage.openCount}, dwell=${usage.totalForegroundSeconds}s, last=${usage.lastOpenedAt.toIso8601String()})').join(', ')}',
+    );
 
     final shown = await _launcherBotController.suggestFrequentApp(
       usages: usages,
     );
     if (!mounted) return;
     _usageSuggestionShown = shown;
+    debugPrint('[LauncherBotShell] suggestion shown=$shown');
     if (shown) {
       setState(() => _assistantOpen = true);
     }

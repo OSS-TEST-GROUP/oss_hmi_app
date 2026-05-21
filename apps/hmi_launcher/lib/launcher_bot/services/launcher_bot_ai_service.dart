@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import '../../domain/app_manifest.dart';
@@ -68,8 +69,28 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
   Future<String> generate({
     required String prompt,
     required List<String> contexts,
-  }) {
-    return _chatbotService.generateRag(prompt);
+  }) async {
+    final ragResponse = (await _chatbotService.generateRag(prompt)).trim();
+    if (ragResponse.isNotEmpty) {
+      return ragResponse;
+    }
+
+    stderr.writeln(
+      '[GemmaLauncherBotAiService] RAG returned empty response. '
+      'fallback=normal prompt=[$prompt]',
+    );
+    final fallbackResponse =
+        (await _chatbotService.generate(_buildGeneralAnswerRequest(prompt)))
+            .trim();
+    if (fallbackResponse.isNotEmpty) {
+      return fallbackResponse;
+    }
+
+    stderr.writeln(
+      '[GemmaLauncherBotAiService] normal fallback also returned empty. '
+      'prompt=[$prompt]',
+    );
+    return '답변을 생성하지 못했습니다. RAG 검색 결과와 일반 AI 응답이 모두 비어 있습니다.';
   }
 
   @override
@@ -85,8 +106,20 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
       usages: usages,
       currentContext: currentContext,
     );
+    stderr.writeln(
+      '[GemmaLauncherBotAiService] app_suggestion start '
+      'context=[$currentContext] candidates=${usages.length}',
+    );
     final response = await _chatbotService.generate(request);
-    return _parseAppSuggestionResponse(response, apps);
+    stderr.writeln(
+      '[GemmaLauncherBotAiService] app_suggestion raw_response=[$response]',
+    );
+    final suggestion = _parseAppSuggestionResponse(response, apps);
+    stderr.writeln(
+      '[GemmaLauncherBotAiService] app_suggestion parsed='
+      '${suggestion == null ? 'null' : '${suggestion.appId}: ${suggestion.message}'}',
+    );
+    return suggestion;
   }
 
   @override
@@ -183,6 +216,16 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
     );
     final response = await _chatbotService.generate(request);
     return _parseIntentResponse(response, apps);
+  }
+
+  String _buildGeneralAnswerRequest(String prompt) {
+    return '''
+사용자의 질문에 자연스럽게 답해라.
+앱 실행, 앱 닫기, 설정 열기 명령은 런처가 별도로 처리한다.
+차량 가이드 문서 근거가 없더라도 아는 범위에서 간결하게 답하고, 확실하지 않은 내용은 확실하지 않다고 말해라.
+
+사용자 질문: $prompt
+''';
   }
 
   String _buildIntentRequest({
