@@ -21,7 +21,7 @@
 
 FROM ubuntu:22.04
 
-ARG FLUTTER_VERSION=3.41.2
+ARG FLUTTER_VERSION=3.41.8
 ARG AGL_SDK_URL=https://repo.obigo.com/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
 ARG AGL_SDK_USER=ossdev
 ARG AGL_SDK_PASSWORD=ossdev1234
@@ -83,7 +83,8 @@ RUN set -e; \
     wget ${WGET_OPTS} "${AGL_SDK_URL}" -O /tmp/agl-sdk-installer.sh && \
     chmod +x /tmp/agl-sdk-installer.sh && \
     /tmp/agl-sdk-installer.sh -d "${AGL_SDK_INSTALL_DIR}" -y && \
-    rm /tmp/agl-sdk-installer.sh
+    rm /tmp/agl-sdk-installer.sh && \
+    chmod -R go+rwX "${AGL_SDK_INSTALL_DIR}"
 
 # AOT 빌드 스크립트 설치
 COPY tools/create_aot_with_yocto_sdk.py /usr/local/bin/create_aot_with_yocto_sdk.py

@@ -290,6 +290,148 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════
+  # lfc_monitor — lifecycle_mgr/adsw_manager monitor & control HMI.
+  # Same shape as ota_monitor: a pair of Flutter builders (x86_64 GTK and
+  # arm64 AGL Yocto AOT), a GTK runtime, a flutter-auto arm64 runtime, and
+  # an arm64 QEMU+Weston test runtime.
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Build services ──────────────────────────────────────────────────────
+
+  # x86_64 Flutter Linux build (GTK bundle)
+  # Run: docker compose --profile build run --rm lfc_monitor_builder_x86
+  lfc_monitor_builder_x86:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build
+    image: lfc_monitor_builder:x86_64
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
+    volumes:
+      - ../lfc_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # arm64 AOT build (AGL Yocto SDK)
+  # Run: docker compose --profile build run --rm lfc_monitor_builder_arm64
+  lfc_monitor_builder_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.build.arm64
+      args:
+        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
+        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
+    image: lfc_monitor_builder:arm64
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
+    volumes:
+      - ../lfc_monitor:/workspace/app
+      - ../output:/workspace/output
+    profiles: [build]
+
+  # ── Runtime services ────────────────────────────────────────────────────
+
+  # x86_64 runtime image (GTK-based, for development/testing)
+  lfc_monitor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        APP_NAME: lfc_monitor
+    image: lfc_monitor:x86_64
+    container_name: lfc_monitor
+
+    # Wayland socket mount (AGL/Linux environment)
+    volumes:
+      - /run/user/1000:/run/user/1000
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ../lfc_monitor/config/config.json:/app/config/config.json
+      - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
+
+    environment:
+      - DISPLAY=${DISPLAY:-:2}
+      - XAUTHORITY=/root/.Xauthority
+      - XDG_RUNTIME_DIR=/run/user/1000
+
+    network_mode: host
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    restart: unless-stopped
+
+  # arm64 test image (QEMU emulation + headless Weston)
+  # Prereq: output/lfc_monitor-arm64-release.tar.gz + output/agl-binaries/
+  lfc_monitor_arm64_test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64.test
+      args:
+        APP_NAME: lfc_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: lfc_monitor:arm64-test
+    container_name: lfc_monitor_arm64_test
+
+    volumes:
+      - ../lfc_monitor/config/config.json:/etc/lfc_monitor/config.json
+
+    environment:
+      - APP_NAME=lfc_monitor
+      - APP_VERSION=3.32.2
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - VNC_PORT=${VNC_PORT:-0}
+
+    security_opt:
+      - seccomp:unconfined
+
+    network_mode: host
+
+    profiles: [test]
+
+  # arm64 runtime image (flutter-auto based, for AGL targets)
+  lfc_monitor_arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm64
+      args:
+        APP_NAME: lfc_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: lfc_monitor:arm64
+    container_name: lfc_monitor_arm64
+
+    volumes:
+      - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
+      - /dev/dri:/dev/dri
+      - /run/user/1001:/run/user/1001
+      - ../lfc_monitor/config/config.json:/usr/share/flutter/lfc_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+
+    environment:
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - APP_NAME=lfc_monitor
+      - APP_VERSION=3.32.2
+
+    network_mode: host
+
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
   # hmi_launcher — launcher shell that embeds ota_monitor + adsw_monitor
   # as path dependencies. The builder mounts all three app directories
   # side-by-side under /workspace/apps so pubspec `path:` references

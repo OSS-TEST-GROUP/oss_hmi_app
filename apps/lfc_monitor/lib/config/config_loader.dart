@@ -6,18 +6,20 @@ import 'app_config.dart';
 /// Try (in order):
 ///   1. CLI arg `--config <path>`
 ///   2. env var `LFC_MONITOR_CONFIG`
-///   3. `./config/lfc_monitor.json` next to the working dir
+///   3. `./config/config.json` next to the working dir
 ///   4. `~/.config/lfc_monitor/config.json`
+///   5. `/etc/lfc_monitor/config.json` (system-wide; mirrors ota_monitor)
 /// then fall back to AppConfig.defaults().
 Future<AppConfig> loadConfig(List<String> args) async {
   final candidates = <String?>[
     _argValue(args, '--config'),
     Platform.environment['LFC_MONITOR_CONFIG'],
-    'config/lfc_monitor.json',
+    'config/config.json',
     () {
       final home = Platform.environment['HOME'];
       return home == null ? null : '$home/.config/lfc_monitor/config.json';
     }(),
+    '/etc/lfc_monitor/config.json',
   ];
 
   for (final path in candidates) {
