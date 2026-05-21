@@ -402,6 +402,18 @@ class LifecycleCollector extends GetxController {
   /// persists to saved-service-list.yaml.
   void setServiceRecoveryPolicy(String name, RecoveryPolicy policy) {
     _logCall('setServiceRecoveryPolicy', '$name:${policy.label}');
+    // Optimistic update: paint the new policy onto the local ServiceInfo
+    // immediately so the dropdown reflects the choice without waiting for
+    // the ~30s LifecycleDiagReport heartbeat. If the actuator rejects the
+    // change (CtrlResponse.ret_code != 0), _onCommandResponse surfaces
+    // lastError and the next DiagReport overwrites this back to the
+    // server-side truth.
+    final info = services[name];
+    if (info != null) {
+      info.recoveryPolicy = policy.label;
+      services[name] = info;
+      services.refresh();
+    }
     _publish(_ctrlSetRecoveryPolicyReqPub, 'ctrlSetRecoveryPolicy', {
       'service_list': [name],
       'recovery_policy': policy.value,

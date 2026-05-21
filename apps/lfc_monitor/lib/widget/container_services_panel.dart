@@ -11,22 +11,18 @@ import '../theme/lfc_palette.dart';
 /// adsw_manager's UpdateServiceListRequest — are hidden entirely, since
 /// the operator's mental model here is "what is adsw_manager managing".
 ///
-/// Selecting a service row drives the Control panel; the Container
-/// header has its own Start / Stop buttons that publish ctrl/Start
-/// Container / ctrl/StopContainer.
+/// Both the Container header and each Service row carry their own
+/// Start / Stop buttons — Container's publish ctrl/Start|StopContainer,
+/// Service's publish ctrl/Start|StopService.  No separate Control panel.
 class ContainerServicesPanel extends StatelessWidget {
   const ContainerServicesPanel({
     super.key,
     required this.collector,
     required this.palette,
-    this.onTapService,
-    this.selectedService,
   });
 
   final LifecycleCollector collector;
   final LfcPalette palette;
-  final void Function(String name)? onTapService;
-  final String? selectedService;
 
   @override
   Widget build(BuildContext context) {
@@ -78,10 +74,10 @@ class ContainerServicesPanel extends StatelessWidget {
                     info: c,
                     services: byContainer[c.name] ?? const <ServiceInfo>[],
                     palette: palette,
-                    selectedService: selectedService,
-                    onTapService: onTapService,
                     onStart: () => collector.startContainer(c.name),
                     onStop: () => collector.stopContainer(c.name),
+                    onStartService: collector.startService,
+                    onStopService: collector.stopService,
                     onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
                   );
                 },
@@ -122,20 +118,20 @@ class _ContainerCard extends StatelessWidget {
     required this.info,
     required this.services,
     required this.palette,
-    required this.selectedService,
-    required this.onTapService,
     required this.onStart,
     required this.onStop,
+    required this.onStartService,
+    required this.onStopService,
     required this.onChangeServiceRecovery,
   });
 
   final ContainerInfo info;
   final List<ServiceInfo> services;
   final LfcPalette palette;
-  final String? selectedService;
-  final void Function(String name)? onTapService;
   final VoidCallback onStart;
   final VoidCallback onStop;
+  final void Function(String serviceName) onStartService;
+  final void Function(String serviceName) onStopService;
   final void Function(String serviceName, RecoveryPolicy policy)
       onChangeServiceRecovery;
 
@@ -172,6 +168,16 @@ class _ContainerCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              // exit indicator inline next to the name, before the state
+              // badge. -1 is the "unknown / not-yet-started" sentinel used
+              // when adsw_manager can't recover the real exit code (the
+              // container init `tail -f /dev/null` doesn't wait() children
+              // so the OS discards the exit status). Hide -1 entirely so
+              // the column means "exit code we actually observed".
+              if (_visibleExit(info.exitCode) != null) ...[
+                _ExitChip(value: info.exitCode!, palette: p),
+                const SizedBox(width: 6),
+              ],
               _StateBadge(
                 text: info.state.label,
                 color: color,
@@ -179,15 +185,12 @@ class _ContainerCard extends StatelessWidget {
               ),
             ],
           ),
-          if (info.image.isNotEmpty || info.exitCode != null) ...[
+          if (info.image.isNotEmpty) ...[
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.only(left: 20),
               child: Text(
-                [
-                  if (info.image.isNotEmpty) info.image,
-                  if (info.exitCode != null) 'exit=${info.exitCode}',
-                ].join('  ·  '),
+                info.image,
                 style: TextStyle(color: p.subtext, fontSize: 11),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -234,8 +237,8 @@ class _ContainerCard extends StatelessWidget {
                   _ServiceRow(
                     info: services[i],
                     palette: p,
-                    selected: services[i].name == selectedService,
-                    onTap: () => onTapService?.call(services[i].name),
+                    onStart: () => onStartService(services[i].name),
+                    onStop: () => onStopService(services[i].name),
                     onChangeRecovery: (policy) =>
                         onChangeServiceRecovery(services[i].name, policy),
                   ),
@@ -254,15 +257,15 @@ class _ServiceRow extends StatelessWidget {
   const _ServiceRow({
     required this.info,
     required this.palette,
-    required this.selected,
-    required this.onTap,
+    required this.onStart,
+    required this.onStop,
     required this.onChangeRecovery,
   });
 
   final ServiceInfo info;
   final LfcPalette palette;
-  final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
   final void Function(RecoveryPolicy policy) onChangeRecovery;
 
   @override
@@ -271,56 +274,89 @@ class _ServiceRow extends StatelessWidget {
     final currentPolicy = info.recoveryPolicy.isEmpty
         ? RecoveryPolicy.defaultPolicy
         : RecoveryPolicy.fromLabel(info.recoveryPolicy);
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        decoration: BoxDecoration(
-          color: selected ? palette.accent.withValues(alpha: 0.08) : null,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 4),
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    info.name,
-                    style: TextStyle(
-                      color: palette.text,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 13,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    [
-                      info.state.label,
-                      if (info.exitCode != null) 'exit=${info.exitCode}',
-                    ].join('  ·  '),
-                    style: TextStyle(color: palette.subtext, fontSize: 10.5),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+    // Mirror the container card's Start/Stop gating: Start is offered
+    // while the process is gone (NOT_RUNNING / RUNNING_NO_RESPONSE),
+    // Stop while it's alive (INITIALIZING / RUNNING).  TERMINATING and
+    // UNKNOWN leave both disabled so the operator can't queue duplicate
+    // actuations during a state transition.
+    final isAlive = info.state == ServiceState.initializing ||
+        info.state == ServiceState.running;
+    final isDown = info.state == ServiceState.notRunning ||
+        info.state == ServiceState.runningNoResponse;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Row 1: dot + name + exit chip + state badge — same shape as
+          // _ContainerCard so the operator scans the state column down the
+          // panel uniformly. exit chip sits inline before the badge and is
+          // hidden for -1 (unknown sentinel).
+          Row(
+            children: [
+              const SizedBox(width: 4),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  info.name,
+                  style: TextStyle(
+                    color: palette.text,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (_visibleExit(info.exitCode) != null) ...[
+                _ExitChip(value: info.exitCode!, palette: palette),
+                const SizedBox(width: 6),
+              ],
+              _StateBadge(
+                text: info.state.label,
+                color: color,
+                bg: color.withValues(alpha: 0.12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Row 2: Start / Stop on the left, recovery dropdown pushed to the
+          // far right via a Spacer — visually pairs the dropdown column with
+          // the state badge column above it, keeping the action buttons
+          // grouped on the left.
+          Padding(
+            padding: const EdgeInsets.only(left: 22),
+            child: Row(
+              children: [
+                _ActionButton(
+                  label: 'Start',
+                  icon: Icons.play_arrow,
+                  enabled: isDown,
+                  palette: palette,
+                  onPressed: onStart,
+                ),
+                const SizedBox(width: 8),
+                _ActionButton(
+                  label: 'Stop',
+                  icon: Icons.stop,
+                  enabled: isAlive,
+                  palette: palette,
+                  onPressed: onStop,
+                ),
+                const Spacer(),
+                _RecoveryDropdown(
+                  current: currentPolicy,
+                  palette: palette,
+                  onChanged: onChangeRecovery,
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            _RecoveryDropdown(
-              current: currentPolicy,
-              palette: palette,
-              onChanged: onChangeRecovery,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -339,6 +375,16 @@ class _RecoveryDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Show only the operator-relevant policies (MANUAL / ALWAYS / ON_FAILURE).
+    // If the service's current policy comes in as one of the hidden values
+    // (DEFAULT / ON_SUCCESS / ON_NOT_RESPONDING) we still need to include it
+    // in the items list — DropdownButton asserts that `value` is one of the
+    // declared items. We keep it as a read-only choice so the operator sees
+    // the actual configured policy without being able to re-select it.
+    final visible = <RecoveryPolicy>[
+      ...RecoveryPolicy.userSelectable,
+      if (!RecoveryPolicy.userSelectable.contains(current)) current,
+    ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
@@ -352,7 +398,7 @@ class _RecoveryDropdown extends StatelessWidget {
           icon: Icon(Icons.arrow_drop_down, color: palette.subtext, size: 16),
           style: TextStyle(color: palette.text, fontSize: 10.5),
           dropdownColor: palette.panel,
-          items: RecoveryPolicy.values
+          items: visible
               .map((p) => DropdownMenuItem<RecoveryPolicy>(
                     value: p,
                     child: Text(p.label, style: TextStyle(fontSize: 10.5, color: palette.text)),
@@ -363,6 +409,50 @@ class _RecoveryDropdown extends StatelessWidget {
             onChanged(next);
           },
         ),
+      ),
+    );
+  }
+}
+
+// Hide exit codes that carry no operator-actionable signal:
+//   * -1  is the "unknown / not yet started" sentinel adsw_manager stamps
+//         when it can't recover a real exit code (container init
+//         `tail -f /dev/null` doesn't wait() its children, so the OS
+//         discards the status before we can ask).
+//   *  0  on a container card is a cascade — ContainerHealthMonitor::PollLoop
+//         hard-codes exit_code=0 while is_running==true, so a healthy
+//         container always reports 0. Same story propagates to its services
+//         via OnContainerStateChanged. The 0 here is "no incident", not a
+//         confirmed clean exit, so suppressing it leaves the chip column
+//         meaning "non-zero exit actually observed".
+// Net effect: the chip only shows when a non-zero exit code has been
+// reported, matching the operator's mental model of "show me failures".
+int? _visibleExit(int? raw) {
+  if (raw == null) return null;
+  if (raw == -1 || raw == 0) return null;
+  return raw;
+}
+
+class _ExitChip extends StatelessWidget {
+  const _ExitChip({required this.value, required this.palette});
+
+  final int value;
+  final LfcPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    // Only non-zero exit codes reach here (see _visibleExit). Render in
+    // accent so the failure stands out from the surrounding text.
+    final fg = palette.accent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        border: Border.all(color: fg.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'exit=$value',
+        style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.w500),
       ),
     );
   }

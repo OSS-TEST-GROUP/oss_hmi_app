@@ -213,6 +213,21 @@ enum RecoveryPolicy {
     }
     return RecoveryPolicy.defaultPolicy;
   }
+
+  // Subset surfaced in the lfc_monitor dropdown. The wire enum keeps all six
+  // values so we never mistranslate samples already on the topic, but the UI
+  // only offers the three the operator actually picks: MANUAL stays in
+  // operator hands, ALWAYS keeps a service alive unconditionally, ON_FAILURE
+  // restarts only on a non-zero exit. DEFAULT is dead (no PolicyManager
+  // mapping on lifecycle_mgr — see policy/PolicyManager.cpp), ON_SUCCESS is
+  // a niche "rerun on clean exit" pattern, and ON_NOT_RESPONDING has a
+  // documented ambiguity (graceful exit indistinguishable from watchdog
+  // stop). Surfacing those would only confuse operators.
+  static const List<RecoveryPolicy> userSelectable = <RecoveryPolicy>[
+    RecoveryPolicy.manual,
+    RecoveryPolicy.always,
+    RecoveryPolicy.onFailure,
+  ];
 }
 
 enum ContainerType {
