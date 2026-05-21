@@ -69,8 +69,7 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
     required String prompt,
     required List<String> contexts,
   }) {
-    final request = _buildRequest(prompt: prompt, contexts: contexts);
-    return _chatbotService.generateRag(request);
+    return _chatbotService.generateRag(prompt);
   }
 
   @override
@@ -186,16 +185,6 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
     return _parseIntentResponse(response, apps);
   }
 
-  String _buildRequest({
-    required String prompt,
-    required List<String> contexts,
-  }) {
-    if (contexts.isEmpty) return prompt;
-
-    final contextText = contexts.join('\n');
-    return '참고 정보:\n$contextText\n\n사용자 질문:\n$prompt';
-  }
-
   String _buildIntentRequest({
     required String prompt,
     required List<AppManifest> apps,
@@ -251,6 +240,7 @@ $appText
             'name': app.name,
             'category': app.category,
             'openCount': usage.openCount,
+            'totalForegroundSeconds': usage.totalForegroundSeconds,
             'lastOpenedAt': usage.lastOpenedAt.toIso8601String(),
           };
         })
@@ -261,6 +251,7 @@ $appText
 너는 차량 런처의 선제적 에이전트다.
 사용자의 앱 사용 패턴과 현재 화면을 보고 지금 먼저 실행 제안을 할 앱을 하나 고른다.
 단순히 문장만 만들지 말고, 어떤 앱을 제안할지 직접 판단해라.
+openCount, totalForegroundSeconds, lastOpenedAt을 모두 고려해라.
 등록된 앱 id 중 하나만 고를 수 있다.
 현재 화면이 Launcher가 아니면 suggest=false로 해라.
 사용 패턴이 부족하거나 확신이 낮으면 suggest=false로 해라.

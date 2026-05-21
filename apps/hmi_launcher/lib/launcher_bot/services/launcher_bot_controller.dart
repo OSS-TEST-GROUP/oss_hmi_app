@@ -65,10 +65,10 @@ class LauncherBotController extends ChangeNotifier {
     await _handleSubmittedInput(input);
   }
 
-  Future<void> suggestFrequentApp({
+  Future<bool> suggestFrequentApp({
     required List<AppUsageStats> usages,
   }) async {
-    if (_isGenerating || _pendingSuggestionAppId != null) return;
+    if (_isGenerating || _pendingSuggestionAppId != null) return false;
 
     _isGenerating = true;
     notifyListeners();
@@ -80,13 +80,15 @@ class LauncherBotController extends ChangeNotifier {
         currentContext: _contextName,
       );
       final app = _appById(suggestion?.appId);
-      if (suggestion == null || app == null) return;
+      if (suggestion == null || app == null) return false;
+      final suggestionText = suggestion.message.trim();
+      if (suggestionText.isEmpty) return false;
 
       _pendingSuggestionAppId = app.id;
       _addMessage(
         LauncherBotMessage(
           speaker: LauncherBotSpeaker.bot,
-          text: suggestion.message,
+          text: suggestionText,
           timestamp: _nowLabel(),
           intent: 'Suggestion',
           actions: const [
@@ -95,9 +97,12 @@ class LauncherBotController extends ChangeNotifier {
           ],
         ),
       );
-    } catch (_) {
+      return true;
+    } catch (error) {
+      debugPrint('[LauncherBotController] app suggestion failed: $error');
       // A proactive suggestion is optional; failed AI selection should not
       // interrupt launcher startup.
+      return false;
     } finally {
       _isGenerating = false;
       notifyListeners();

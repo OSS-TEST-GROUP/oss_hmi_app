@@ -54,6 +54,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   VoiceCaptureSession? _voiceSession;
   late final bool _aiSdkAvailable;
   late bool _aiMode;
+  String? _usageFocusAppId;
+  DateTime? _usageFocusStartedAt;
   bool _assistantOpen = false;
   bool _voiceCapturing = false;
   bool _usageSuggestionShown = false;
@@ -68,6 +70,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _focusedAppIds = [
       if (widget.initialAppId != null) widget.initialAppId!,
     ];
+    _startUsageFocus(_selectedAppId);
     _aiSdkAvailable = GemmaLauncherBotAiService.isAvailable();
     _aiMode = _aiSdkAvailable;
     _nluRouter = NluRouter(widget.registry.apps);
@@ -101,6 +104,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
   @override
   void dispose() {
+    _flushUsageFocus();
     _voiceSession?.stop();
     _launcherBotController.dispose();
     super.dispose();
@@ -130,12 +134,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _selectOpenedApp(String appId) {
+    _flushUsageFocus();
     if (!_openedAppIds.contains(appId)) {
       _openedAppIds.add(appId);
     }
     _focusedAppIds.remove(appId);
     _focusedAppIds.add(appId);
     _selectedAppId = appId;
+    _startUsageFocus(_selectedAppId);
   }
 
   void _openApp(AppManifest app) {
@@ -144,7 +150,29 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _openSettings() {
+    _flushUsageFocus();
     setState(() => _selectOpenedApp(_SettingsPage.appId));
+  }
+
+  void _startUsageFocus(String? appId) {
+    if (appId == null || widget.registry.findById(appId) == null) {
+      _usageFocusAppId = null;
+      _usageFocusStartedAt = null;
+      return;
+    }
+    _usageFocusAppId = appId;
+    _usageFocusStartedAt = DateTime.now();
+  }
+
+  void _flushUsageFocus() {
+    final appId = _usageFocusAppId;
+    final startedAt = _usageFocusStartedAt;
+    _usageFocusAppId = null;
+    _usageFocusStartedAt = null;
+
+    if (appId == null || startedAt == null) return;
+    final duration = DateTime.now().difference(startedAt);
+    unawaited(_usageStore.recordForegroundDuration(appId, duration));
   }
 
   Future<void> _loadUsageAndSuggest() async {
@@ -162,9 +190,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     );
     if (usages.isEmpty) return;
 
-    _usageSuggestionShown = true;
-    setState(() => _assistantOpen = true);
-    await _launcherBotController.suggestFrequentApp(usages: usages);
+    final shown = await _launcherBotController.suggestFrequentApp(
+      usages: usages,
+    );
+    if (!mounted) return;
+    _usageSuggestionShown = shown;
+    if (shown) {
+      setState(() => _assistantOpen = true);
+    }
   }
 
   Future<void> _handleVoiceCommand() async {
@@ -249,12 +282,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       if (current == null) {
         return;
       }
+      _flushUsageFocus();
       closedName = current == _SettingsPage.appId
           ? 'Settings'
           : widget.registry.findById(current)?.name;
       _openedAppIds.remove(current);
       _focusedAppIds.remove(current);
       _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
+      _startUsageFocus(_selectedAppId);
     });
     return closedName;
   }

@@ -6,21 +6,25 @@ class AppUsageStats {
     required this.appId,
     required this.openCount,
     required this.lastOpenedAt,
+    required this.totalForegroundSeconds,
   });
 
   final String appId;
   final int openCount;
   final DateTime lastOpenedAt;
+  final int totalForegroundSeconds;
 
   Map<String, dynamic> toJson() => {
         'openCount': openCount,
         'lastOpenedAt': lastOpenedAt.toIso8601String(),
+        'totalForegroundSeconds': totalForegroundSeconds,
       };
 
   static AppUsageStats? fromJson(String appId, Object? value) {
     if (value is! Map<String, dynamic>) return null;
     final openCount = value['openCount'];
     final rawLastOpenedAt = value['lastOpenedAt'];
+    final totalForegroundSeconds = value['totalForegroundSeconds'];
     final lastOpenedAt =
         rawLastOpenedAt is String ? DateTime.tryParse(rawLastOpenedAt) : null;
     if (openCount is! int || openCount <= 0 || lastOpenedAt == null) {
@@ -30,6 +34,8 @@ class AppUsageStats {
       appId: appId,
       openCount: openCount,
       lastOpenedAt: lastOpenedAt,
+      totalForegroundSeconds:
+          totalForegroundSeconds is int ? totalForegroundSeconds : 0,
     );
   }
 }
@@ -62,6 +68,23 @@ class AppUsageStore {
       appId: appId,
       openCount: (current?.openCount ?? 0) + 1,
       lastOpenedAt: DateTime.now(),
+      totalForegroundSeconds: current?.totalForegroundSeconds ?? 0,
+    );
+    await _save();
+  }
+
+  Future<void> recordForegroundDuration(String appId, Duration duration) async {
+    final seconds = duration.inSeconds;
+    if (seconds <= 0) return;
+
+    final current = _stats[appId];
+    if (current == null) return;
+
+    _stats[appId] = AppUsageStats(
+      appId: appId,
+      openCount: current.openCount,
+      lastOpenedAt: current.lastOpenedAt,
+      totalForegroundSeconds: current.totalForegroundSeconds + seconds,
     );
     await _save();
   }
@@ -70,10 +93,13 @@ class AppUsageStore {
     AppUsageStats? best;
     for (final stats in _stats.values) {
       if (!validAppIds.contains(stats.appId)) continue;
-      if (stats.openCount < 2) continue;
+      if (stats.openCount < 2 && stats.totalForegroundSeconds < 60) continue;
       if (best == null ||
           stats.openCount > best.openCount ||
           (stats.openCount == best.openCount &&
+              stats.totalForegroundSeconds > best.totalForegroundSeconds) ||
+          (stats.openCount == best.openCount &&
+              stats.totalForegroundSeconds == best.totalForegroundSeconds &&
               stats.lastOpenedAt.isAfter(best.lastOpenedAt))) {
         best = stats;
       }
@@ -84,11 +110,16 @@ class AppUsageStore {
   List<AppUsageStats> suggestionCandidates(Set<String> validAppIds) {
     final candidates = _stats.values
         .where((stats) => validAppIds.contains(stats.appId))
-        .where((stats) => stats.openCount >= 2)
+        .where(
+          (stats) => stats.openCount >= 2 || stats.totalForegroundSeconds >= 60,
+        )
         .toList();
     candidates.sort((a, b) {
       final countDiff = b.openCount.compareTo(a.openCount);
       if (countDiff != 0) return countDiff;
+      final dwellDiff =
+          b.totalForegroundSeconds.compareTo(a.totalForegroundSeconds);
+      if (dwellDiff != 0) return dwellDiff;
       return b.lastOpenedAt.compareTo(a.lastOpenedAt);
     });
     return List.unmodifiable(candidates);
