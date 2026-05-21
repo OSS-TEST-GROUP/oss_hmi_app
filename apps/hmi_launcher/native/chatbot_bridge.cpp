@@ -39,28 +39,29 @@ constexpr const char* kSystemPrompt =
     "모르는 내용은 추측하지 말고 확인이 필요하다고 말하세요. "
     "앱 실행, 설정 열기, 앱 닫기는 런처가 이미 처리하므로 일반 질문에는 설명이나 안내만 답하세요.";
 
+// Gemma's chat format has no system role: any system content is folded into
+// the first user turn. Real tokens are <start_of_turn>/<end_of_turn>; the
+// homemade <|turn>...<turn|> sequence the bridge used previously is parsed by
+// Gemma as plain text, which makes the model fall into completion mode and
+// echo back fake markdown labels like **사용자 질문** / **답변**.
 std::string build_gemma4_prompt(const char* prompt) {
-    std::string user_prompt = prompt ? prompt : "";
+    const std::string user_prompt = prompt ? prompt : "";
 
-    return std::string("<|turn>system\n") +
-           kSystemPrompt +
-           "<turn|>\n"
-           "<|turn>user\n" +
+    return std::string("<start_of_turn>user\n") +
+           kSystemPrompt + "\n\n" +
            user_prompt +
-           "<turn|>\n"
-           "<|turn>model\n";
+           "<end_of_turn>\n"
+           "<start_of_turn>model\n";
 }
 
 std::string build_gemma4_rag_prompt(const char* prompt) {
-    std::string user_prompt = prompt ? prompt : "";
+    const std::string user_prompt = prompt ? prompt : "";
 
-    return std::string("<|turn>system\n") +
-           "차량 가이드 발췌에 근거해 짧게 답하세요. 근거가 없으면 없다고 말하세요." +
-           "<turn|>\n"
-           "<|turn>user\n" +
+    return std::string("<start_of_turn>user\n") +
+           "차량 가이드 발췌에 근거해 짧게 답하세요. 근거가 없으면 없다고 말하세요.\n\n" +
            user_prompt +
-           "<turn|>\n"
-           "<|turn>model\n";
+           "<end_of_turn>\n"
+           "<start_of_turn>model\n";
 }
 
 std::string build_rag_user_prompt(
