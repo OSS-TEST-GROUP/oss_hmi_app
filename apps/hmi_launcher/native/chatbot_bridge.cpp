@@ -4,6 +4,7 @@
 #include "rag_engine.hpp"
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -164,6 +165,83 @@ void update_metrics(ChatbotHandle* h, const ai_common::GenerateResponse& res) {
 
 [[maybe_unused]] size_t string_value_size(const std::optional<std::string>& value) {
     return value ? value->size() : 0;
+}
+
+std::string read_text_file(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return "";
+    }
+    return std::string(
+        std::istreambuf_iterator<char>(in),
+        std::istreambuf_iterator<char>());
+}
+
+int add_text_document(
+    ai_rag::RAGEngine& engine,
+    const std::filesystem::path& text_path) {
+    const std::string text = read_text_file(text_path);
+    if (trim(text).empty()) {
+        std::cerr << "[chatbot_bridge] rag_init text file empty: "
+                  << text_path << std::endl;
+        return 0;
+    }
+
+    ai_rag::ChunkOptions options;
+    options.max_chunk_size = 800;
+    options.chunk_overlap = 120;
+    options.split_by_page = false;
+    options.split_by_paragraph = true;
+
+    const auto chunks = ai_rag::TextChunker::chunk_text(
+        text,
+        text_path.string(),
+        options);
+    int loaded_docs = 0;
+    for (const auto& chunk : chunks) {
+        if (trim(chunk.text).empty()) {
+            continue;
+        }
+        const std::string id =
+            text_path.filename().string() + "#" + std::to_string(chunk.chunk_index);
+        const std::string metadata =
+            text_path.string() + "#chunk=" + std::to_string(chunk.chunk_index);
+        if (engine.add_document(id, chunk.text, metadata)) {
+            ++loaded_docs;
+        }
+    }
+    std::cerr << "[chatbot_bridge] rag_init load_text docs="
+              << loaded_docs << ", text_path=" << text_path << std::endl;
+    return loaded_docs;
+}
+
+std::optional<std::filesystem::path> find_text_fallback(const char* pdf_path) {
+    const char* env_text = std::getenv("HMI_LAUNCHER_RAG_TEXT");
+    if (env_text && std::strlen(env_text) > 0) {
+        const std::filesystem::path p(env_text);
+        if (std::filesystem::exists(p)) {
+            return p;
+        }
+        std::cerr << "[chatbot_bridge] rag_init env text not found: "
+                  << p << std::endl;
+    }
+
+    const std::filesystem::path pdf(pdf_path ? pdf_path : "");
+    std::vector<std::filesystem::path> candidates;
+    if (!pdf.empty()) {
+        auto txt = pdf;
+        txt.replace_extension(".txt");
+        candidates.push_back(txt);
+        candidates.push_back(pdf.string() + ".txt");
+    }
+    candidates.push_back("/tmp/models/rag/docs/NE1_2024_ko_KR.txt");
+
+    for (const auto& candidate : candidates) {
+        if (std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace
@@ -343,7 +421,17 @@ int chatbot_rag_init(
             const int loaded_docs = engine->load_pdf(pdf_path, options);
             std::cerr << "[chatbot_bridge] rag_init load_pdf docs="
                       << loaded_docs << std::endl;
-            if (loaded_docs <= 0) {
+            int indexed_docs = loaded_docs;
+            if (indexed_docs <= 0) {
+                const auto text_fallback = find_text_fallback(pdf_path);
+                if (text_fallback) {
+                    indexed_docs = add_text_document(*engine, *text_fallback);
+                } else {
+                    std::cerr << "[chatbot_bridge] rag_init no text fallback found"
+                              << std::endl;
+                }
+            }
+            if (indexed_docs <= 0) {
                 return 0;
             }
 
