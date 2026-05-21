@@ -49,23 +49,6 @@ char* chatbot_generate_with_contexts(
     int context_count);
 
 /**
- * Initialize the RAG index used by chatbot_generate_rag().
- * Returns 1 on success, 0 on failure.
- */
-int chatbot_rag_init(
-    ChatbotHandle* handle,
-    const char* embedding_model_path,
-    const char* pdf_path,
-    const char* index_path);
-
-/**
- * Generate a response after retrieving vehicle-guide contexts through RAG.
- * Falls back to normal generation when RAG is not initialized or returns no
- * contexts. The returned string must be released with chatbot_free_string().
- */
-char* chatbot_generate_rag(ChatbotHandle* handle, const char* prompt, int top_k);
-
-/**
  * Free a string returned by chatbot_generate().
  */
 void chatbot_free_string(char* str);

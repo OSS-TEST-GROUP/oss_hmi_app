@@ -46,30 +46,6 @@ typedef _ChatbotGenerateWithContextsDart = Pointer<Int8> Function(
   int contextCount,
 );
 
-typedef _ChatbotRagInitNative = Int32 Function(
-  Pointer<Void> handle,
-  Pointer<Int8> embeddingModelPath,
-  Pointer<Int8> pdfPath,
-  Pointer<Int8> indexPath,
-);
-typedef _ChatbotRagInitDart = int Function(
-  Pointer<Void> handle,
-  Pointer<Int8> embeddingModelPath,
-  Pointer<Int8> pdfPath,
-  Pointer<Int8> indexPath,
-);
-
-typedef _ChatbotGenerateRagNative = Pointer<Int8> Function(
-  Pointer<Void> handle,
-  Pointer<Int8> prompt,
-  Int32 topK,
-);
-typedef _ChatbotGenerateRagDart = Pointer<Int8> Function(
-  Pointer<Void> handle,
-  Pointer<Int8> prompt,
-  int topK,
-);
-
 typedef _ChatbotFreeStringNative = Void Function(Pointer<Int8> value);
 typedef _ChatbotFreeStringDart = void Function(Pointer<Int8> value);
 
@@ -131,11 +107,6 @@ class GemmaChatbotService {
     return worker.generateWithContexts(prompt, contexts);
   }
 
-  Future<String> generateRag(String prompt) async {
-    final worker = await _ensureWorker();
-    return worker.generateRag(prompt);
-  }
-
   Future<GemmaModelMetrics> metrics() async {
     final worker = await _ensureWorker();
     return worker.metrics();
@@ -170,25 +141,9 @@ class GemmaChatbotService {
         _resolveBridgeLibraryPath(bundleRoot),
       );
       _worker = worker;
-      final ragConfig = _resolveRagConfig(bundleRoot);
-      if (ragConfig != null) {
-        unawaited(_configureRagInBackground(worker, ragConfig));
-      }
       return worker;
     } finally {
       _initializing = false;
-    }
-  }
-
-  Future<void> _configureRagInBackground(
-    _ChatbotWorker worker,
-    _RagRuntimeConfig ragConfig,
-  ) async {
-    try {
-      await worker.configureRag(ragConfig);
-      stderr.writeln('[GemmaChatbotService] RAG ready');
-    } catch (error) {
-      stderr.writeln('[GemmaChatbotService] RAG disabled: $error');
     }
   }
 
@@ -304,57 +259,6 @@ class GemmaChatbotService {
     ];
   }
 
-  _RagRuntimeConfig? _resolveRagConfig(Directory bundleRoot) {
-    final embeddingModelPath = _firstExistingDirectory([
-      Platform.environment['HMI_LAUNCHER_RAG_EMBEDDING'],
-      '/tmp/models/k_sorberta',
-      '/tmp/models/rag/k_sorberta',
-      '/tmp/models/rag/embedding_model',
-      '${bundleRoot.path}/data/models/k_sorberta',
-      '${bundleRoot.path}/data/models/rag/k_sorberta',
-      '${bundleRoot.path}/data/models/rag/embedding_model',
-      '${Directory.current.path}/models/k_sorberta',
-      '${Directory.current.path}/models/rag/k_sorberta',
-      '${Directory.current.path}/models/rag/embedding_model',
-    ]);
-
-    final pdfPath = _firstExistingPath([
-          Platform.environment['HMI_LAUNCHER_RAG_PDF'],
-          '/tmp/models/rag/docs/NE1_2024_ko_KR.pdf',
-          '${bundleRoot.path}/data/models/rag/docs/NE1_2024_ko_KR.pdf',
-          '${Directory.current.path}/models/rag/docs/NE1_2024_ko_KR.pdf',
-        ].whereType<String>().toList()) ??
-        _firstPdfInDirectory([
-          '/tmp/models/rag/docs',
-          '${bundleRoot.path}/data/models/rag/docs',
-          '${Directory.current.path}/models/rag/docs',
-        ]);
-
-    if (embeddingModelPath == null || pdfPath == null) {
-      stderr.writeln(
-        '[GemmaChatbotService] RAG config not found. '
-        'embedding=$embeddingModelPath pdf=$pdfPath '
-        'bundle=${bundleRoot.path} '
-        'envEmbedding=${Platform.environment['HMI_LAUNCHER_RAG_EMBEDDING']} '
-        'envPdf=${Platform.environment['HMI_LAUNCHER_RAG_PDF']}',
-      );
-      return null;
-    }
-
-    final config = _RagRuntimeConfig(
-      embeddingModelPath: embeddingModelPath,
-      pdfPath: pdfPath,
-      indexPath: Platform.environment['HMI_LAUNCHER_RAG_INDEX'] ??
-          _defaultRagIndexPath,
-    );
-    stderr.writeln(
-      '[GemmaChatbotService] RAG config found. '
-      'embedding=${config.embeddingModelPath} '
-      'pdf=${config.pdfPath} index=${config.indexPath}',
-    );
-    return config;
-  }
-
   Directory _resolveBundleRoot() {
     for (final candidate in _bundleRootCandidates()) {
       final hasConfig =
@@ -443,44 +347,6 @@ class GemmaChatbotService {
     return null;
   }
 
-  String? _firstExistingDirectory(List<String?> candidates) {
-    for (final path in candidates) {
-      if (path != null && Directory(path).existsSync()) {
-        return path;
-      }
-    }
-    return null;
-  }
-
-  String? _firstPdfInDirectory(List<String> candidates) {
-    for (final path in candidates) {
-      final dir = Directory(path);
-      if (!dir.existsSync()) continue;
-      final pdfs = dir
-          .listSync(followLinks: false)
-          .whereType<File>()
-          .where((file) => file.path.toLowerCase().endsWith('.pdf'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
-      if (pdfs.isNotEmpty) return pdfs.first.path;
-    }
-    return null;
-  }
-
-  String get _defaultRagIndexPath {
-    final xdg = Platform.environment['XDG_CACHE_HOME'];
-    if (xdg != null && xdg.isNotEmpty) {
-      return '$xdg/hmi_launcher/rag/ne1_2024.index';
-    }
-
-    final home = Platform.environment['HOME'];
-    if (home != null && home.isNotEmpty) {
-      return '$home/.cache/hmi_launcher/rag/ne1_2024.index';
-    }
-
-    return '${Directory.systemTemp.path}/hmi_launcher_rag_ne1_2024.index';
-  }
-
   Directory get _executableBundleRoot {
     final executable = File(Platform.resolvedExecutable);
     return executable.parent;
@@ -499,18 +365,6 @@ class GemmaChatbotException implements Exception {
 
   @override
   String toString() => message;
-}
-
-class _RagRuntimeConfig {
-  const _RagRuntimeConfig({
-    required this.embeddingModelPath,
-    required this.pdfPath,
-    required this.indexPath,
-  });
-
-  final String embeddingModelPath;
-  final String pdfPath;
-  final String indexPath;
 }
 
 class GemmaModelMetrics {
@@ -671,48 +525,6 @@ class _ChatbotWorker {
     final completer = Completer<String>();
     _pending[requestId] = completer;
     _sendPort.send(['generateWithContexts', requestId, prompt, contexts]);
-    return completer.future;
-  }
-
-  Future<void> configureRag(_RagRuntimeConfig config) {
-    if (_disposed) {
-      return Future<void>.error(
-        const GemmaChatbotException('Gemma worker가 이미 종료되었습니다.'),
-      );
-    }
-
-    final requestId = _nextRequestId;
-    _nextRequestId += 1;
-
-    final completer = Completer<bool>();
-    _pendingBool[requestId] = completer;
-    _sendPort.send([
-      'configureRag',
-      requestId,
-      config.embeddingModelPath,
-      config.pdfPath,
-      config.indexPath,
-    ]);
-    return completer.future.then((ok) {
-      if (!ok) {
-        throw const GemmaChatbotException('RAG 초기화에 실패했습니다.');
-      }
-    });
-  }
-
-  Future<String> generateRag(String prompt) {
-    if (_disposed) {
-      return Future<String>.error(
-        const GemmaChatbotException('Gemma worker가 이미 종료되었습니다.'),
-      );
-    }
-
-    final requestId = _nextRequestId;
-    _nextRequestId += 1;
-
-    final completer = Completer<String>();
-    _pending[requestId] = completer;
-    _sendPort.send(['generateRag', requestId, prompt]);
     return completer.future;
   }
 
@@ -909,41 +721,6 @@ void _chatbotWorkerMain(List<Object?> args) {
       return;
     }
 
-    if (command == 'configureRag') {
-      final requestId = message[1]! as int;
-      final embeddingModelPath = message[2]! as String;
-      final pdfPath = message[3]! as String;
-      final indexPath = message[4]! as String;
-
-      try {
-        mainPort.send([
-          'bool',
-          requestId,
-          chatbot.configureRag(
-            embeddingModelPath: embeddingModelPath,
-            pdfPath: pdfPath,
-            indexPath: indexPath,
-          ),
-        ]);
-      } catch (error, stackTrace) {
-        mainPort.send(['error', requestId, '$error\n$stackTrace']);
-      }
-      return;
-    }
-
-    if (command == 'generateRag') {
-      final requestId = message[1]! as int;
-      final prompt = message[2]! as String;
-
-      try {
-        final response = chatbot.generateRag(prompt);
-        mainPort.send(['ok', requestId, response]);
-      } catch (error, stackTrace) {
-        mainPort.send(['error', requestId, '$error\n$stackTrace']);
-      }
-      return;
-    }
-
     if (command == 'metrics') {
       final requestId = message[1]! as int;
       final metrics = chatbot.metrics();
@@ -989,11 +766,6 @@ class _NativeChatbot {
     _generateWithContexts = _library.lookupFunction<
         _ChatbotGenerateWithContextsNative,
         _ChatbotGenerateWithContextsDart>('chatbot_generate_with_contexts');
-    _ragInit =
-        _library.lookupFunction<_ChatbotRagInitNative, _ChatbotRagInitDart>(
-            'chatbot_rag_init');
-    _generateRag = _library.lookupFunction<_ChatbotGenerateRagNative,
-        _ChatbotGenerateRagDart>('chatbot_generate_rag');
     _freeString = _library
         .lookupFunction<_ChatbotFreeStringNative, _ChatbotFreeStringDart>(
       'chatbot_free_string',
@@ -1036,8 +808,6 @@ class _NativeChatbot {
   late final _ChatbotHasAudioDart _hasAudio;
   late final _ChatbotGenerateAudioDart _generateAudio;
   late final _ChatbotGenerateWithContextsDart _generateWithContexts;
-  late final _ChatbotRagInitDart _ragInit;
-  late final _ChatbotGenerateRagDart _generateRag;
   late final _ChatbotFreeStringDart _freeString;
   late final _ChatbotDestroyDart _destroy;
   late final _ChatbotLastTokensDart _lastTokens;
@@ -1135,7 +905,7 @@ class _NativeChatbot {
         contextPointers.length,
       );
       if (responsePointer == nullptr) {
-        throw const GemmaChatbotException('RAG context 응답 생성에 실패했습니다.');
+        throw const GemmaChatbotException('context 응답 생성에 실패했습니다.');
       }
       return _fromNativeUtf8(responsePointer);
     } finally {
@@ -1146,41 +916,6 @@ class _NativeChatbot {
       if (contextsPointer != nullptr) {
         _free(contextsPointer.cast<Void>());
       }
-      if (responsePointer != nullptr) {
-        _freeString(responsePointer);
-      }
-    }
-  }
-
-  bool configureRag({
-    required String embeddingModelPath,
-    required String pdfPath,
-    required String indexPath,
-  }) {
-    final embeddingPointer = _toNativeUtf8(embeddingModelPath);
-    final pdfPointer = _toNativeUtf8(pdfPath);
-    final indexPointer = _toNativeUtf8(indexPath);
-    try {
-      return _ragInit(_handle, embeddingPointer, pdfPointer, indexPointer) != 0;
-    } finally {
-      _free(embeddingPointer.cast<Void>());
-      _free(pdfPointer.cast<Void>());
-      _free(indexPointer.cast<Void>());
-    }
-  }
-
-  String generateRag(String prompt) {
-    final promptPointer = _toNativeUtf8(prompt);
-    Pointer<Int8> responsePointer = nullptr;
-
-    try {
-      responsePointer = _generateRag(_handle, promptPointer, 5);
-      if (responsePointer == nullptr) {
-        throw const GemmaChatbotException('RAG 응답 생성에 실패했습니다.');
-      }
-      return _fromNativeUtf8(responsePointer);
-    } finally {
-      _free(promptPointer.cast<Void>());
       if (responsePointer != nullptr) {
         _freeString(responsePointer);
       }

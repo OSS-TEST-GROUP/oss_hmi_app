@@ -70,19 +70,6 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
     required String prompt,
     required List<String> contexts,
   }) async {
-    if (!await _shouldUseRag(prompt)) {
-      return _generateNormalAnswer(prompt);
-    }
-
-    final ragResponse = (await _chatbotService.generateRag(prompt)).trim();
-    if (_isUsableAnswer(ragResponse, prompt)) {
-      return ragResponse;
-    }
-
-    stderr.writeln(
-      '[GemmaLauncherBotAiService] RAG returned unusable response. '
-      'fallback=normal prompt=[$prompt]',
-    );
     return _generateNormalAnswer(prompt);
   }
 
@@ -97,36 +84,6 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
       'response. prompt=[$prompt] response=[$response]',
     );
     return '답변을 생성하지 못했습니다. AI 응답이 비어 있거나 질문과 동일하게 반환되었습니다.';
-  }
-
-  Future<bool> _shouldUseRag(String prompt) async {
-    final response =
-        await _chatbotService.generate(_buildRagRoutingRequest(prompt));
-    final jsonText = _extractJsonObject(response);
-    if (jsonText == null) {
-      stderr.writeln(
-        '[GemmaLauncherBotAiService] rag_route parse failed. '
-        'response=[$response]',
-      );
-      return false;
-    }
-
-    try {
-      final decoded = jsonDecode(jsonText);
-      if (decoded is! Map<String, dynamic>) return false;
-      final useRag = decoded['useRag'] == true;
-      stderr.writeln(
-        '[GemmaLauncherBotAiService] rag_route useRag=$useRag '
-        'response=[$response]',
-      );
-      return useRag;
-    } on FormatException {
-      stderr.writeln(
-        '[GemmaLauncherBotAiService] rag_route invalid JSON. '
-        'response=[$response]',
-      );
-      return false;
-    }
   }
 
   bool _isUsableAnswer(String response, String prompt) {
@@ -260,21 +217,6 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
     );
     final response = await _chatbotService.generate(request);
     return _parseIntentResponse(response, apps);
-  }
-
-  String _buildRagRoutingRequest(String prompt) {
-    return '''
-너는 차량 런처 AI의 RAG 라우터다.
-사용자 질문이 차량 매뉴얼/차량 기능/정비/경고/사용법/등록 방법처럼 차량 가이드 문서를 찾아봐야 하는 질문이면 useRag=true를 선택해라.
-자기소개, 일반 대화, 앱 실행/닫기/설정 명령, 런처 자체 질문처럼 차량 가이드 문서가 필요 없는 질문이면 useRag=false를 선택해라.
-반드시 JSON 한 개만 출력해라. 설명, markdown, 코드블록, 추가 JSON은 출력하지 마라.
-
-출력 형식:
-{"useRag":true}
-{"useRag":false}
-
-사용자 질문: $prompt
-''';
   }
 
   String _buildIntentRequest({

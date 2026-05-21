@@ -16,7 +16,7 @@ void main() {
   group('NluRouter.resolve', () {
     final apps = [
       _m('ota_monitor', ['OTA 모니터 열어줘', '업데이트 상태 확인']),
-      _m('adsw_monitor', ['AD SW 모니터 열어줘', '센서 상태 보여줘']),
+      _m('adsw_monitor', ['AD SW 모니터 열어줘', 'AD SW 보여줘', '센서 상태 보여줘']),
     ];
     final router = NluRouter(apps);
 
@@ -29,6 +29,10 @@ void main() {
       expect(
         router.resolve('지금 OTA 모니터 열어줘 빨리')?.id,
         'ota_monitor',
+      );
+      expect(
+        router.resolve('ad sw 보여줘')?.id,
+        'adsw_monitor',
       );
     });
 

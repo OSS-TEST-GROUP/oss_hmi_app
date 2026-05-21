@@ -6,7 +6,18 @@
   "category": "monitoring",
   "color": "#FCD34D",
   "prompts": [
-    "OTA Monitor 실행해줘"
+    "OTA Monitor 실행해줘",
+    "OTA Monitor 열어줘",
+    "OTA Monitor 보여줘",
+    "OTA Monitor 실행",
+    "OTA Monitor 열기",
+    "OTA Monitor 보기",
+    "OTA 실행해줘",
+    "OTA 열어줘",
+    "OTA 보여줘",
+    "OTA 실행",
+    "OTA 열기",
+    "OTA 보기"
   ],
   "entry": "ota_monitor/main.dart",
   "permissions": ["vss", "can_bus"],

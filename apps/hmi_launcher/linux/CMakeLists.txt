@@ -74,22 +74,13 @@ if(NOT "${OBIGO_OASIS_DIR}" STREQUAL "")
   set(OBIGO_OASIS_INCLUDE_DIR "${OBIGO_OASIS_DIR}/include")
   set(OBIGO_OASIS_LIB_DIR "${OBIGO_OASIS_DIR}/lib")
   set(OBIGO_SERVICE_LLM_LIB "${OBIGO_OASIS_LIB_DIR}/libservice_llm.so")
-  set(OBIGO_SERVICE_RAG_LIB "${OBIGO_OASIS_LIB_DIR}/libservice_rag.so")
-  set(OBIGO_ENGINE_ONNX_LIB "${OBIGO_OASIS_LIB_DIR}/libengine_onnx.so")
   set(OBIGO_ENGINE_SLLM_LIB "${OBIGO_OASIS_LIB_DIR}/libengine_sllm.so")
-  set(OBIGO_ONNXRUNTIME_LIB "${OBIGO_OASIS_LIB_DIR}/libonnxruntime.so")
-  set(OBIGO_ONNXRUNTIME_GENAI_LIB "${OBIGO_OASIS_LIB_DIR}/libonnxruntime-genai.so")
 
   if(EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/llm_provider.hpp" AND
      EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/llm_provider_llamacpp.hpp" AND
      EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/multimodal_types.hpp" AND
-     EXISTS "${OBIGO_OASIS_INCLUDE_DIR}/rag_engine.hpp" AND
      EXISTS "${OBIGO_SERVICE_LLM_LIB}" AND
-     EXISTS "${OBIGO_SERVICE_RAG_LIB}" AND
-     EXISTS "${OBIGO_ENGINE_ONNX_LIB}" AND
-     EXISTS "${OBIGO_ENGINE_SLLM_LIB}" AND
-     EXISTS "${OBIGO_ONNXRUNTIME_LIB}" AND
-     EXISTS "${OBIGO_ONNXRUNTIME_GENAI_LIB}")
+     EXISTS "${OBIGO_ENGINE_SLLM_LIB}")
     add_library(chatbot_bridge SHARED
       "${CMAKE_SOURCE_DIR}/../native/chatbot_bridge.cpp"
     )
@@ -110,12 +101,8 @@ if(NOT "${OBIGO_OASIS_DIR}" STREQUAL "")
     )
 
     target_link_libraries(chatbot_bridge PRIVATE
-      "${OBIGO_ONNXRUNTIME_LIB}"
-      "${OBIGO_ONNXRUNTIME_GENAI_LIB}"
-      "${OBIGO_ENGINE_ONNX_LIB}"
       "${OBIGO_ENGINE_SLLM_LIB}"
       "${OBIGO_SERVICE_LLM_LIB}"
-      "${OBIGO_SERVICE_RAG_LIB}"
     )
 
     set_target_properties(chatbot_bridge
