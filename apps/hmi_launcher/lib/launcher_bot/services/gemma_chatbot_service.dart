@@ -169,18 +169,26 @@ class GemmaChatbotService {
         configPath,
         _resolveBridgeLibraryPath(bundleRoot),
       );
+      _worker = worker;
       final ragConfig = _resolveRagConfig(bundleRoot);
       if (ragConfig != null) {
-        try {
-          await worker.configureRag(ragConfig);
-        } catch (error) {
-          stderr.writeln('[GemmaChatbotService] RAG disabled: $error');
-        }
+        unawaited(_configureRagInBackground(worker, ragConfig));
       }
-      _worker = worker;
       return worker;
     } finally {
       _initializing = false;
+    }
+  }
+
+  Future<void> _configureRagInBackground(
+    _ChatbotWorker worker,
+    _RagRuntimeConfig ragConfig,
+  ) async {
+    try {
+      await worker.configureRag(ragConfig);
+      stderr.writeln('[GemmaChatbotService] RAG ready');
+    } catch (error) {
+      stderr.writeln('[GemmaChatbotService] RAG disabled: $error');
     }
   }
 

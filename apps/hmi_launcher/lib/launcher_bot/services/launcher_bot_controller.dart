@@ -25,7 +25,7 @@ class LauncherBotController extends ChangeNotifier {
       LauncherBotMessage(
         speaker: LauncherBotSpeaker.bot,
         text:
-            'Launcher Bot is ready. Tell me which app to open, or ask a question.',
+            'Launcher Agent is ready. Tell me which app to open, or ask a question.',
         timestamp: _nowLabel(),
         intent: 'Ready',
       ),
