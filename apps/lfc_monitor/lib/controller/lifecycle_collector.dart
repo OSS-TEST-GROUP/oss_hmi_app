@@ -200,8 +200,25 @@ class LifecycleCollector extends GetxController {
   }
 
   Future<void> _onGetStateResponse(Map<String, dynamic> msg) async {
-    // Same payload shape as NotifyServiceState for the GUI's purposes.
-    await _onNotifyServiceState(msg);
+    // Intentionally ignored.
+    //
+    // GetServiceStateResponse arrives over rosbridge via dds_bridge, which
+    // forwards every raw-topic sample it sees. A stray publisher writing
+    // NOT_RUNNING to mmf/lifecyclemgr/GetServiceStateResponse on the same
+    // DDS domain therefore reaches the UI and makes the service state
+    // visibly oscillate between RUNNING and NOT_RUNNING even when
+    // adsw_manager is steadily reporting RUNNING. dds_bridge's per-listener
+    // trust-on-first-use guard can race-lose to that phantom and pin the
+    // wrong publisher on this topic, so we don't trust this stream here.
+    //
+    // The two remaining sources are sufficient and authoritative:
+    //   - NotifyServiceState: state-change events from adsw_manager, fast.
+    //   - LifecycleDiagReport: periodic snapshot from lifecycle_mgr (which
+    //     applies its own sender-GID guard before relaying state into the
+    //     report), accurate.
+    // Both flow through dds_bridge as well but their phantom incidence is
+    // low to none in practice; if either starts oscillating, apply the
+    // same fix there.
   }
 
   // F013: NotifyContainerState arrives whenever ContainerHealthMonitor sees
@@ -334,6 +351,15 @@ class LifecycleCollector extends GetxController {
     // re-render path is re-invoking us.  Stack trace cut short so the
     // operator-visible logs stay readable.
     _logCall('startService', name);
+    // Optimistic UI update — paint INITIALIZING immediately, push an
+    // Events row so the operator sees their click landed, then the real
+    // NotifyServiceState / next DiagReport overwrites with the confirmed
+    // state (RUNNING on success, back to NOT_RUNNING on failure). Without
+    // this the badge would stay at NOT_RUNNING until the next
+    // LifecycleDiagReport (~30 s) because we deliberately ignore
+    // GetServiceStateResponse to dodge phantom samples and
+    // NotifyServiceState's bridged delivery is currently unreliable.
+    _optimisticServiceState(name, ServiceState.initializing);
     _publish(_ctrlStartServiceReqPub, 'ctrlStartService', {
       'service_list': [name],
     });
@@ -341,9 +367,33 @@ class LifecycleCollector extends GetxController {
 
   void stopService(String name) {
     _logCall('stopService', name);
+    // Same optimistic flip as startService — see commentary there.
+    _optimisticServiceState(name, ServiceState.notRunning);
     _publish(_ctrlStopServiceReqPub, 'ctrlStopService', {
       'service_list': [name],
     });
+  }
+
+  // Repaint the local ServiceInfo + push an Events row so the operator
+  // sees the click registered. The next authoritative source
+  // (NotifyServiceState if it arrives, otherwise DiagReport) corrects any
+  // divergence — if the actuator rejected the change, the badge will flip
+  // back and a second Events row will follow.
+  void _optimisticServiceState(String name, ServiceState newState) {
+    final info = services[name];
+    if (info == null) return;
+    final prevState = info.state;
+    if (prevState == newState) return;
+    info.state = newState;
+    info.lastChangedAt = DateTime.now();
+    services[name] = info;
+    services.refresh();
+    _pushEvent(LifecycleEvent(
+      timestamp: DateTime.now(),
+      serviceName: name,
+      from: prevState,
+      to: newState,
+    ));
   }
 
   void _logCall(String label, String arg) {
