@@ -252,7 +252,8 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
 일반 질문이나 대화면 answer를 선택해라.
 사용자가 앱 이름 없이 "닫아줘", "종료해줘", "닫기"처럼 말하면 현재 화면 종료로 판단하고 appId를 넣지 마라.
 앱 이름이 명확할 때만 close_app에 appId를 넣어라.
-반드시 JSON 한 개만 출력해라. 설명, markdown, 코드블록은 출력하지 마라.
+반드시 아래 두 형식 중 하나만 골라 JSON 한 개만 출력해라.
+설명, markdown, 코드블록, 추가 JSON은 출력하지 마라.
 
 출력 형식:
 {"action":"open_app","appId":"ota_monitor"}
@@ -301,7 +302,7 @@ openCount, totalForegroundSeconds, lastOpenedAt을 모두 고려해라.
 제안할 때는 짧고 자연스러운 한국어 질문 문장을 함께 만든다.
 반드시 JSON 한 개만 출력해라. 설명, markdown, 코드블록은 출력하지 마라.
 
-출력 형식:
+출력 형식 예시:
 {"suggest":true,"appId":"ota_monitor","message":"최근 OTA Monitor를 자주 확인하셨어요. 지금 열어볼까요?"}
 {"suggest":false}
 
@@ -391,9 +392,37 @@ $usageText
   String? _extractJsonObject(String response) {
     final trimmed = response.trim();
     final start = trimmed.indexOf('{');
-    final end = trimmed.lastIndexOf('}');
-    if (start < 0 || end <= start) return null;
-    return trimmed.substring(start, end + 1);
+    if (start < 0) return null;
+
+    var depth = 0;
+    var inString = false;
+    var escaping = false;
+    for (var index = start; index < trimmed.length; index += 1) {
+      final char = trimmed[index];
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+      if (char == r'\') {
+        escaping = true;
+        continue;
+      }
+      if (char == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+
+      if (char == '{') {
+        depth += 1;
+      } else if (char == '}') {
+        depth -= 1;
+        if (depth == 0) {
+          return trimmed.substring(start, index + 1);
+        }
+      }
+    }
+    return null;
   }
 
   @override
