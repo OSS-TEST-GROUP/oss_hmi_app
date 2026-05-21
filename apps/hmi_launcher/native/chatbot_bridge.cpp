@@ -45,6 +45,31 @@ std::string build_gemma4_prompt(const char* prompt) {
            "<|turn>model\n";
 }
 
+std::string build_rag_user_prompt(
+    const char* question,
+    const std::vector<std::string>& contexts) {
+    const std::string q = question ? question : "";
+    if (contexts.empty()) {
+        return q;
+    }
+
+    std::string prompt =
+        "아래 차량 가이드 문서 발췌를 우선 근거로 사용해서 답변하세요.\n"
+        "문서 발췌에 관련 내용이 있으면 그 내용을 요약해서 한국어로 답하세요.\n"
+        "문서 발췌에 없는 내용은 문서에서 찾을 수 없다고 말하세요.\n\n"
+        "[차량 가이드 발췌]\n";
+
+    for (size_t i = 0; i < contexts.size(); ++i) {
+        prompt += "\n--- 문서 " + std::to_string(i + 1) + " ---\n";
+        prompt += contexts[i];
+        prompt += "\n";
+    }
+
+    prompt += "\n[사용자 질문]\n";
+    prompt += q;
+    return prompt;
+}
+
 std::string trim(const std::string& value) {
     const auto start = value.find_first_not_of(" \t\r\n");
     if (start == std::string::npos) {
@@ -361,6 +386,12 @@ char* chatbot_generate_rag(ChatbotHandle* h, const char* prompt, int top_k) {
                           << results.size() << std::endl;
                 for (const auto& result : results) {
                     if (!result.content.empty()) {
+                        std::cerr << "[chatbot_bridge] rag_context score="
+                                  << result.score
+                                  << ", metadata=[" << result.metadata << "]"
+                                  << ", preview=["
+                                  << result.content.substr(0, 180)
+                                  << "]" << std::endl;
                         contexts.emplace_back(
                             "[source=" + result.metadata +
                             ", score=" + std::to_string(result.score) + "]\n" +
@@ -378,7 +409,8 @@ char* chatbot_generate_rag(ChatbotHandle* h, const char* prompt, int top_k) {
     }
 
     ai_common::GenerateRequest req;
-    req.user_prompt = build_gemma4_prompt(prompt);
+    const std::string rag_prompt = build_rag_user_prompt(prompt, contexts);
+    req.user_prompt = build_gemma4_prompt(rag_prompt.c_str());
     req.max_tokens = 192;
     req.temperature = 0.35f;
     req.top_p = 0.9f;
