@@ -113,11 +113,72 @@ std::string sanitize_context_text(const std::string& text) {
     return out;
 }
 
+// Return the largest position <= max_bytes that lies on a UTF-8 codepoint
+// boundary. A boundary byte is one where the top two bits are NOT 10 (i.e.
+// not a continuation byte). Backing off avoids cutting a multi-byte sequence
+// in half.
+size_t utf8_safe_cut(const std::string& s, size_t max_bytes) {
+    if (max_bytes >= s.size()) return s.size();
+    size_t pos = max_bytes;
+    while (pos > 0 &&
+           (static_cast<unsigned char>(s[pos]) & 0xC0) == 0x80) {
+        --pos;
+    }
+    return pos;
+}
+
+// Strip leading continuation bytes left over from a mid-codepoint cut, drop
+// invalid lead/continuation sequences, and stop before any incomplete trailing
+// sequence. Output is guaranteed to be valid UTF-8.
+std::string to_valid_utf8(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0;
+    while (i < s.size() &&
+           (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) {
+        ++i;
+    }
+    while (i < s.size()) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t need;
+        if (c < 0x80) {
+            need = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            need = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            need = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            need = 4;
+        } else {
+            ++i;
+            continue;
+        }
+        if (i + need > s.size()) {
+            break;
+        }
+        bool ok = true;
+        for (size_t k = 1; k < need; ++k) {
+            if ((static_cast<unsigned char>(s[i + k]) & 0xC0) != 0x80) {
+                ok = false;
+                break;
+            }
+        }
+        if (!ok) {
+            ++i;
+            continue;
+        }
+        out.append(s, i, need);
+        i += need;
+    }
+    return out;
+}
+
 std::string truncate_chars(const std::string& text, size_t max_chars) {
     if (text.size() <= max_chars) {
         return text;
     }
-    return text.substr(0, max_chars) + "\n...[truncated]";
+    const size_t cut = utf8_safe_cut(text, max_chars);
+    return text.substr(0, cut) + "\n...[truncated]";
 }
 
 std::string trim(const std::string& value) {
@@ -248,14 +309,20 @@ int add_text_document(
         options);
     int loaded_docs = 0;
     for (const auto& chunk : chunks) {
-        if (trim(chunk.text).empty()) {
+        // The third-party chunker splits on byte boundaries, which can leave
+        // a chunk starting or ending in the middle of a Korean (3-byte) UTF-8
+        // codepoint. Re-validate before persisting — otherwise the JSON vector
+        // store rejects the bare continuation byte (e.g. 0x96) with
+        // type_error.316.
+        const std::string sanitized = to_valid_utf8(chunk.text);
+        if (trim(sanitized).empty()) {
             continue;
         }
         const std::string id =
             text_path.filename().string() + "#" + std::to_string(chunk.chunk_index);
         const std::string metadata =
             text_path.string() + "#chunk=" + std::to_string(chunk.chunk_index);
-        if (engine.add_document(id, chunk.text, metadata)) {
+        if (engine.add_document(id, sanitized, metadata)) {
             ++loaded_docs;
         }
     }
