@@ -131,22 +131,8 @@ class LauncherBotController extends ChangeNotifier {
   Future<void> _handleSubmittedInput(String input) async {
     if (_handleDirectCommand(input)) return;
 
-    _isGenerating = true;
-    notifyListeners();
-
-    try {
-      if (await _handleAiCommand(input)) return;
-    } catch (_) {
-      // If the model cannot produce a valid route, fall back to the local
-      // router and finally to normal answer generation below.
-    } finally {
-      _isGenerating = false;
-      notifyListeners();
-    }
-
-    if (_handleLocalCommand(input)) return;
-
     final pendingIndex = _messages.length;
+    final generationStartedAt = DateTime.now();
     _isGenerating = true;
     _addMessage(
       LauncherBotMessage(
@@ -158,6 +144,27 @@ class LauncherBotController extends ChangeNotifier {
     );
 
     try {
+      try {
+        if (await _handleAiCommand(
+          input,
+          pendingIndex: pendingIndex,
+          startedAt: generationStartedAt,
+        )) {
+          return;
+        }
+      } catch (_) {
+        // If the model cannot produce a valid route, fall back to the local
+        // router and finally to normal answer generation below.
+      }
+
+      if (_handleLocalCommand(
+        input,
+        pendingIndex: pendingIndex,
+        startedAt: generationStartedAt,
+      )) {
+        return;
+      }
+
       final response = await _aiService.generate(
         prompt: input,
         contexts: _buildContexts(),
@@ -166,12 +173,14 @@ class LauncherBotController extends ChangeNotifier {
         text: response.trim().isEmpty ? '응답 내용이 비어 있습니다.' : response.trim(),
         timestamp: _nowLabel(),
         intent: 'AI',
+        details: _performanceLabel(generationStartedAt),
       );
     } catch (error) {
       _messages[pendingIndex] = _messages[pendingIndex].copyWith(
         text: 'AI 응답 생성에 실패했습니다. $error',
         timestamp: _nowLabel(),
         intent: 'Error',
+        details: _performanceLabel(generationStartedAt),
       );
     } finally {
       _isGenerating = false;
@@ -280,24 +289,46 @@ class LauncherBotController extends ChangeNotifier {
     );
   }
 
-  bool _handleLocalCommand(String input) {
-    if (_handleDirectCommand(input)) return true;
+  bool _handleLocalCommand(
+    String input, {
+    int? pendingIndex,
+    DateTime? startedAt,
+  }) {
+    if (_handleDirectCommand(
+      input,
+      pendingIndex: pendingIndex,
+      startedAt: startedAt,
+    )) {
+      return true;
+    }
 
     final route = _nluRouter.resolveIntent(input);
     if (route != null) {
       if (route.action == NluRouteAction.close) {
         if (_contextName == route.app.name) {
           final closedName = _onCloseApp();
-          _addCloseMessage(closedName, intent: 'Close App');
+          _addCloseMessage(
+            closedName,
+            intent: 'Close App',
+            pendingIndex: pendingIndex,
+            details: _performanceLabelOrNull(startedAt),
+          );
         } else {
-          _addBotMessage(
+          _emitBotMessage(
             '${route.app.name}은 현재 열려 있지 않아요.',
             intent: 'Close App',
+            pendingIndex: pendingIndex,
+            details: _performanceLabelOrNull(startedAt),
           );
         }
       } else {
         _onOpenApp(route.app);
-        _addBotMessage('${route.app.name}을 실행했어요.', intent: 'Open App');
+        _emitBotMessage(
+          '${route.app.name}을 실행했어요.',
+          intent: 'Open App',
+          pendingIndex: pendingIndex,
+          details: _performanceLabelOrNull(startedAt),
+        );
       }
       return true;
     }
@@ -305,23 +336,41 @@ class LauncherBotController extends ChangeNotifier {
     return false;
   }
 
-  bool _handleDirectCommand(String input) {
+  bool _handleDirectCommand(
+    String input, {
+    int? pendingIndex,
+    DateTime? startedAt,
+  }) {
     if (_isCloseCommand(input) || _isCloseSettingsCommand(input)) {
       final closedName = _onCloseApp();
-      _addCloseMessage(closedName, intent: 'Close');
+      _addCloseMessage(
+        closedName,
+        intent: 'Close',
+        pendingIndex: pendingIndex,
+        details: _performanceLabelOrNull(startedAt),
+      );
       return true;
     }
 
     if (_isSettingsCommand(input)) {
       _onOpenSettings();
-      _addBotMessage('설정 화면을 열었어요.', intent: 'Open Settings');
+      _emitBotMessage(
+        '설정 화면을 열었어요.',
+        intent: 'Open Settings',
+        pendingIndex: pendingIndex,
+        details: _performanceLabelOrNull(startedAt),
+      );
       return true;
     }
 
     return false;
   }
 
-  Future<bool> _handleAiCommand(String input) async {
+  Future<bool> _handleAiCommand(
+    String input, {
+    required int pendingIndex,
+    required DateTime startedAt,
+  }) async {
     final intent = await _aiService.resolveIntent(
       prompt: input,
       apps: _nluRouter.apps,
@@ -336,23 +385,40 @@ class LauncherBotController extends ChangeNotifier {
         final app = _appById(intent.appId);
         if (app == null) return false;
         _onOpenApp(app);
-        _addBotMessage('${app.name}을 실행했어요.', intent: 'AI Open App');
+        _emitBotMessage(
+          '${app.name}을 실행했어요.',
+          intent: 'AI Open App',
+          pendingIndex: pendingIndex,
+          details: _performanceLabel(startedAt),
+        );
         return true;
       case LauncherBotAiIntentAction.closeApp:
         final app = _appById(intent.appId);
         if (app != null && _contextName != app.name) {
-          _addBotMessage(
+          _emitBotMessage(
             '${app.name}은 현재 열려 있지 않아요.',
             intent: 'AI Close App',
+            pendingIndex: pendingIndex,
+            details: _performanceLabel(startedAt),
           );
           return true;
         }
         final closedName = _onCloseApp();
-        _addCloseMessage(closedName ?? app?.name, intent: 'AI Close App');
+        _addCloseMessage(
+          closedName ?? app?.name,
+          intent: 'AI Close App',
+          pendingIndex: pendingIndex,
+          details: _performanceLabel(startedAt),
+        );
         return true;
       case LauncherBotAiIntentAction.openSettings:
         _onOpenSettings();
-        _addBotMessage('설정 화면을 열었어요.', intent: 'AI Open Settings');
+        _emitBotMessage(
+          '설정 화면을 열었어요.',
+          intent: 'AI Open Settings',
+          pendingIndex: pendingIndex,
+          details: _performanceLabel(startedAt),
+        );
         return true;
       case LauncherBotAiIntentAction.answer:
         return false;
@@ -439,12 +505,68 @@ class LauncherBotController extends ChangeNotifier {
     );
   }
 
-  void _addCloseMessage(String? closedName, {String? intent}) {
-    if (closedName == null || closedName == 'Launcher') {
-      _addBotMessage('닫을 앱이 없어요.', intent: intent);
+  void _emitBotMessage(
+    String text, {
+    String? intent,
+    int? pendingIndex,
+    String? details,
+  }) {
+    if (pendingIndex == null) {
+      _addMessage(
+        LauncherBotMessage(
+          speaker: LauncherBotSpeaker.bot,
+          text: text,
+          timestamp: _nowLabel(),
+          intent: intent,
+          details: details,
+        ),
+      );
       return;
     }
-    _addBotMessage('$closedName을 닫았어요.', intent: intent);
+    _messages[pendingIndex] = _messages[pendingIndex].copyWith(
+      text: text,
+      timestamp: _nowLabel(),
+      intent: intent,
+      details: details,
+    );
+    notifyListeners();
+  }
+
+  void _addCloseMessage(
+    String? closedName, {
+    String? intent,
+    int? pendingIndex,
+    String? details,
+  }) {
+    if (closedName == null || closedName == 'Launcher') {
+      _emitBotMessage(
+        '닫을 앱이 없어요.',
+        intent: intent,
+        pendingIndex: pendingIndex,
+        details: details,
+      );
+      return;
+    }
+    _emitBotMessage(
+      '$closedName을 닫았어요.',
+      intent: intent,
+      pendingIndex: pendingIndex,
+      details: details,
+    );
+  }
+
+  String? _performanceLabelOrNull(DateTime? startedAt) {
+    if (startedAt == null) return null;
+    return _performanceLabel(startedAt);
+  }
+
+  String _performanceLabel(DateTime startedAt) {
+    final completedAt = DateTime.now();
+    final elapsed = completedAt.difference(startedAt);
+    final elapsedText = elapsed.inMilliseconds < 1000
+        ? '${elapsed.inMilliseconds}ms'
+        : '${(elapsed.inMilliseconds / 1000).toStringAsFixed(2)}s';
+    return '완료 ${_timeLabel(completedAt, withSeconds: true)} · $elapsedText';
   }
 
   void _addMessage(LauncherBotMessage message) {
@@ -453,9 +575,14 @@ class LauncherBotController extends ChangeNotifier {
   }
 
   String _nowLabel() {
-    final now = DateTime.now();
-    return '${now.hour.toString().padLeft(2, '0')}:'
-        '${now.minute.toString().padLeft(2, '0')}';
+    return _timeLabel(DateTime.now());
+  }
+
+  String _timeLabel(DateTime time, {bool withSeconds = false}) {
+    final base = '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}';
+    if (!withSeconds) return base;
+    return '$base:${time.second.toString().padLeft(2, '0')}';
   }
 
   @override

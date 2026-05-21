@@ -345,14 +345,17 @@ $appText
 사용자의 앱 사용 패턴과 현재 화면을 보고 지금 먼저 실행 제안을 할 앱을 하나 고른다.
 단순히 문장만 만들지 말고, 어떤 앱을 제안할지 직접 판단해라.
 openCount, totalForegroundSeconds, lastOpenedAt을 모두 고려해라.
+앱 사용 패턴은 openCount, totalForegroundSeconds, lastOpenedAt 기준으로 추천 우선순위가 높은 순서로 정렬되어 있다.
+어떤 앱이 다른 앱보다 openCount와 totalForegroundSeconds가 모두 높고 lastOpenedAt도 더 최신이면 그 앱을 선택해라.
 등록된 앱 id 중 하나만 고를 수 있다.
 현재 화면이 Launcher가 아니면 suggest=false로 해라.
 사용 패턴이 부족하거나 확신이 낮으면 suggest=false로 해라.
 제안할 때는 짧고 자연스러운 한국어 질문 문장을 함께 만든다.
-반드시 JSON 한 개만 출력해라. 설명, markdown, 코드블록은 출력하지 마라.
+반드시 JSON 한 개만 출력해라. 설명, markdown, 코드블록, 추가 JSON은 출력하지 마라.
+아래 출력 형식의 appId 예시는 placeholder다. 그대로 복사하지 말고 앱 사용 패턴에 있는 실제 id만 사용해라.
 
 출력 형식 예시:
-{"suggest":true,"appId":"ota_monitor","message":"최근 OTA Monitor를 자주 확인하셨어요. 지금 열어볼까요?"}
+{"suggest":true,"appId":"<registered_app_id>","message":"최근 자주 사용한 앱을 지금 열어볼까요?"}
 {"suggest":false}
 
 현재 화면: $currentContext

@@ -407,6 +407,19 @@ class _MessageBubble extends StatelessWidget {
                 ],
               ),
             ],
+            if (message.details != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                message.details!,
+                style: TextStyle(
+                  color: message.isBot
+                      ? _BotPanelColors.muted
+                      : Colors.white.withValues(alpha: 0.72),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
         ),
       ),

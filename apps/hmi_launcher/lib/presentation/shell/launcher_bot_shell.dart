@@ -154,6 +154,12 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     setState(() => _selectOpenedApp(_SettingsPage.appId));
   }
 
+  void _goHome() {
+    if (_selectedAppId == null) return;
+    _flushUsageFocus();
+    setState(() => _selectedAppId = null);
+  }
+
   void _startUsageFocus(String? appId) {
     if (appId == null || widget.registry.findById(appId) == null) {
       _usageFocusAppId = null;
@@ -353,6 +359,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                     aiSdkAvailable: _aiSdkAvailable,
                     voiceCapturing: _voiceCapturing,
                     assistantOpen: _assistantOpen,
+                    onHomeSelected: _goHome,
                     onAppSelected: (appId) {
                       setState(() => _selectOpenedApp(appId));
                     },
@@ -845,6 +852,7 @@ class _AppRail extends StatelessWidget {
     required this.aiSdkAvailable,
     required this.voiceCapturing,
     required this.assistantOpen,
+    required this.onHomeSelected,
     required this.onAppSelected,
     required this.onVoiceCommand,
     required this.onAssistantToggle,
@@ -857,6 +865,7 @@ class _AppRail extends StatelessWidget {
   final bool aiSdkAvailable;
   final bool voiceCapturing;
   final bool assistantOpen;
+  final VoidCallback onHomeSelected;
   final ValueChanged<String> onAppSelected;
   final VoidCallback onVoiceCommand;
   final VoidCallback onAssistantToggle;
@@ -878,6 +887,16 @@ class _AppRail extends StatelessWidget {
             child: SingleChildScrollView(
               child: Column(
                 children: [
+                  if (selectedAppId != null) ...[
+                    _RailActionButton(
+                      icon: Icons.home_outlined,
+                      enabled: true,
+                      active: false,
+                      tooltip: 'Home',
+                      onTap: onHomeSelected,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   for (final app in runningApps) ...[
                     _RailAppButton(
                       icon: _iconFor(app.id),
