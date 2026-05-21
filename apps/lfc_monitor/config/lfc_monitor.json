@@ -1,0 +1,13 @@
+{
+  "rosbridge": {
+    "url": "ws://127.0.0.1:9090"
+  },
+  "statusTopic": "/app_status/lfc_monitor",
+  "pollIntervalSec": 5,
+  "knownServices": [
+    "lifecycle_mgr",
+    "diagnostics",
+    "vehicle_info_manager_app",
+    "OtaManager"
+  ]
+}
