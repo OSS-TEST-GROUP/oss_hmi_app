@@ -8,7 +8,7 @@
   "temperature": 0.4,
   "llamacpp": {
     "n_ctx": 2048,
-    "n_batch": 512,
+    "n_batch": 2048,
     "n_gpu_layers": 0,
     "n_threads": 0,
     "mmproj_path": "models/mmproj-gemma-4-E2B-it-bf16.gguf",

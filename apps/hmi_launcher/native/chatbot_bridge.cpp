@@ -28,10 +28,10 @@ struct ChatbotHandle {
 
 namespace {
 
-constexpr size_t kRagMaxContextChars = 1150;
-constexpr size_t kRagMaxSingleContextChars = 360;
-constexpr int kRagMaxContexts = 3;
-constexpr int kRagMaxOutputTokens = 96;
+constexpr size_t kRagMaxContextChars = 260;
+constexpr size_t kRagMaxSingleContextChars = 260;
+constexpr int kRagMaxContexts = 1;
+constexpr int kRagMaxOutputTokens = 64;
 
 constexpr const char* kSystemPrompt =
     "당신은 AGL 차량용 HMI 런처의 한국어 AI 어시스턴트입니다. "
@@ -51,6 +51,18 @@ std::string build_gemma4_prompt(const char* prompt) {
            "<|turn>model\n";
 }
 
+std::string build_gemma4_rag_prompt(const char* prompt) {
+    std::string user_prompt = prompt ? prompt : "";
+
+    return std::string("<|turn>system\n") +
+           "차량 가이드 발췌에 근거해 짧게 답하세요. 근거가 없으면 없다고 말하세요." +
+           "<turn|>\n"
+           "<|turn>user\n" +
+           user_prompt +
+           "<turn|>\n"
+           "<|turn>model\n";
+}
+
 std::string build_rag_user_prompt(
     const char* question,
     const std::vector<std::string>& contexts) {
@@ -59,11 +71,7 @@ std::string build_rag_user_prompt(
         return q;
     }
 
-    std::string prompt =
-        "아래 차량 가이드 문서 발췌를 우선 근거로 사용해서 답변하세요.\n"
-        "문서 발췌에 관련 내용이 있으면 그 내용을 요약해서 한국어로 답하세요.\n"
-        "문서 발췌에 없는 내용은 문서에서 찾을 수 없다고 말하세요.\n\n"
-        "[차량 가이드 발췌]\n";
+    std::string prompt = "[가이드 발췌]\n";
 
     for (size_t i = 0; i < contexts.size(); ++i) {
         prompt += "\n--- 문서 " + std::to_string(i + 1) + " ---\n";
@@ -71,9 +79,38 @@ std::string build_rag_user_prompt(
         prompt += "\n";
     }
 
-    prompt += "\n[사용자 질문]\n";
+    prompt += "\n[질문]\n";
     prompt += q;
     return prompt;
+}
+
+std::string sanitize_context_text(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size();) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c == '\n' || c == '\r' || c == '\t') {
+            out.push_back(' ');
+            ++i;
+            continue;
+        }
+        if (c < 0x20) {
+            ++i;
+            continue;
+        }
+        // Drop UTF-8 replacement character (EF BF BD), which usually means
+        // the source text was decoded with the wrong encoding.
+        if (i + 2 < text.size() &&
+            static_cast<unsigned char>(text[i]) == 0xEF &&
+            static_cast<unsigned char>(text[i + 1]) == 0xBF &&
+            static_cast<unsigned char>(text[i + 2]) == 0xBD) {
+            i += 3;
+            continue;
+        }
+        out.push_back(text[i]);
+        ++i;
+    }
+    return out;
 }
 
 std::string truncate_chars(const std::string& text, size_t max_chars) {
@@ -491,9 +528,13 @@ char* chatbot_generate_rag(ChatbotHandle* h, const char* prompt, int top_k) {
                             context_chars >= kRagMaxContextChars) {
                             break;
                         }
+                        const std::string sanitized = sanitize_context_text(result.content);
+                        if (sanitized.empty()) {
+                            continue;
+                        }
                         const size_t remaining = kRagMaxContextChars - context_chars;
                         const size_t limit = std::min(kRagMaxSingleContextChars, remaining);
-                        const std::string clipped = truncate_chars(result.content, limit);
+                        const std::string clipped = truncate_chars(sanitized, limit);
                         std::cerr << "[chatbot_bridge] rag_context score="
                                   << result.score
                                   << ", metadata=[" << result.metadata << "]"
@@ -520,7 +561,7 @@ char* chatbot_generate_rag(ChatbotHandle* h, const char* prompt, int top_k) {
 
     ai_common::GenerateRequest req;
     const std::string rag_prompt = build_rag_user_prompt(prompt, contexts);
-    req.user_prompt = build_gemma4_prompt(rag_prompt.c_str());
+    req.user_prompt = build_gemma4_rag_prompt(rag_prompt.c_str());
     req.max_tokens = kRagMaxOutputTokens;
     req.temperature = 0.35f;
     req.top_p = 0.9f;
