@@ -1,0 +1,16 @@
+{
+  "id": "lfc_monitor",
+  "name": "Lifecycle Monitor",
+  "icon": "🔄",
+  "version": "1.0.0",
+  "category": "monitoring",
+  "color": "#60A5FA",
+  "prompts": [
+    "라이프사이클 모니터 열어줘",
+    "서비스 상태 확인",
+    "컨테이너 상태 보여줘"
+  ],
+  "entry": "lfc_monitor/main.dart",
+  "permissions": ["vss", "can_bus"],
+  "min_launcher": "4.0.0"
+}
