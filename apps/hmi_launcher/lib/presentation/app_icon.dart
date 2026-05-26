@@ -13,6 +13,8 @@ abstract final class LauncherAppIcons {
         return Icons.system_update_alt;
       case 'adsw_monitor':
         return Icons.sensors_outlined;
+      case 'lfc_monitor':
+        return Icons.account_tree_outlined;
       case settingsAppId:
         return settings;
       default:

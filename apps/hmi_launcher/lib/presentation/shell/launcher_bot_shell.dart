@@ -13,6 +13,7 @@ import '../app_icon.dart';
 import '../launcher_bot/launcher_bot_panel.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
+import '../panels/lfc_embedded_panel.dart';
 import '../panels/ota_embedded_panel.dart';
 import 'launcher_app_area.dart';
 
@@ -25,6 +26,7 @@ class LauncherBotShell extends StatefulWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.lfcTheme,
     required this.onAppThemeChanged,
     this.initialAppId,
     this.panelBuilder,
@@ -36,6 +38,7 @@ class LauncherBotShell extends StatefulWidget {
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final String lfcTheme;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
@@ -396,6 +399,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       onRosUrlChanged: widget.onRosUrlChanged,
                       otaTheme: widget.otaTheme,
                       adswTheme: widget.adswTheme,
+                      lfcTheme: widget.lfcTheme,
                       aiSdkAvailable: _aiSdkAvailable,
                       onAppThemeChanged: widget.onAppThemeChanged,
                     ),
@@ -422,6 +426,7 @@ class _AppStage extends StatelessWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.lfcTheme,
     required this.aiSdkAvailable,
     required this.onAppThemeChanged,
     this.panelBuilder,
@@ -437,6 +442,7 @@ class _AppStage extends StatelessWidget {
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final String lfcTheme;
   final bool aiSdkAvailable;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final AppPanelBuilder? panelBuilder;
@@ -482,6 +488,7 @@ class _AppStage extends StatelessWidget {
         onRosUrlChanged: onRosUrlChanged,
         otaTheme: otaTheme,
         adswTheme: adswTheme,
+        lfcTheme: lfcTheme,
         aiSdkAvailable: aiSdkAvailable,
         onAppThemeChanged: onAppThemeChanged,
       );
@@ -497,6 +504,8 @@ class _AppStage extends StatelessWidget {
         return OtaEmbeddedPanel(key: key);
       case 'adsw_monitor':
         return AdswEmbeddedPanel(key: key);
+      case 'lfc_monitor':
+        return LfcEmbeddedPanel(key: key);
       default:
         return AppPlaceholderPanel(key: key, app: app);
     }
@@ -569,6 +578,7 @@ class _SettingsPage extends StatefulWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.lfcTheme,
     required this.aiSdkAvailable,
     required this.onAppThemeChanged,
   });
@@ -580,6 +590,7 @@ class _SettingsPage extends StatefulWidget {
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final String lfcTheme;
   final bool aiSdkAvailable;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
 
@@ -722,6 +733,13 @@ class _SettingsPageState extends State<_SettingsPage> {
                         value: widget.adswTheme,
                         onChanged: (theme) =>
                             widget.onAppThemeChanged('adsw_monitor', theme),
+                      ),
+                      const SizedBox(height: 12),
+                      _ThemeSettingRow(
+                        label: 'Lifecycle Monitor',
+                        value: widget.lfcTheme,
+                        onChanged: (theme) =>
+                            widget.onAppThemeChanged('lfc_monitor', theme),
                       ),
                     ],
                   ),

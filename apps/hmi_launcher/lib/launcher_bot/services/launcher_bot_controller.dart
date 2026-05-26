@@ -81,7 +81,10 @@ class LauncherBotController extends ChangeNotifier {
       );
       final app = _appById(suggestion?.appId);
       if (suggestion == null || app == null) return false;
-      final suggestionText = suggestion.message.trim();
+      final suggestionText = _suggestionTextWithAppName(
+        app,
+        suggestion.message,
+      );
       if (suggestionText.isEmpty) return false;
 
       _pendingSuggestionAppId = app.id;
@@ -423,6 +426,25 @@ class LauncherBotController extends ChangeNotifier {
       case LauncherBotAiIntentAction.answer:
         return false;
     }
+  }
+
+  String _suggestionTextWithAppName(AppManifest app, String message) {
+    final text = message.trim();
+    if (text.isEmpty) return '';
+    final normalizedText = _normalizeForSuggestion(text);
+    final normalizedName = _normalizeForSuggestion(app.name);
+    final normalizedId = _normalizeForSuggestion(app.id);
+    if (normalizedName.isNotEmpty && normalizedText.contains(normalizedName)) {
+      return text;
+    }
+    if (normalizedId.isNotEmpty && normalizedText.contains(normalizedId)) {
+      return text;
+    }
+    return '최근 ${app.name}을 자주 열었어요. 지금 실행할까요?';
+  }
+
+  String _normalizeForSuggestion(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9가-힣]+'), '');
   }
 
   AppManifest? _appById(String? appId) {

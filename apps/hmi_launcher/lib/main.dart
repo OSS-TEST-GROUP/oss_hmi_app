@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:adsw_monitor/theme/adsw_palette.dart' as adsw_theme;
+import 'package:lfc_monitor/theme/lfc_palette.dart' as lfc_theme;
 import 'package:ota_monitor/theme/app_palette.dart' as ota_theme;
 import 'package:roslibdart/roslibdart.dart';
 
@@ -193,6 +194,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       heartbeatIntervalSec: _launcherConfig.heartbeatIntervalSec,
       otaTheme: _launcherConfig.otaTheme,
       adswTheme: _launcherConfig.adswTheme,
+      lfcTheme: _launcherConfig.lfcTheme,
     );
 
     setState(() {
@@ -223,6 +225,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       otaTheme: appId == 'ota_monitor' ? normalized : _launcherConfig.otaTheme,
       adswTheme:
           appId == 'adsw_monitor' ? normalized : _launcherConfig.adswTheme,
+      lfcTheme: appId == 'lfc_monitor' ? normalized : _launcherConfig.lfcTheme,
     );
 
     setState(() => _launcherConfig = nextConfig);
@@ -235,6 +238,8 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
         ota_theme.Palette.fromName(config.otaTheme);
     adsw_theme.adswPaletteNotifier.value =
         adsw_theme.AdswPalette.fromName(config.adswTheme);
+    lfc_theme.paletteNotifier.value =
+        lfc_theme.LfcPalette.fromName(config.lfcTheme);
   }
 
   /// Registers a mock Ros instance for test environments.
@@ -262,6 +267,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       onRosUrlChanged: _applyRosBridge,
       otaTheme: _launcherConfig.otaTheme,
       adswTheme: _launcherConfig.adswTheme,
+      lfcTheme: _launcherConfig.lfcTheme,
       onAppThemeChanged: _applyAppTheme,
     );
   }
@@ -292,6 +298,7 @@ class _LauncherConfigStore {
       'heartbeatIntervalSec': config.heartbeatIntervalSec,
       'otaTheme': config.otaTheme,
       'adswTheme': config.adswTheme,
+      'lfcTheme': config.lfcTheme,
     });
 
     try {

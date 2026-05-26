@@ -90,12 +90,49 @@ void main() {
     expect(controller.messages.last.text, 'Settings을 닫았어요.');
     expect(controller.messages.last.intent, 'Close');
   });
+
+  test('app suggestion message always includes selected app name', () async {
+    final ota = AppManifest(
+      id: 'ota_monitor',
+      name: 'OTA Monitor',
+      icon: 'box',
+      version: '1.0.0',
+      entry: 'ota_monitor/main.dart',
+      prompts: const ['OTA 모니터 열어줘'],
+    );
+    final controller = LauncherBotController(
+      nluRouter: NluRouter([ota]),
+      aiService: const _FakeAiService(
+        null,
+        suggestionMessage: '자주 실행하는 앱을 지금 실행할까요?',
+      ),
+      onOpenApp: (_) {},
+      onCloseApp: () => null,
+      onOpenSettings: () {},
+    );
+
+    final shown = await controller.suggestFrequentApp(
+      usages: [
+        AppUsageStats(
+          appId: 'ota_monitor',
+          openCount: 3,
+          lastOpenedAt: DateTime(2026, 5, 26, 10),
+          totalForegroundSeconds: 120,
+        ),
+      ],
+    );
+
+    expect(shown, isTrue);
+    expect(controller.messages.last.text, contains('OTA Monitor'));
+    expect(controller.messages.last.text, '최근 OTA Monitor을 자주 열었어요. 지금 실행할까요?');
+  });
 }
 
 class _FakeAiService implements LauncherBotAiService {
-  const _FakeAiService(this.intent);
+  const _FakeAiService(this.intent, {this.suggestionMessage});
 
   final LauncherBotAiIntent? intent;
+  final String? suggestionMessage;
 
   @override
   Future<String> generate({
@@ -114,7 +151,7 @@ class _FakeAiService implements LauncherBotAiService {
     if (apps.isEmpty) return null;
     return LauncherBotAiAppSuggestion(
       appId: apps.first.id,
-      message: '최근 ${apps.first.name}을 자주 열었어요. 지금 실행할까요?',
+      message: suggestionMessage ?? '최근 ${apps.first.name}을 자주 열었어요. 지금 실행할까요?',
     );
   }
 

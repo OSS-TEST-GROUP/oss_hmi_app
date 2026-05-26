@@ -48,6 +48,8 @@ dependencies:
     path: ../ota_monitor
   adsw_monitor:
     path: ../adsw_monitor
+  lfc_monitor:
+    path: ../lfc_monitor
 
 dev_dependencies:
   flutter_test:
