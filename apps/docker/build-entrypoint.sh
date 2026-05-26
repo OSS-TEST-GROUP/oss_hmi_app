@@ -3,6 +3,14 @@ set -e
 
 # x86_64 Flutter Linux release build entrypoint
 
+# Compose runs this container as ${USER_UID}:${USER_GID} so artifacts in
+# the bind-mounted output/ end up owned by the host user. The Flutter
+# clone at /opt/flutter is root-owned (image build time), so any git op
+# (flutter clean / pub get) trips "dubious ownership" unless we mark it
+# safe for whichever UID we're now running as. --global writes into
+# $HOME/.gitconfig (HOME=/tmp via compose env, always writable).
+git config --global --add safe.directory /opt/flutter 2>/dev/null || true
+
 APP_PATH="/workspace/app"
 OUTPUT_DIR="/workspace/output"
 

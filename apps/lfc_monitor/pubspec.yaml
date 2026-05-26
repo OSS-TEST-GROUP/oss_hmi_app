@@ -1,0 +1,28 @@
+name: lfc_monitor
+description: "lifecycle_mgr monitoring/control HMI — Services / Events / Control panels backed by rosbridge."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  # Same versions as adsw_monitor / ota_monitor so the embedded launcher
+  # ends up with a single resolved Ros class across plugins.
+  roslibdart: ^0.0.1-dev+4
+  get: ^4.7.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - config/config.json
