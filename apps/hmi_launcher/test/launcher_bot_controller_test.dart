@@ -126,6 +126,26 @@ void main() {
     expect(controller.messages.last.text, contains('OTA Monitor'));
     expect(controller.messages.last.text, '최근 OTA Monitor을 자주 열었어요. 지금 실행할까요?');
   });
+
+  test('AI answer intent is shown without a second generation call', () async {
+    final controller = LauncherBotController(
+      nluRouter: NluRouter(const []),
+      aiService: const _FakeAiService(
+        LauncherBotAiIntent(
+          action: LauncherBotAiIntentAction.answer,
+          answer: '저는 런처를 도와주는 AI 어시스턴트예요.',
+        ),
+      ),
+      onOpenApp: (_) => fail('open should not be called'),
+      onCloseApp: () => fail('close should not be called'),
+      onOpenSettings: () => fail('settings should not be called'),
+    );
+
+    await controller.submit('너는 누구야?');
+
+    expect(controller.messages.last.text, '저는 런처를 도와주는 AI 어시스턴트예요.');
+    expect(controller.messages.last.intent, 'AI');
+  });
 }
 
 class _FakeAiService implements LauncherBotAiService {

@@ -379,7 +379,7 @@ class LauncherBotController extends ChangeNotifier {
       apps: _nluRouter.apps,
       currentContext: _contextName,
     );
-    if (intent == null || intent.action == LauncherBotAiIntentAction.answer) {
+    if (intent == null) {
       return false;
     }
 
@@ -424,7 +424,17 @@ class LauncherBotController extends ChangeNotifier {
         );
         return true;
       case LauncherBotAiIntentAction.answer:
-        return false;
+        final answer = intent.answer?.trim();
+        if (answer == null || answer.isEmpty || answer == input.trim()) {
+          return false;
+        }
+        _emitBotMessage(
+          answer,
+          intent: 'AI',
+          pendingIndex: pendingIndex,
+          details: _performanceLabel(startedAt),
+        );
+        return true;
     }
   }
 
