@@ -424,6 +424,9 @@ class LauncherBotController extends ChangeNotifier {
         );
         return true;
       case LauncherBotAiIntentAction.answer:
+        if (_nluRouter.resolveIntent(input) != null) {
+          return false;
+        }
         final answer = intent.answer?.trim();
         if (answer == null || answer.isEmpty || answer == input.trim()) {
           return false;
