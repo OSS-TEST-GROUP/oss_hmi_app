@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/app_manifest.dart';
 import '../../launcher_bot/models/launcher_bot_message.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
+import '../app_icon.dart';
 
 class LauncherBotPanel extends StatefulWidget {
   const LauncherBotPanel({
@@ -231,7 +232,7 @@ class _StandardCommandPanel extends StatelessWidget {
               for (final app in apps)
                 _StandardCommandChip(
                   label: '${app.name} 실행',
-                  icon: _iconForAppId(app.id),
+                  icon: LauncherAppIcons.forApp(app),
                   onTap: () =>
                       controller.submitLocalCommand('${app.name} 실행해줘'),
                 ),
@@ -251,17 +252,6 @@ class _StandardCommandPanel extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-IconData _iconForAppId(String id) {
-  switch (id) {
-    case 'ota_monitor':
-      return Icons.inventory_2_outlined;
-    case 'adsw_monitor':
-      return Icons.satellite_alt_outlined;
-    default:
-      return Icons.apps_outlined;
   }
 }
 

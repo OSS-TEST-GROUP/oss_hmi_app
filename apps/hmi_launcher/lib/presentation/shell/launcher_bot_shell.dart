@@ -9,6 +9,7 @@ import '../../launcher_bot/services/launcher_bot_ai_service.dart';
 import '../../launcher_bot/services/app_usage_store.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
 import '../../launcher_bot/services/voice_input_service.dart';
+import '../app_icon.dart';
 import '../launcher_bot/launcher_bot_panel.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
@@ -341,7 +342,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
               subtitle: settingsOpen ? 'System setup' : _subtitle,
               icon: settingsOpen
                   ? Icons.settings_outlined
-                  : _iconFor(selected?.id),
+                  : LauncherAppIcons.forId(selected?.id),
               aiMode: _aiMode,
               aiSdkAvailable: _aiSdkAvailable,
               canClose: canClose,
@@ -572,7 +573,7 @@ class _SettingsPage extends StatefulWidget {
     required this.onAppThemeChanged,
   });
 
-  static const appId = '__settings__';
+  static const appId = LauncherAppIcons.settingsAppId;
 
   final Uri rosUrl;
   final String rosStatus;
@@ -899,7 +900,7 @@ class _AppRail extends StatelessWidget {
                   ],
                   for (final app in runningApps) ...[
                     _RailAppButton(
-                      icon: _iconFor(app.id),
+                      icon: LauncherAppIcons.forId(app.id),
                       color: app.color,
                       tooltip: app.name,
                       active: selectedAppId == app.id,
@@ -1051,12 +1052,7 @@ class _AppCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Center(
-                child: data.emojiIcon != null
-                    ? Text(
-                        data.emojiIcon!,
-                        style: const TextStyle(fontSize: 28),
-                      )
-                    : Icon(data.icon, color: data.color, size: 30),
+                child: Icon(data.icon, color: data.color, size: 30),
               ),
             ),
             const SizedBox(width: 18),
@@ -1415,7 +1411,6 @@ class _LauncherCardData {
     required this.subtitle,
     required this.icon,
     required this.color,
-    this.emojiIcon,
     this.app,
   });
 
@@ -1424,9 +1419,8 @@ class _LauncherCardData {
       id: app.id,
       name: app.name,
       subtitle: app.category,
-      icon: _iconFor(app.id),
+      icon: LauncherAppIcons.forApp(app),
       color: _parseHex(app.color),
-      emojiIcon: app.icon.length <= 2 ? app.icon : null,
       app: app,
     );
   }
@@ -1435,9 +1429,8 @@ class _LauncherCardData {
       : id = _SettingsPage.appId,
         name = 'Settings',
         subtitle = 'System setup',
-        icon = Icons.settings_outlined,
+        icon = LauncherAppIcons.settings,
         color = _BotColors.ink,
-        emojiIcon = null,
         app = null;
 
   final String id;
@@ -1445,21 +1438,7 @@ class _LauncherCardData {
   final String subtitle;
   final IconData icon;
   final Color color;
-  final String? emojiIcon;
   final AppManifest? app;
-}
-
-IconData _iconFor(String? appId) {
-  switch (appId) {
-    case 'ota_monitor':
-      return Icons.system_update_alt;
-    case 'adsw_monitor':
-      return Icons.sensors_outlined;
-    case _SettingsPage.appId:
-      return Icons.settings_outlined;
-    default:
-      return Icons.apps_outlined;
-  }
 }
 
 Color _parseHex(String hex) {
