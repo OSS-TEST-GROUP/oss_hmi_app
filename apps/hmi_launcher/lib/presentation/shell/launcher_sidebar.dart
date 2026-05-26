@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/app_manifest.dart';
+import '../app_icon.dart';
 import '../theme/launcher_tokens.dart';
 
 /// Tesla-style left rail.
@@ -61,7 +62,7 @@ class LauncherSidebar extends StatelessWidget {
             _RailItem(
               key: Key('sidebar_item_${app.id}'),
               label: app.name,
-              icon: _iconFor(app.id),
+              icon: LauncherAppIcons.forApp(app),
               isActive: selectedAppId == app.id,
               onTap: () => onAppSelected(app.id),
             ),
@@ -71,25 +72,6 @@ class LauncherSidebar extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-IconData _iconFor(String appId) {
-  switch (appId) {
-    case 'ota_monitor':
-      return Icons.system_update_alt;
-    case 'adsw_monitor':
-      return Icons.sensors;
-    case 'rviz':
-      return Icons.view_in_ar_outlined;
-    case 'settings':
-      return Icons.settings_outlined;
-    case 'logs':
-      return Icons.description_outlined;
-    case 'can':
-      return Icons.swap_horiz;
-    default:
-      return Icons.apps_outlined;
   }
 }
 
@@ -147,9 +129,7 @@ class _RailItemState extends State<_RailItem> {
               Icon(
                 widget.icon,
                 size: 16,
-                color: widget.isActive
-                    ? LauncherTokens.t1
-                    : LauncherTokens.t2,
+                color: widget.isActive ? LauncherTokens.t1 : LauncherTokens.t2,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -160,9 +140,8 @@ class _RailItemState extends State<_RailItem> {
                     fontFamily: LauncherTokens.fontBody,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: widget.isActive
-                        ? LauncherTokens.t1
-                        : LauncherTokens.t2,
+                    color:
+                        widget.isActive ? LauncherTokens.t1 : LauncherTokens.t2,
                   ),
                 ),
               ),

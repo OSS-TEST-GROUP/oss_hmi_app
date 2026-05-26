@@ -16,7 +16,7 @@ void main() {
   group('NluRouter.resolve', () {
     final apps = [
       _m('ota_monitor', ['OTA 모니터 열어줘', '업데이트 상태 확인']),
-      _m('adsw_monitor', ['AD SW 모니터 열어줘', '센서 상태 보여줘']),
+      _m('adsw_monitor', ['AD SW 모니터 열어줘', 'AD SW 보여줘', '센서 상태 보여줘']),
     ];
     final router = NluRouter(apps);
 
@@ -29,6 +29,10 @@ void main() {
       expect(
         router.resolve('지금 OTA 모니터 열어줘 빨리')?.id,
         'ota_monitor',
+      );
+      expect(
+        router.resolve('ad sw 보여줘')?.id,
+        'adsw_monitor',
       );
     });
 
@@ -60,7 +64,7 @@ void main() {
       expect(NluRouter(tied).resolve('hello')?.id, 'aaa');
     });
 
-    test('falls back to app name when no prompt matches', () {
+    test('falls back only to exact app name or id', () {
       final apps = [
         AppManifest(
           id: 'ota_monitor',
@@ -80,12 +84,14 @@ void main() {
         ),
       ];
       final r = NluRouter(apps);
-      expect(r.resolve('OTA')?.id, 'ota_monitor');
       expect(r.resolve('ota monitor')?.id, 'ota_monitor');
-      expect(r.resolve('ota 모니터 실행해줘')?.id, 'ota_monitor');
+      expect(r.resolve('ota_monitor')?.id, 'ota_monitor');
+      expect(r.resolve('otamonitor')?.id, 'ota_monitor');
       expect(r.resolve('AD SW')?.id, 'adsw_monitor');
       expect(r.resolve('adsw')?.id, 'adsw_monitor');
-      expect(r.resolve('ad sw 실행해줘')?.id, 'adsw_monitor');
+      expect(r.resolve('OTA'), isNull);
+      expect(r.resolve('ota 모니터 실행해줘'), isNull);
+      expect(r.resolve('ad sw 실행해줘'), isNull);
     });
 
     test('name fallback ignores single-char queries', () {

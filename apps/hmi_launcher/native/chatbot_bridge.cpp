@@ -1,7 +1,6 @@
 #include "llm_provider.hpp"
 #include "llm_provider_llamacpp.hpp"
 #include "multimodal_types.hpp"
-#include "rag_engine.hpp"
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -29,16 +28,19 @@ constexpr const char* kSystemPrompt =
     "모르는 내용은 추측하지 말고 확인이 필요하다고 말하세요. "
     "앱 실행, 설정 열기, 앱 닫기는 런처가 이미 처리하므로 일반 질문에는 설명이나 안내만 답하세요.";
 
+// Gemma's chat format has no system role: any system content is folded into
+// the first user turn. Real tokens are <start_of_turn>/<end_of_turn>; the
+// homemade <|turn>...<turn|> sequence the bridge used previously is parsed by
+// Gemma as plain text, which makes the model fall into completion mode and
+// echo back fake markdown labels like **사용자 질문** / **답변**.
 std::string build_gemma4_prompt(const char* prompt) {
-    std::string user_prompt = prompt ? prompt : "";
+    const std::string user_prompt = prompt ? prompt : "";
 
-    return std::string("<|turn>system\n") +
-           kSystemPrompt +
-           "<turn|>\n"
-           "<|turn>user\n" +
+    return std::string("<start_of_turn>user\n") +
+           kSystemPrompt + "\n\n" +
            user_prompt +
-           "<turn|>\n"
-           "<|turn>model\n";
+           "<end_of_turn>\n"
+           "<start_of_turn>model\n";
 }
 
 std::string trim(const std::string& value) {
@@ -160,9 +162,31 @@ char* chatbot_generate(ChatbotHandle* h, const char* prompt) {
 
     auto res = h->provider->generate(req);
     update_metrics(h, res);
+    const std::string raw_content = string_value(res.content);
+    const std::string error_message = error_message_to_string(res.error_message);
+    std::cerr << "[chatbot_bridge] generate result: "
+              << "success=" << res.success
+              << ", content_size=" << raw_content.size()
+              << ", error_size=" << error_message.size()
+              << ", tokens=" << res.tokens_used
+              << ", generation_time_ms=" << res.generation_time_ms
+              << ", ttft_ms=" << res.first_token_time_ms
+              << std::endl;
+    if (!raw_content.empty()) {
+        std::cerr << "[chatbot_bridge] generate raw_content: ["
+                  << raw_content.substr(0, 500) << "]" << std::endl;
+    }
+    if (!error_message.empty()) {
+        std::cerr << "[chatbot_bridge] generate error: "
+                  << error_message << std::endl;
+    }
     const std::string out = res.success
-        ? clean_response(string_value(res.content))
-        : error_message_to_string(res.error_message);
+        ? clean_response(raw_content)
+        : error_message;
+    if (res.success) {
+        std::cerr << "[chatbot_bridge] generate cleaned_content: ["
+                  << out.substr(0, 500) << "]" << std::endl;
+    }
     return copy_string(out);
 }
 
@@ -261,9 +285,31 @@ char* chatbot_generate_with_contexts(
 
     auto res = h->provider->generate(req);
     update_metrics(h, res);
+    const std::string raw_content = string_value(res.content);
+    const std::string error_message = error_message_to_string(res.error_message);
+    std::cerr << "[chatbot_bridge] generate_with_contexts result: "
+              << "success=" << res.success
+              << ", content_size=" << raw_content.size()
+              << ", error_size=" << error_message.size()
+              << ", tokens=" << res.tokens_used
+              << ", generation_time_ms=" << res.generation_time_ms
+              << ", ttft_ms=" << res.first_token_time_ms
+              << std::endl;
+    if (!raw_content.empty()) {
+        std::cerr << "[chatbot_bridge] generate_with_contexts raw_content: ["
+                  << raw_content.substr(0, 500) << "]" << std::endl;
+    }
+    if (!error_message.empty()) {
+        std::cerr << "[chatbot_bridge] generate_with_contexts error: "
+                  << error_message << std::endl;
+    }
     const std::string out = res.success
-        ? clean_response(string_value(res.content))
-        : error_message_to_string(res.error_message);
+        ? clean_response(raw_content)
+        : error_message;
+    if (res.success) {
+        std::cerr << "[chatbot_bridge] generate_with_contexts cleaned_content: ["
+                  << out.substr(0, 500) << "]" << std::endl;
+    }
     return copy_string(out);
 }
 

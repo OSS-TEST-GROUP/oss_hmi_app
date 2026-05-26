@@ -905,7 +905,7 @@ class _NativeChatbot {
         contextPointers.length,
       );
       if (responsePointer == nullptr) {
-        throw const GemmaChatbotException('RAG context 응답 생성에 실패했습니다.');
+        throw const GemmaChatbotException('context 응답 생성에 실패했습니다.');
       }
       return _fromNativeUtf8(responsePointer);
     } finally {

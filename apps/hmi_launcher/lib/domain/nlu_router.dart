@@ -63,35 +63,17 @@ class NluRouter {
       return NluRouteResult(action: action, app: bestByPrompt);
     }
 
-    // Fallback: match against the manifest's display name or id.
-    // Either direction is accepted: a short query like "ota" opens the
-    // app whose name/id contains it, and a longer sentence like
-    // "launch ota_monitor now" still matches on id substring.
-    // Single-char queries are ignored to avoid false positives.
+    // Fallback: accept only exact app names or ids. Standard mode should stay
+    // intentionally literal so AI SDK mode feels clearly more natural.
     if (query.length < 2) return null;
 
-    AppManifest? bestByName;
-    var bestNameScore = -1;
     for (final app in apps) {
       final aliases = _aliasesFor(app);
-      var score = -1;
-      for (final alias in aliases) {
-        if (alias.length < 2) continue;
-        if (alias.contains(normalizedQuery) ||
-            normalizedQuery.contains(alias)) {
-          if (alias.length > score) score = alias.length;
-        }
-      }
-      if (score < 0) continue;
-      if (score > bestNameScore ||
-          (score == bestNameScore &&
-              (bestByName == null || app.id.compareTo(bestByName.id) < 0))) {
-        bestByName = app;
-        bestNameScore = score;
+      if (aliases.contains(normalizedQuery)) {
+        return NluRouteResult(action: action, app: app);
       }
     }
-    if (bestByName == null) return null;
-    return NluRouteResult(action: action, app: bestByName);
+    return null;
   }
 
   bool _isCloseIntent(String input) {
@@ -116,8 +98,6 @@ class NluRouter {
       app.id.replaceAll('_', ''),
       app.id.replaceAll('_', ' '),
       app.name,
-      ...app.name.split(RegExp(r'\s+')),
-      ...app.prompts,
     };
 
     final normalized = <String>{};

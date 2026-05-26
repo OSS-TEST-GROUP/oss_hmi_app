@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/app_manifest.dart';
 import '../../launcher_bot/models/launcher_bot_message.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
+import '../app_icon.dart';
 
 class LauncherBotPanel extends StatefulWidget {
   const LauncherBotPanel({
@@ -97,6 +98,7 @@ class _LauncherBotPanelState extends State<LauncherBotPanel> {
           Expanded(
             child: _MessageList(
               controller: _scrollController,
+              launcherBotController: widget.controller,
               messages: widget.controller.messages,
             ),
           ),
@@ -230,7 +232,7 @@ class _StandardCommandPanel extends StatelessWidget {
               for (final app in apps)
                 _StandardCommandChip(
                   label: '${app.name} 실행',
-                  icon: _iconForAppId(app.id),
+                  icon: LauncherAppIcons.forApp(app),
                   onTap: () =>
                       controller.submitLocalCommand('${app.name} 실행해줘'),
                 ),
@@ -250,17 +252,6 @@ class _StandardCommandPanel extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-IconData _iconForAppId(String id) {
-  switch (id) {
-    case 'ota_monitor':
-      return Icons.inventory_2_outlined;
-    case 'adsw_monitor':
-      return Icons.satellite_alt_outlined;
-    default:
-      return Icons.apps_outlined;
   }
 }
 
@@ -309,9 +300,14 @@ class _StandardCommandChip extends StatelessWidget {
 }
 
 class _MessageList extends StatelessWidget {
-  const _MessageList({required this.controller, required this.messages});
+  const _MessageList({
+    required this.controller,
+    required this.launcherBotController,
+    required this.messages,
+  });
 
   final ScrollController controller;
+  final LauncherBotController launcherBotController;
   final List<LauncherBotMessage> messages;
 
   @override
@@ -328,7 +324,10 @@ class _MessageList extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
         itemCount: messages.length,
         itemBuilder: (context, index) {
-          return _MessageBubble(message: messages[index]);
+          return _MessageBubble(
+            message: messages[index],
+            controller: launcherBotController,
+          );
         },
       ),
     );
@@ -336,9 +335,10 @@ class _MessageList extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, required this.controller});
 
   final LauncherBotMessage message;
+  final LauncherBotController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -376,7 +376,86 @@ class _MessageBubble extends StatelessWidget {
                 fontSize: 13,
               ),
             ),
+            if (message.actions.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final action in message.actions)
+                    _SuggestionActionButton(
+                      action: action,
+                      enabled: controller.pendingSuggestionAppId != null,
+                      onTap: () {
+                        if (action.id == 'accept_suggestion') {
+                          controller.acceptSuggestion();
+                        } else if (action.id == 'decline_suggestion') {
+                          controller.declineSuggestion();
+                        }
+                      },
+                    ),
+                ],
+              ),
+            ],
+            if (message.details != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                message.details!,
+                style: TextStyle(
+                  color: message.isBot
+                      ? _BotPanelColors.muted
+                      : Colors.white.withValues(alpha: 0.72),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SuggestionActionButton extends StatelessWidget {
+  const _SuggestionActionButton({
+    required this.action,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final LauncherBotMessageAction action;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPositive = action.id == 'accept_suggestion';
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(9),
+      child: Container(
+        height: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: enabled && isPositive
+              ? _BotPanelColors.accent
+              : _BotPanelColors.canvas,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: enabled && isPositive
+                ? _BotPanelColors.accent
+                : _BotPanelColors.line,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          action.label,
+          style: TextStyle(
+            color: enabled && isPositive ? Colors.white : _BotPanelColors.ink,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
     );

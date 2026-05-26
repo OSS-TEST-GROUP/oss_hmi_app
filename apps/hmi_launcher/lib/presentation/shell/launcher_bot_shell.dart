@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../domain/app_manifest.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
 import '../../launcher_bot/services/launcher_bot_ai_service.dart';
+import '../../launcher_bot/services/app_usage_store.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
+import '../../launcher_bot/services/voice_input_service.dart';
+import '../app_icon.dart';
 import '../launcher_bot/launcher_bot_panel.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
@@ -45,9 +50,16 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   late final List<String> _focusedAppIds;
   late NluRouter _nluRouter;
   late LauncherBotController _launcherBotController;
+  final AppUsageStore _usageStore = AppUsageStore();
+  final VoiceInputService _voiceInputService = const VoiceInputService();
+  VoiceCaptureSession? _voiceSession;
   late final bool _aiSdkAvailable;
   late bool _aiMode;
+  String? _usageFocusAppId;
+  DateTime? _usageFocusStartedAt;
   bool _assistantOpen = false;
+  bool _voiceCapturing = false;
+  bool _usageSuggestionShown = false;
 
   @override
   void initState() {
@@ -59,6 +71,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _focusedAppIds = [
       if (widget.initialAppId != null) widget.initialAppId!,
     ];
+    _startUsageFocus(_selectedAppId);
     _aiSdkAvailable = GemmaLauncherBotAiService.isAvailable();
     _aiMode = _aiSdkAvailable;
     _nluRouter = NluRouter(widget.registry.apps);
@@ -71,6 +84,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
     );
+    _loadUsageAndSuggest();
   }
 
   @override
@@ -91,6 +105,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
   @override
   void dispose() {
+    _flushUsageFocus();
+    _voiceSession?.stop();
     _launcherBotController.dispose();
     super.dispose();
   }
@@ -115,35 +131,195 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   void _setAiMode(bool value) {
     if (value && !_aiSdkAvailable) return;
     setState(() => _aiMode = value);
+    if (value) unawaited(_maybeSuggestFrequentApp());
   }
 
   void _selectOpenedApp(String appId) {
+    _flushUsageFocus();
     if (!_openedAppIds.contains(appId)) {
       _openedAppIds.add(appId);
     }
     _focusedAppIds.remove(appId);
     _focusedAppIds.add(appId);
     _selectedAppId = appId;
+    _startUsageFocus(_selectedAppId);
   }
 
   void _openApp(AppManifest app) {
+    unawaited(_usageStore.recordOpen(app.id));
     setState(() => _selectOpenedApp(app.id));
   }
 
   void _openSettings() {
+    _flushUsageFocus();
     setState(() => _selectOpenedApp(_SettingsPage.appId));
   }
 
-  void _closeApp() {
+  void _goHome() {
+    if (_selectedAppId == null) return;
+    _flushUsageFocus();
+    setState(() => _selectedAppId = null);
+  }
+
+  void _startUsageFocus(String? appId) {
+    if (appId == null || widget.registry.findById(appId) == null) {
+      _usageFocusAppId = null;
+      _usageFocusStartedAt = null;
+      return;
+    }
+    _usageFocusAppId = appId;
+    _usageFocusStartedAt = DateTime.now();
+  }
+
+  void _flushUsageFocus() {
+    final appId = _usageFocusAppId;
+    final startedAt = _usageFocusStartedAt;
+    _usageFocusAppId = null;
+    _usageFocusStartedAt = null;
+
+    if (appId == null || startedAt == null) return;
+    final duration = DateTime.now().difference(startedAt);
+    unawaited(_usageStore.recordForegroundDuration(appId, duration));
+  }
+
+  Future<void> _loadUsageAndSuggest() async {
+    await _usageStore.load();
+    if (!mounted) return;
+    await _maybeSuggestFrequentApp();
+  }
+
+  Future<void> _maybeSuggestFrequentApp() async {
+    if (_usageSuggestionShown || !_aiSdkAvailable || !_aiMode) {
+      debugPrint(
+        '[LauncherBotShell] suggestion skip: '
+        'shown=$_usageSuggestionShown aiAvailable=$_aiSdkAvailable aiMode=$_aiMode',
+      );
+      return;
+    }
+    if (_selectedAppId != null || widget.registry.apps.isEmpty) {
+      debugPrint(
+        '[LauncherBotShell] suggestion skip: '
+        'selected=$_selectedAppId appCount=${widget.registry.apps.length}',
+      );
+      return;
+    }
+
+    final usages = _usageStore.suggestionCandidates(
+      widget.registry.apps.map((app) => app.id).toSet(),
+    );
+    if (usages.isEmpty) {
+      debugPrint('[LauncherBotShell] suggestion skip: no usage candidates');
+      return;
+    }
+
+    debugPrint(
+      '[LauncherBotShell] suggestion candidates: '
+      '${usages.map((usage) => '${usage.appId}(open=${usage.openCount}, dwell=${usage.totalForegroundSeconds}s, last=${usage.lastOpenedAt.toIso8601String()})').join(', ')}',
+    );
+
+    final shown = await _launcherBotController.suggestFrequentApp(
+      usages: usages,
+    );
+    if (!mounted) return;
+    _usageSuggestionShown = shown;
+    debugPrint('[LauncherBotShell] suggestion shown=$shown');
+    if (shown) {
+      setState(() => _assistantOpen = true);
+    }
+  }
+
+  Future<void> _handleVoiceCommand() async {
+    if (!_aiMode || !_aiSdkAvailable) return;
+
+    final activeSession = _voiceSession;
+    if (activeSession != null) {
+      _showSnackBar('이미 음성을 듣고 있어요. 10초 녹음 후 자동으로 처리합니다.');
+      return;
+    }
+    if (_voiceCapturing) return;
+
+    setState(() {
+      _voiceCapturing = true;
+      _assistantOpen = true;
+    });
+    _showSnackBar('음성을 듣고 있어요.');
+
+    try {
+      final session = await _voiceInputService.startCapture();
+      if (!mounted) {
+        session.stop();
+        return;
+      }
+      setState(() => _voiceSession = session);
+      _finishVoiceCapture(session);
+    } on VoiceInputException catch (error) {
+      _showSnackBar(error.message);
+      if (mounted) {
+        setState(() => _voiceCapturing = false);
+      }
+    } catch (error) {
+      _showSnackBar('음성 입력 처리에 실패했습니다. $error');
+      if (mounted) {
+        setState(() => _voiceCapturing = false);
+      }
+    }
+  }
+
+  Future<void> _finishVoiceCapture(VoiceCaptureSession session) async {
+    try {
+      final voice = await session.result;
+      if (!mounted) return;
+      if (_voiceSession == session) {
+        setState(() {
+          _voiceSession = null;
+          _voiceCapturing = false;
+        });
+      }
+      await _launcherBotController.submitVoice(voice);
+    } on VoiceInputException catch (error) {
+      _showSnackBar(error.message);
+    } catch (error) {
+      _showSnackBar('음성 입력 처리에 실패했습니다. $error');
+    } finally {
+      if (mounted && _voiceSession == session) {
+        setState(() {
+          _voiceSession = null;
+          _voiceCapturing = false;
+        });
+      }
+    }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+  }
+
+  String? _closeApp() {
+    String? closedName;
     setState(() {
       final current = _selectedAppId;
       if (current == null) {
         return;
       }
+      _flushUsageFocus();
+      closedName = current == _SettingsPage.appId
+          ? 'Settings'
+          : widget.registry.findById(current)?.name;
       _openedAppIds.remove(current);
       _focusedAppIds.remove(current);
       _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
+      _startUsageFocus(_selectedAppId);
     });
+    return closedName;
   }
 
   @override
@@ -166,7 +342,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
               subtitle: settingsOpen ? 'System setup' : _subtitle,
               icon: settingsOpen
                   ? Icons.settings_outlined
-                  : _iconFor(selected?.id),
+                  : LauncherAppIcons.forId(selected?.id),
               aiMode: _aiMode,
               aiSdkAvailable: _aiSdkAvailable,
               canClose: canClose,
@@ -182,10 +358,13 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                     selectedAppId: _selectedAppId,
                     aiMode: _aiMode,
                     aiSdkAvailable: _aiSdkAvailable,
+                    voiceCapturing: _voiceCapturing,
                     assistantOpen: _assistantOpen,
+                    onHomeSelected: _goHome,
                     onAppSelected: (appId) {
                       setState(() => _selectOpenedApp(appId));
                     },
+                    onVoiceCommand: _handleVoiceCommand,
                     onAssistantToggle: () {
                       setState(() => _assistantOpen = !_assistantOpen);
                     },
@@ -394,7 +573,7 @@ class _SettingsPage extends StatefulWidget {
     required this.onAppThemeChanged,
   });
 
-  static const appId = '__settings__';
+  static const appId = LauncherAppIcons.settingsAppId;
 
   final Uri rosUrl;
   final String rosStatus;
@@ -672,8 +851,11 @@ class _AppRail extends StatelessWidget {
     required this.selectedAppId,
     required this.aiMode,
     required this.aiSdkAvailable,
+    required this.voiceCapturing,
     required this.assistantOpen,
+    required this.onHomeSelected,
     required this.onAppSelected,
+    required this.onVoiceCommand,
     required this.onAssistantToggle,
   });
 
@@ -682,8 +864,11 @@ class _AppRail extends StatelessWidget {
   final String? selectedAppId;
   final bool aiMode;
   final bool aiSdkAvailable;
+  final bool voiceCapturing;
   final bool assistantOpen;
+  final VoidCallback onHomeSelected;
   final ValueChanged<String> onAppSelected;
+  final VoidCallback onVoiceCommand;
   final VoidCallback onAssistantToggle;
 
   @override
@@ -703,9 +888,19 @@ class _AppRail extends StatelessWidget {
             child: SingleChildScrollView(
               child: Column(
                 children: [
+                  if (selectedAppId != null) ...[
+                    _RailActionButton(
+                      icon: Icons.home_outlined,
+                      enabled: true,
+                      active: false,
+                      tooltip: 'Home',
+                      onTap: onHomeSelected,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   for (final app in runningApps) ...[
                     _RailAppButton(
-                      icon: _iconFor(app.id),
+                      icon: LauncherAppIcons.forId(app.id),
                       color: app.color,
                       tooltip: app.name,
                       active: selectedAppId == app.id,
@@ -721,11 +916,13 @@ class _AppRail extends StatelessWidget {
           _RailActionButton(
             icon: Icons.mic_none,
             enabled: aiMode && aiSdkAvailable,
+            active: voiceCapturing,
             tooltip: aiSdkAvailable
                 ? (aiMode
-                    ? 'Voice command'
+                    ? (voiceCapturing ? 'Listening...' : 'Voice command')
                     : 'Voice command is available in AI SDK mode')
                 : 'AI SDK is not available in this build',
+            onTap: onVoiceCommand,
           ),
           const SizedBox(height: 8),
           _RailActionButton(
@@ -855,12 +1052,7 @@ class _AppCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Center(
-                child: data.emojiIcon != null
-                    ? Text(
-                        data.emojiIcon!,
-                        style: const TextStyle(fontSize: 28),
-                      )
-                    : Icon(data.icon, color: data.color, size: 30),
+                child: Icon(data.icon, color: data.color, size: 30),
               ),
             ),
             const SizedBox(width: 18),
@@ -1219,7 +1411,6 @@ class _LauncherCardData {
     required this.subtitle,
     required this.icon,
     required this.color,
-    this.emojiIcon,
     this.app,
   });
 
@@ -1228,9 +1419,8 @@ class _LauncherCardData {
       id: app.id,
       name: app.name,
       subtitle: app.category,
-      icon: _iconFor(app.id),
+      icon: LauncherAppIcons.forApp(app),
       color: _parseHex(app.color),
-      emojiIcon: app.icon.length <= 2 ? app.icon : null,
       app: app,
     );
   }
@@ -1239,9 +1429,8 @@ class _LauncherCardData {
       : id = _SettingsPage.appId,
         name = 'Settings',
         subtitle = 'System setup',
-        icon = Icons.settings_outlined,
+        icon = LauncherAppIcons.settings,
         color = _BotColors.ink,
-        emojiIcon = null,
         app = null;
 
   final String id;
@@ -1249,21 +1438,7 @@ class _LauncherCardData {
   final String subtitle;
   final IconData icon;
   final Color color;
-  final String? emojiIcon;
   final AppManifest? app;
-}
-
-IconData _iconFor(String? appId) {
-  switch (appId) {
-    case 'ota_monitor':
-      return Icons.system_update_alt;
-    case 'adsw_monitor':
-      return Icons.sensors_outlined;
-    case _SettingsPage.appId:
-      return Icons.settings_outlined;
-    default:
-      return Icons.apps_outlined;
-  }
 }
 
 Color _parseHex(String hex) {

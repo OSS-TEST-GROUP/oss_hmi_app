@@ -6,9 +6,18 @@
   "category": "monitoring",
   "color": "#7FE5A1",
   "prompts": [
-    "AD SW 모니터 열어줘",
-    "AD SW 상태 확인",
-    "센서 상태 보여줘"
+    "AD SW 실행해줘",
+    "AD SW 열어줘",
+    "AD SW 보여줘",
+    "AD SW 실행",
+    "AD SW 열기",
+    "AD SW 보기",
+    "AD SW Monitor 실행해줘",
+    "AD SW Monitor 열어줘",
+    "AD SW Monitor 보여줘",
+    "adsw 실행해줘",
+    "adsw 열어줘",
+    "adsw 보여줘"
   ],
   "entry": "adsw_monitor/main.dart",
   "permissions": ["vss", "can_bus"],
