@@ -293,11 +293,12 @@ openCount, totalForegroundSeconds, lastOpenedAt을 모두 고려해라.
 현재 화면이 Launcher가 아니면 suggest=false로 해라.
 사용 패턴이 부족하거나 확신이 낮으면 suggest=false로 해라.
 제안할 때는 짧고 자연스러운 한국어 질문 문장을 함께 만든다.
+message에는 반드시 선택한 앱의 name을 포함해라.
 반드시 JSON 한 개만 출력해라. 설명, markdown, 코드블록, 추가 JSON은 출력하지 마라.
 아래 출력 형식의 appId 예시는 placeholder다. 그대로 복사하지 말고 앱 사용 패턴에 있는 실제 id만 사용해라.
 
 출력 형식 예시:
-{"suggest":true,"appId":"<registered_app_id>","message":"최근 자주 사용한 앱을 지금 열어볼까요?"}
+{"suggest":true,"appId":"<registered_app_id>","message":"최근 <app name>을 자주 열었어요. 지금 실행할까요?"}
 {"suggest":false}
 
 현재 화면: $currentContext
