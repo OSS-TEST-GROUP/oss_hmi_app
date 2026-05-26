@@ -259,10 +259,6 @@ answer 값에 "질문에 대한 한국어 답변", "답변", "사용자 요청�
 일반 질문 출력 형식:
 {"action":"answer","answer":"사용자 질문에 직접 답한 문장"}
 
-일반 질문 예시:
-사용자 요청: 너는 누구야?
-출력: {"action":"answer","answer":"저는 차량용 HMI 런처에서 앱 실행과 간단한 질문 답변을 도와주는 AI 어시스턴트예요."}
-
 현재 화면: $currentContext
 등록된 앱:
 $appText
@@ -362,7 +358,7 @@ $usageText
     }
     if (action == 'answer') {
       final answer = decoded['answer'];
-      if (answer is String && _isPlaceholderAnswer(answer)) {
+      if (answer is String && _isUnusableAnswer(answer, response)) {
         return null;
       }
       return LauncherBotAiIntent(
@@ -373,7 +369,7 @@ $usageText
     return null;
   }
 
-  bool _isPlaceholderAnswer(String answer) {
+  bool _isUnusableAnswer(String answer, String rawResponse) {
     final normalized = answer.trim().replaceAll(RegExp(r'\s+'), '');
     const placeholders = {
       '질문에대한한국어답변',
@@ -381,7 +377,10 @@ $usageText
       '사용자요청에대한실제한국어답변',
       '답변',
     };
-    return placeholders.contains(normalized);
+    if (placeholders.contains(normalized)) return true;
+
+    final normalizedRaw = rawResponse.trim().replaceAll(RegExp(r'\s+'), '');
+    return normalizedRaw.contains('차량용HMI런처에서앱실행과간단한질문답변을도와주는AI어시스턴트');
   }
 
   LauncherBotAiAppSuggestion? _parseAppSuggestionResponse(
