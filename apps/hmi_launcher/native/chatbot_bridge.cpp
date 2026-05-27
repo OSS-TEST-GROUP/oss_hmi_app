@@ -39,6 +39,7 @@ std::string build_gemma4_prompt(const char* prompt) {
     return std::string("<start_of_turn>user\n") +
            kSystemPrompt + "\n\n" +
            user_prompt +
+           "\n"
            "<end_of_turn>\n"
            "<start_of_turn>model\n";
 }
@@ -53,7 +54,7 @@ std::string trim(const std::string& value) {
 }
 
 std::string clean_response(const std::string& content) {
-    std::string out = content;
+    std::string out = trim(content);
 
     const std::vector<std::string> prefix_markers = {
         "<|channel>final\n",
@@ -63,6 +64,29 @@ std::string clean_response(const std::string& content) {
         const auto pos = out.find(marker);
         if (pos != std::string::npos) {
             out = out.substr(pos + marker.size());
+        }
+    }
+
+    const std::vector<std::string> leading_markers = {
+        "<start_of_turn>model",
+        "<start_of_turn>",
+        "</start_of_turn>",
+        "<end_of_turn>",
+        "</end_of_turn>",
+        "<|im_start|>assistant",
+        "<|im_start|>",
+        "<|im_end|>",
+    };
+    bool removed_marker = true;
+    while (removed_marker) {
+        removed_marker = false;
+        out = trim(out);
+        for (const auto& marker : leading_markers) {
+            if (out.rfind(marker, 0) == 0) {
+                out = out.substr(marker.size());
+                removed_marker = true;
+                break;
+            }
         }
     }
 

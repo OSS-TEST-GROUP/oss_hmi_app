@@ -26,6 +26,8 @@ class LauncherRosKeeper {
 
   Ros? _ros;
   Topic? _statusTopic;
+  final Map<String, Topic> _appStatusTopics = {};
+  Set<String> _runningAppIds = {};
   Timer? _reconnectPoll;
   Timer? _heartbeatTimer;
   StreamSubscription<Status>? _statusSub;
@@ -50,6 +52,7 @@ class LauncherRosKeeper {
       type: 'std_msgs/String',
       reconnectOnClose: true,
     );
+    _syncAppStatusTopics();
 
     _statusSub = _ros!.statusStream.listen(
       (s) async {
@@ -58,8 +61,7 @@ class LauncherRosKeeper {
           await _onConnected();
         }
       },
-      onError: (e, st) =>
-          debugPrint('[LauncherROS] statusStream error: $e'),
+      onError: (e, st) => debugPrint('[LauncherROS] statusStream error: $e'),
       onDone: () => debugPrint('[LauncherROS] statusStream done'),
     );
 
@@ -76,15 +78,9 @@ class LauncherRosKeeper {
 
     // Heartbeat timer
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(
-        Duration(seconds: cfg.heartbeatIntervalSec), (_) async {
-      final r = _ros;
-      if (r == null || r.status != Status.connected) return;
-      try {
-        _statusTopic?.publish({'data': 'running'});
-      } catch (e) {
-        debugPrint('[LauncherROS] heartbeat publish error: $e');
-      }
+    _heartbeatTimer =
+        Timer.periodic(Duration(seconds: cfg.heartbeatIntervalSec), (_) async {
+      _publishHeartbeats();
     });
 
     _kickReconnect();
@@ -101,6 +97,60 @@ class LauncherRosKeeper {
     _ros?.close();
     _ros = null;
     _statusTopic = null;
+    _appStatusTopics.clear();
+  }
+
+  /// Updates app heartbeat topics for embedded apps currently kept alive by
+  /// the launcher. Each app publishes std_msgs/String(data: running) on
+  /// `/app_status/{appId}` while it remains open.
+  void setRunningAppIds(Iterable<String> appIds) {
+    final normalized = {
+      for (final id in appIds)
+        if (id.trim().isNotEmpty) id.trim(),
+    };
+    if (setEquals(_runningAppIds, normalized)) return;
+    _runningAppIds = normalized;
+    debugPrint('[LauncherROS] running apps=${_runningAppIds.join(', ')}');
+    _syncAppStatusTopics();
+    _publishHeartbeats();
+  }
+
+  void _syncAppStatusTopics() {
+    final r = _ros;
+    if (r == null) return;
+
+    _appStatusTopics.removeWhere((appId, _) => !_runningAppIds.contains(appId));
+    for (final appId in _runningAppIds) {
+      _appStatusTopics.putIfAbsent(
+        appId,
+        () {
+          final topic = Topic(
+            ros: r,
+            name: '/app_status/$appId',
+            type: 'std_msgs/String',
+            reconnectOnClose: true,
+          );
+          debugPrint('[LauncherROS] app status topic=/app_status/$appId');
+          if (r.status == Status.connected) {
+            unawaited(topic.advertise());
+          }
+          return topic;
+        },
+      );
+    }
+  }
+
+  void _publishHeartbeats() {
+    final r = _ros;
+    if (r == null || r.status != Status.connected) return;
+    try {
+      _statusTopic?.publish({'data': 'running'});
+      for (final entry in _appStatusTopics.entries) {
+        entry.value.publish({'data': 'running'});
+      }
+    } catch (e) {
+      debugPrint('[LauncherROS] heartbeat publish error: $e');
+    }
   }
 
   Future<bool> _isStableConnected(Ros r) async {
@@ -140,6 +190,15 @@ class LauncherRosKeeper {
     } else {
       Get.put<Ros>(_ros!);
       debugPrint('[LauncherROS] Ros registered in GetX');
+    }
+
+    try {
+      await _statusTopic?.advertise();
+      for (final topic in _appStatusTopics.values) {
+        await topic.advertise();
+      }
+    } catch (e) {
+      debugPrint('[LauncherROS] status advertise error: $e');
     }
   }
 }

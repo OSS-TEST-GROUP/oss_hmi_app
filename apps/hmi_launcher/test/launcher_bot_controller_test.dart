@@ -126,6 +126,56 @@ void main() {
     expect(controller.messages.last.text, contains('OTA Monitor'));
     expect(controller.messages.last.text, '최근 OTA Monitor을 자주 열었어요. 지금 실행할까요?');
   });
+
+  test('AI answer intent is shown without a second generation call', () async {
+    final controller = LauncherBotController(
+      nluRouter: NluRouter(const []),
+      aiService: const _FakeAiService(
+        LauncherBotAiIntent(
+          action: LauncherBotAiIntentAction.answer,
+          answer: '저는 런처를 도와주는 AI 어시스턴트예요.',
+        ),
+      ),
+      onOpenApp: (_) => fail('open should not be called'),
+      onCloseApp: () => fail('close should not be called'),
+      onOpenSettings: () => fail('settings should not be called'),
+    );
+
+    await controller.submit('너는 누구야?');
+
+    expect(controller.messages.last.text, '저는 런처를 도와주는 AI 어시스턴트예요.');
+    expect(controller.messages.last.intent, 'AI');
+  });
+
+  test('local app prompt wins when AI incorrectly returns answer', () async {
+    final ota = AppManifest(
+      id: 'ota_monitor',
+      name: 'OTA Monitor',
+      icon: 'box',
+      version: '1.0.0',
+      entry: 'ota_monitor/main.dart',
+      prompts: const ['OTA 보여줘'],
+    );
+    var openedAppId = '';
+    final controller = LauncherBotController(
+      nluRouter: NluRouter([ota]),
+      aiService: const _FakeAiService(
+        LauncherBotAiIntent(
+          action: LauncherBotAiIntentAction.answer,
+          answer: 'OTA에 대해 설명할게요.',
+        ),
+      ),
+      onOpenApp: (app) => openedAppId = app.id,
+      onCloseApp: () => fail('close should not be called'),
+      onOpenSettings: () => fail('settings should not be called'),
+    );
+
+    await controller.submit('ota 보여줘');
+
+    expect(openedAppId, 'ota_monitor');
+    expect(controller.messages.last.text, 'OTA Monitor을 실행했어요.');
+    expect(controller.messages.last.intent, 'Open App');
+  });
 }
 
 class _FakeAiService implements LauncherBotAiService {

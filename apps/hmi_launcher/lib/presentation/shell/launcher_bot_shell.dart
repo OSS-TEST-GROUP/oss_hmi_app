@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -28,6 +29,7 @@ class LauncherBotShell extends StatefulWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.onAppThemeChanged,
+    this.onRunningAppIdsChanged,
     this.initialAppId,
     this.panelBuilder,
   });
@@ -40,6 +42,7 @@ class LauncherBotShell extends StatefulWidget {
   final String adswTheme;
   final String lfcTheme;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
+  final ValueChanged<Set<String>>? onRunningAppIdsChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
 
@@ -87,6 +90,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
     );
+    _notifyRunningAppIdsChanged();
     _loadUsageAndSuggest();
   }
 
@@ -103,6 +107,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       if (_selectedAppId != null && !validIds.contains(_selectedAppId)) {
         _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
       }
+      _notifyRunningAppIdsChanged();
     }
   }
 
@@ -146,6 +151,15 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _focusedAppIds.add(appId);
     _selectedAppId = appId;
     _startUsageFocus(_selectedAppId);
+    _notifyRunningAppIdsChanged();
+  }
+
+  void _notifyRunningAppIdsChanged() {
+    final appIds = widget.registry.apps.map((app) => app.id).toSet();
+    widget.onRunningAppIdsChanged?.call({
+      for (final id in _openedAppIds)
+        if (appIds.contains(id)) id,
+    });
   }
 
   void _openApp(AppManifest app) {
@@ -162,6 +176,28 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     if (_selectedAppId == null) return;
     _flushUsageFocus();
     setState(() => _selectedAppId = null);
+  }
+
+  Future<void> _restartLauncher() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restart Launcher'),
+        content: const Text('런처를 종료하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    exit(0);
   }
 
   void _startUsageFocus(String? appId) {
@@ -321,6 +357,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       _focusedAppIds.remove(current);
       _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
       _startUsageFocus(_selectedAppId);
+      _notifyRunningAppIdsChanged();
     });
     return closedName;
   }
@@ -350,6 +387,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
               aiSdkAvailable: _aiSdkAvailable,
               canClose: canClose,
               onClose: _closeApp,
+              onRestart: _restartLauncher,
               onModeChanged: _setAiMode,
             ),
             Expanded(
@@ -782,6 +820,7 @@ class _TopBar extends StatelessWidget {
     required this.aiSdkAvailable,
     required this.canClose,
     required this.onClose,
+    required this.onRestart,
     required this.onModeChanged,
   });
 
@@ -792,6 +831,7 @@ class _TopBar extends StatelessWidget {
   final bool aiSdkAvailable;
   final bool canClose;
   final VoidCallback onClose;
+  final VoidCallback onRestart;
   final ValueChanged<bool> onModeChanged;
 
   @override
@@ -844,6 +884,8 @@ class _TopBar extends StatelessWidget {
             _CloseAppButton(onTap: onClose),
             const SizedBox(width: 10),
           ],
+          _RestartLauncherButton(onTap: onRestart),
+          const SizedBox(width: 10),
           _ModeButton(
             label: 'Standard',
             active: !aiMode,
@@ -933,13 +975,9 @@ class _AppRail extends StatelessWidget {
           const SizedBox(height: 8),
           _RailActionButton(
             icon: Icons.mic_none,
-            enabled: aiMode && aiSdkAvailable,
-            active: voiceCapturing,
-            tooltip: aiSdkAvailable
-                ? (aiMode
-                    ? (voiceCapturing ? 'Listening...' : 'Voice command')
-                    : 'Voice command is available in AI SDK mode')
-                : 'AI SDK is not available in this build',
+            enabled: false,
+            active: false,
+            tooltip: 'Voice command is disabled',
             onTap: onVoiceCommand,
           ),
           const SizedBox(height: 8),
@@ -1416,6 +1454,37 @@ class _CloseAppButton extends StatelessWidget {
             border: Border.all(color: _BotColors.line),
           ),
           child: const Icon(Icons.close, color: _BotColors.ink, size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+class _RestartLauncherButton extends StatelessWidget {
+  const _RestartLauncherButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Restart launcher',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _BotColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _BotColors.line),
+          ),
+          child: const Icon(
+            Icons.restart_alt,
+            color: _BotColors.ink,
+            size: 22,
+          ),
         ),
       ),
     );

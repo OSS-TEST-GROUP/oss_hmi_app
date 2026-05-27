@@ -12,10 +12,12 @@ class LauncherBotAiIntent {
   const LauncherBotAiIntent({
     required this.action,
     this.appId,
+    this.answer,
   });
 
   final LauncherBotAiIntentAction action;
   final String? appId;
+  final String? answer;
 }
 
 class LauncherBotAiAppSuggestion {
@@ -240,17 +242,22 @@ class GemmaLauncherBotAiService implements LauncherBotAiService {
 너는 차량 런처의 intent router다.
 사용자 요청이 앱 실행, 현재 앱 종료, 설정 열기인지 판단해라.
 등록된 앱 목록에 없는 앱은 선택하지 마라.
-일반 질문이나 대화면 answer를 선택해라.
+사용자가 등록된 앱 이름과 함께 "보여줘", "보기", "확인", "상태 보여줘", "화면 보여줘", "띄워줘"라고 말하면 open_app으로 판단해라.
+예를 들어 "OTA 보여줘", "AD SW 상태 보여줘", "LFC 확인"은 앱 실행 요청이다.
+일반 질문이나 대화면 answer를 선택하고 answer 필드에 사용자 요청에 대한 실제 한국어 답변을 작성해라.
 사용자가 앱 이름 없이 "닫아줘", "종료해줘", "닫기"처럼 말하면 현재 화면 종료로 판단하고 appId를 넣지 마라.
 앱 이름이 명확할 때만 close_app에 appId를 넣어라.
-반드시 아래 두 형식 중 하나만 골라 JSON 한 개만 출력해라.
+반드시 아래 형식 중 하나만 골라 JSON 한 개만 출력해라.
 설명, markdown, 코드블록, 추가 JSON은 출력하지 마라.
+answer일 때는 질문을 그대로 반복하지 말고 자연스럽게 답해라.
+answer 값에 "질문에 대한 한국어 답변", "답변", "사용자 요청에 대한 실제 한국어 답변" 같은 placeholder 문구를 절대 쓰지 마라.
 
 출력 형식:
 {"action":"open_app","appId":"ota_monitor"}
 {"action":"close_app","appId":"ota_monitor"}
 {"action":"open_settings"}
-{"action":"answer"}
+일반 질문 출력 형식:
+{"action":"answer","answer":"사용자 질문에 직접 답한 문장"}
 
 현재 화면: $currentContext
 등록된 앱:
@@ -350,10 +357,30 @@ $usageText
       );
     }
     if (action == 'answer') {
-      return const LauncherBotAiIntent(
-          action: LauncherBotAiIntentAction.answer);
+      final answer = decoded['answer'];
+      if (answer is String && _isUnusableAnswer(answer, response)) {
+        return null;
+      }
+      return LauncherBotAiIntent(
+        action: LauncherBotAiIntentAction.answer,
+        answer: answer is String ? answer.trim() : null,
+      );
     }
     return null;
+  }
+
+  bool _isUnusableAnswer(String answer, String rawResponse) {
+    final normalized = answer.trim().replaceAll(RegExp(r'\s+'), '');
+    const placeholders = {
+      '질문에대한한국어답변',
+      '사용자질문에직접답한문장',
+      '사용자요청에대한실제한국어답변',
+      '답변',
+    };
+    if (placeholders.contains(normalized)) return true;
+
+    final normalizedRaw = rawResponse.trim().replaceAll(RegExp(r'\s+'), '');
+    return normalizedRaw.contains('차량용HMI런처에서앱실행과간단한질문답변을도와주는AI어시스턴트');
   }
 
   LauncherBotAiAppSuggestion? _parseAppSuggestionResponse(
