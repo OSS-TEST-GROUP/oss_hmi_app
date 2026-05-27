@@ -144,6 +144,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   late LauncherConfig _launcherConfig;
   String _rosStatus = 'Loading';
   LauncherRosKeeper? _rosKeeper;
+  Set<String> _runningAppIds = const {};
 
   @override
   void initState() {
@@ -160,10 +161,10 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   /// L009: Initialize unified ROS keeper for embedded plugins.
   ///
   /// Creates a single Ros instance registered in GetX. All plugin collectors
-  /// (OtaCollector, AdswCollector, etc.) will find this via Get.find<Ros>().
+  /// (OtaCollector, AdswCollector, etc.) will find this via `Get.find<Ros>()`.
   ///
   /// When enableRos=false (tests), a mock Ros is registered to prevent
-  /// Get.find<Ros>() errors in collectors.
+  /// `Get.find<Ros>()` errors in collectors.
   Future<void> _loadConfigAndInitRos() async {
     final loadedConfig = await _LauncherConfigStore.load();
     if (!mounted) return;
@@ -182,6 +183,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       return;
     }
     _rosKeeper = LauncherRosKeeper(_launcherConfig);
+    _rosKeeper!.setRunningAppIds(_runningAppIds);
     // Start ROS asynchronously but don't await (collectors will handle connection state)
     _rosKeeper!.start();
   }
@@ -211,8 +213,14 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
 
     await _rosKeeper?.stop();
     _rosKeeper = LauncherRosKeeper(nextConfig);
+    _rosKeeper!.setRunningAppIds(_runningAppIds);
     await _rosKeeper!.start();
     if (mounted) setState(() => _rosStatus = 'Configured');
+  }
+
+  void _handleRunningAppIdsChanged(Set<String> appIds) {
+    _runningAppIds = appIds;
+    _rosKeeper?.setRunningAppIds(appIds);
   }
 
   Future<void> _applyAppTheme(String appId, String themeName) async {
@@ -244,7 +252,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
 
   /// Registers a mock Ros instance for test environments.
   ///
-  /// Plugin collectors call Get.find<Ros>() in their constructors.
+  /// Plugin collectors call `Get.find<Ros>()` in their constructors.
   /// Without this, tests with enableRos=false would crash.
   void _registerMockRos() {
     if (Get.isRegistered<Ros>()) return; // Test may have injected one
@@ -269,6 +277,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       adswTheme: _launcherConfig.adswTheme,
       lfcTheme: _launcherConfig.lfcTheme,
       onAppThemeChanged: _applyAppTheme,
+      onRunningAppIdsChanged: _handleRunningAppIdsChanged,
     );
   }
 }

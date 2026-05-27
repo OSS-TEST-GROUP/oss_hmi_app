@@ -29,6 +29,7 @@ class LauncherBotShell extends StatefulWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.onAppThemeChanged,
+    this.onRunningAppIdsChanged,
     this.initialAppId,
     this.panelBuilder,
   });
@@ -41,6 +42,7 @@ class LauncherBotShell extends StatefulWidget {
   final String adswTheme;
   final String lfcTheme;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
+  final ValueChanged<Set<String>>? onRunningAppIdsChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
 
@@ -88,6 +90,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
     );
+    _notifyRunningAppIdsChanged();
     _loadUsageAndSuggest();
   }
 
@@ -104,6 +107,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       if (_selectedAppId != null && !validIds.contains(_selectedAppId)) {
         _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
       }
+      _notifyRunningAppIdsChanged();
     }
   }
 
@@ -147,6 +151,15 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _focusedAppIds.add(appId);
     _selectedAppId = appId;
     _startUsageFocus(_selectedAppId);
+    _notifyRunningAppIdsChanged();
+  }
+
+  void _notifyRunningAppIdsChanged() {
+    final appIds = widget.registry.apps.map((app) => app.id).toSet();
+    widget.onRunningAppIdsChanged?.call({
+      for (final id in _openedAppIds)
+        if (appIds.contains(id)) id,
+    });
   }
 
   void _openApp(AppManifest app) {
@@ -344,6 +357,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       _focusedAppIds.remove(current);
       _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
       _startUsageFocus(_selectedAppId);
+      _notifyRunningAppIdsChanged();
     });
     return closedName;
   }
