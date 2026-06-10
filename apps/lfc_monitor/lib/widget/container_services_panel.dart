@@ -44,33 +44,40 @@ class ContainerServicesPanel extends StatelessWidget {
                 ..sort((a, b) => a.name.compareTo(b.name));
 
               // Bucket services by container_name once per build.
+              // Services with an empty container_name (e.g. AGL apps reported
+              // by agl_adsw_manager via DiagReport, which does not emit a
+              // NotifyContainerState) are collected separately so they still
+              // surface — see _OrphanServicesCard below.
               final byContainer = <String, List<ServiceInfo>>{};
+              final orphans = <ServiceInfo>[];
               for (final svc in collector.services.values) {
-                if (svc.containerName.isEmpty) continue;
-                byContainer
-                    .putIfAbsent(svc.containerName, () => <ServiceInfo>[])
-                    .add(svc);
+                if (svc.containerName.isEmpty) {
+                  orphans.add(svc);
+                } else {
+                  byContainer
+                      .putIfAbsent(svc.containerName, () => <ServiceInfo>[])
+                      .add(svc);
+                }
               }
               for (final list in byContainer.values) {
                 list.sort((a, b) => a.name.compareTo(b.name));
               }
+              orphans.sort((a, b) => a.name.compareTo(b.name));
 
-              if (containers.isEmpty) {
+              if (containers.isEmpty && orphans.isEmpty) {
                 return Center(
                   child: Text(
-                    'no containers yet — waiting for NotifyContainerState…',
+                    'no containers/services yet — waiting for '
+                    'NotifyContainerState / LifecycleDiagReport…',
                     style: TextStyle(color: palette.subtext),
                     textAlign: TextAlign.center,
                   ),
                 );
               }
 
-              return ListView.separated(
-                itemCount: containers.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (_, i) {
-                  final c = containers[i];
-                  return _ContainerCard(
+              final cards = <Widget>[
+                for (final c in containers)
+                  _ContainerCard(
                     info: c,
                     services: byContainer[c.name] ?? const <ServiceInfo>[],
                     palette: palette,
@@ -79,8 +86,21 @@ class ContainerServicesPanel extends StatelessWidget {
                     onStartService: collector.startService,
                     onStopService: collector.stopService,
                     onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
-                  );
-                },
+                  ),
+                if (orphans.isNotEmpty)
+                  _OrphanServicesCard(
+                    services: orphans,
+                    palette: palette,
+                    onStartService: collector.startService,
+                    onStopService: collector.stopService,
+                    onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
+                  ),
+              ];
+
+              return ListView.separated(
+                itemCount: cards.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (_, i) => cards[i],
               );
             }),
           ),
@@ -247,6 +267,83 @@ class _ContainerCard extends StatelessWidget {
                 ],
               ],
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Card listing services that are NOT backed by a NotifyContainerState
+/// container — i.e. services lifecycle_mgr knows about (via DiagReport) but
+/// that no container card would otherwise surface. This is how AGL apps
+/// registered by agl_adsw_manager (which publishes NotifyServiceState /
+/// UpdateServiceList, not NotifyContainerState) become visible in the panel.
+class _OrphanServicesCard extends StatelessWidget {
+  const _OrphanServicesCard({
+    required this.services,
+    required this.palette,
+    required this.onStartService,
+    required this.onStopService,
+    required this.onChangeServiceRecovery,
+  });
+
+  final List<ServiceInfo> services;
+  final LfcPalette palette;
+  final void Function(String serviceName) onStartService;
+  final void Function(String serviceName) onStopService;
+  final void Function(String serviceName, RecoveryPolicy policy)
+      onChangeServiceRecovery;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = palette;
+    return Container(
+      decoration: BoxDecoration(
+        color: p.background,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: p.panelBorder),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.widgets_outlined, color: p.subtext, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Services (no container)',
+                  style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              _StateBadge(
+                text: '${services.length}',
+                color: p.subtext,
+                bg: p.subtext.withValues(alpha: 0.12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Divider(color: p.panelBorder, height: 1),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (int i = 0; i < services.length; i++) ...[
+                _ServiceRow(
+                  info: services[i],
+                  palette: p,
+                  onStart: () => onStartService(services[i].name),
+                  onStop: () => onStopService(services[i].name),
+                  onChangeRecovery: (policy) =>
+                      onChangeServiceRecovery(services[i].name, policy),
+                ),
+                if (i != services.length - 1)
+                  Divider(color: p.panelBorder, height: 1),
+              ],
+            ],
+          ),
         ],
       ),
     );
