@@ -1,9 +1,10 @@
-// L009: Integration tests for plugin embedding (ADR-002).
+// Integration tests for plugin embedding (ADR-002) on the LauncherBotShell.
 //
-// Verifies that ota_monitor and adsw_monitor views mount inside the
-// launcher shell on sidebar/prompt selection, survive round-trips
-// through the home panel, and that the shared Ros instance owned by
-// the launcher is not clobbered when the plugin panel mounts.
+// Verifies that plugin panels mount inside the launcher shell on launch
+// (home grid card / app rail), survive round-trips through the home surface,
+// and that an externally-registered Ros owned by the launcher is not clobbered
+// when a plugin panel mounts. (Reskin L008: launch = home grid card; nav = app
+// rail items addressed by tooltip; home surface = launcher_home_panel.)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,14 +37,10 @@ AppManifest _m(
       color: color,
     );
 
-/// Test-only panel factory. Avoids pulling in OTA / ADSW internals so
-/// the embed-path tests can focus on shell-level routing.
-Widget _placeholderPanel(AppManifest app) {
-  return Center(
-    key: Key('stub_panel_${app.id}'),
-    child: Text('stub ${app.name}'),
-  );
-}
+Widget _placeholderPanel(AppManifest app) => Center(
+      key: Key('stub_panel_${app.id}'),
+      child: Text('stub ${app.name}'),
+    );
 
 Future<void> _wideView(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1600, 900);
@@ -52,133 +49,98 @@ Future<void> _wideView(WidgetTester tester) async {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+Future<void> _pumpApp(WidgetTester tester, PluginRegistry registry) async {
+  await tester.pumpWidget(HmiLauncherApp(
+    initialRegistry: registry,
+    enableRos: false,
+    panelBuilder: _placeholderPanel,
+  ));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+}
+
+Future<void> _settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 250));
+}
+
 void main() {
   setUp(Get.reset);
   tearDown(Get.reset);
 
   group('Plugin Embedding (ADR-002)', () {
-    testWidgets('Test 1: sidebar tap shows the embedded ota_monitor panel',
+    final twoApps = [
+      _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 열어줘'], color: '#F5C400'),
+      _m('adsw_monitor', name: 'AD SW Monitor', prompts: ['AD SW 열어줘'], color: '#00E5A0'),
+    ];
+
+    testWidgets('Test 1: home grid card shows the embedded ota_monitor panel',
         (tester) async {
       await _wideView(tester);
+      await _pumpApp(tester, _registry(twoApps));
 
-      final registry = _registry([
-        _m('ota_monitor',
-            name: 'OTA Monitor',
-            prompts: ['OTA 모니터 열어줘'],
-            color: '#F5C400'),
-        _m('adsw_monitor',
-            name: 'AD SW Monitor',
-            prompts: ['AD SW 모니터 열어줘'],
-            color: '#00E5A0'),
-      ]);
-
-      await tester.pumpWidget(HmiLauncherApp(
-        initialRegistry: registry,
-        enableRos: false,
-        panelBuilder: _placeholderPanel,
-      ));
-      await tester.pump();
-
-      await tester.tap(find.byKey(const Key('sidebar_item_ota_monitor')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-
+      await tester.tap(find.byKey(const Key('home_cat_card_ota_monitor')));
+      await _settle(tester);
       expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
 
-      // Navigate back to home so pending timers/collectors unwind cleanly.
-      await tester.tap(find.byKey(const Key('sidebar_item_home')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
+      // Home rail returns to the home surface.
+      await tester.tap(find.byTooltip('Home'));
+      await _settle(tester);
+      expect(find.byKey(const Key('launcher_home_panel')), findsOneWidget);
     });
 
     testWidgets(
         'Test 2: home → ota → home → adsw → home cycle keeps the shell stable',
         (tester) async {
       await _wideView(tester);
-
-      final registry = _registry([
-        _m('ota_monitor',
-            name: 'OTA Monitor',
-            prompts: ['OTA 모니터 열어줘'],
-            color: '#F5C400'),
-        _m('adsw_monitor',
-            name: 'AD SW Monitor',
-            prompts: ['AD SW 모니터 열어줘'],
-            color: '#00E5A0'),
-      ]);
-
-      await tester.pumpWidget(HmiLauncherApp(
-        initialRegistry: registry,
-        enableRos: false,
-        panelBuilder: _placeholderPanel,
-      ));
-      await tester.pump();
+      await _pumpApp(tester, _registry(twoApps));
 
       // Home visible on launch.
-      expect(find.text('Good afternoon'), findsOneWidget);
+      expect(find.byKey(const Key('launcher_home_panel')), findsOneWidget);
 
-      // Home → ota
-      await tester.tap(find.byKey(const Key('sidebar_item_ota_monitor')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
+      // Home → ota (grid card)
+      await tester.tap(find.byKey(const Key('home_cat_card_ota_monitor')));
+      await _settle(tester);
       expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
 
-      // ota → home
-      await tester.tap(find.byKey(const Key('sidebar_item_home')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text('Good afternoon'), findsOneWidget);
+      // ota → home (rail)
+      await tester.tap(find.byTooltip('Home'));
+      await _settle(tester);
+      expect(find.byKey(const Key('launcher_home_panel')), findsOneWidget);
 
-      // home → adsw
-      await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
+      // home → adsw (grid card)
+      await tester.tap(find.byKey(const Key('home_cat_card_adsw_monitor')));
+      await _settle(tester);
       expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
 
-      // adsw → home
-      await tester.tap(find.byKey(const Key('sidebar_item_home')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text('Good afternoon'), findsOneWidget);
+      // adsw → home (rail)
+      await tester.tap(find.byTooltip('Home'));
+      await _settle(tester);
+      expect(find.byKey(const Key('launcher_home_panel')), findsOneWidget);
     });
 
-    testWidgets(
-        'Test 3: externally registered Ros survives a plugin mount',
+    testWidgets('Test 3: externally registered Ros survives a plugin mount',
         (tester) async {
       await _wideView(tester);
 
       // A test harness may inject its own mock Ros before the launcher
-      // mounts. The launcher should not stomp on it when enableRos=false.
+      // mounts. The launcher must not stomp on it when enableRos=false.
       final mockRos = Ros(url: 'ws://fake:9090');
       Get.put<Ros>(mockRos);
 
-      final registry = _registry([
-        _m('ota_monitor',
-            name: 'OTA Monitor',
-            prompts: ['OTA 모니터 열어줘'],
-            color: '#F5C400'),
-      ]);
+      await _pumpApp(
+        tester,
+        _registry([twoApps.first]),
+      );
 
-      await tester.pumpWidget(HmiLauncherApp(
-        initialRegistry: registry,
-        enableRos: false,
-        panelBuilder: _placeholderPanel,
-      ));
-      await tester.pump();
-
-      await tester.tap(find.byKey(const Key('sidebar_item_ota_monitor')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.byKey(const Key('home_cat_card_ota_monitor')));
+      await _settle(tester);
 
       expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
       expect(Get.isRegistered<Ros>(), isTrue);
-      // Identity check — equals() would force Ros.hashCode which touches
-      // its uninitialised _channel on a never-connected mock.
+      // Identity check — equals() would force Ros.hashCode which touches its
+      // uninitialised _channel on a never-connected mock.
       expect(identical(Get.find<Ros>(), mockRos), isTrue);
-
-      await tester.tap(find.byKey(const Key('sidebar_item_home')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
     });
   });
 }
