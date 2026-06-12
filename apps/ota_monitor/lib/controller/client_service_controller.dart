@@ -211,6 +211,18 @@ class ClientServiceController extends ChangeNotifier {
     _lastHeartbeatLocal = DateTime.now();
     // The arrival itself ends staleness; broadcast that flip too.
     _lastStaleEmitted = false;
+    // F011: derive managerReady from the heartbeat. NotifyOtaManagerReady is
+    // a one-shot broadcast published once at Manager init — a monitor that
+    // connects later (or whose rosbridge/dds_bridge path was VOLATILE) never
+    // sees it, so it cannot be the authoritative readiness signal. The
+    // heartbeat is RELIABLE and periodic (3 s), so its first arrival is a
+    // sound, late-join-safe proxy for "Manager is up and reachable". The
+    // explicit NotifyOtaManagerReady path (_onManagerReady) is kept as a
+    // best-effort fast-path for monitors that happen to catch it.
+    if (!_managerReady) {
+      _managerReady = true;
+      appLog('[client] manager ready (derived from heartbeat)');
+    }
     notifyListeners();
   }
 
