@@ -4,6 +4,14 @@
 // launcher shell on sidebar/prompt selection, survive round-trips
 // through the home panel, and that the shared Ros instance owned by
 // the launcher is not clobbered when the plugin panel mounts.
+//
+// Migration note (F015): HmiLauncherApp now renders LauncherBotShell.
+// Sidebar items use keys 'sidebar_item_<id>' (all installed apps visible
+// without opening them first).  The home panel shows a greeting widget
+// with key 'home_greeting'.
+//
+// FallbackLauncherBotAiService is injected via HmiLauncherApp.aiService
+// to avoid real gRPC connections.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +20,11 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
+import 'package:hmi_launcher/launcher_bot/services/launcher_bot_ai_service.dart';
 import 'package:hmi_launcher/main.dart';
+
+/// Injected in every test — no gRPC, immediate responses.
+const _testAiService = FallbackLauncherBotAiService();
 
 PluginRegistry _registry(List<AppManifest> apps) {
   return PluginRegistry(
@@ -76,6 +88,7 @@ void main() {
         initialRegistry: registry,
         enableRos: false,
         panelBuilder: _placeholderPanel,
+        aiService: _testAiService,
       ));
       await tester.pump();
 
@@ -111,11 +124,12 @@ void main() {
         initialRegistry: registry,
         enableRos: false,
         panelBuilder: _placeholderPanel,
+        aiService: _testAiService,
       ));
       await tester.pump();
 
-      // Home visible on launch.
-      expect(find.text('Good afternoon'), findsOneWidget);
+      // Home visible on launch — greeting widget should be present.
+      expect(find.byKey(const Key('home_greeting')), findsOneWidget);
 
       // Home → ota
       await tester.tap(find.byKey(const Key('sidebar_item_ota_monitor')));
@@ -127,7 +141,7 @@ void main() {
       await tester.tap(find.byKey(const Key('sidebar_item_home')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text('Good afternoon'), findsOneWidget);
+      expect(find.byKey(const Key('home_greeting')), findsOneWidget);
 
       // home → adsw
       await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
@@ -139,7 +153,7 @@ void main() {
       await tester.tap(find.byKey(const Key('sidebar_item_home')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text('Good afternoon'), findsOneWidget);
+      expect(find.byKey(const Key('home_greeting')), findsOneWidget);
     });
 
     testWidgets(
@@ -163,6 +177,7 @@ void main() {
         initialRegistry: registry,
         enableRos: false,
         panelBuilder: _placeholderPanel,
+        aiService: _testAiService,
       ));
       await tester.pump();
 

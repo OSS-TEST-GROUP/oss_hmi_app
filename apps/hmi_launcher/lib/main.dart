@@ -10,10 +10,10 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
+import 'launcher_bot/services/launcher_bot_ai_service.dart';
 import 'presentation/keyboard/keyboard_host.dart';
 import 'presentation/shell/launcher_app_area.dart';
 import 'presentation/shell/launcher_bot_shell.dart';
-import 'presentation/shell/launcher_shell.dart';
 import 'presentation/theme/launcher_tokens.dart';
 import 'ros/launcher_ros_keeper.dart';
 
@@ -82,6 +82,7 @@ class HmiLauncherApp extends StatelessWidget {
     this.initialRegistry,
     this.enableRos = true,
     this.panelBuilder,
+    this.aiService,
   });
 
   /// Allows tests to inject a fixture registry so the UI doesn't depend on
@@ -92,9 +93,14 @@ class HmiLauncherApp extends StatelessWidget {
   /// real network connections.
   final bool enableRos;
 
-  /// Optional plugin-panel factory override. Forwarded to [LauncherShell]
+  /// Optional plugin-panel factory override. Forwarded to [LauncherBotShell]
   /// via [LauncherHomePage]; used by tests to skip plugin internals.
   final AppPanelBuilder? panelBuilder;
+
+  /// Optional AI service override. When null [LauncherBotShell] builds its
+  /// own [AgentSubmitAiService]. Tests inject [FallbackLauncherBotAiService]
+  /// to avoid real gRPC connections and long timeouts.
+  final LauncherBotAiService? aiService;
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +124,7 @@ class HmiLauncherApp extends StatelessWidget {
         initialRegistry: initialRegistry,
         enableRos: enableRos,
         panelBuilder: panelBuilder,
+        aiService: aiService,
       ),
     );
   }
@@ -129,11 +136,13 @@ class LauncherHomePage extends StatefulWidget {
     this.initialRegistry,
     this.enableRos = true,
     this.panelBuilder,
+    this.aiService,
   });
 
   final PluginRegistry? initialRegistry;
   final bool enableRos;
   final AppPanelBuilder? panelBuilder;
+  final LauncherBotAiService? aiService;
 
   @override
   State<LauncherHomePage> createState() => _LauncherHomePageState();
@@ -270,6 +279,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
     return LauncherBotShell(
       registry: _registry,
       panelBuilder: widget.panelBuilder,
+      aiService: widget.aiService,
       rosUrl: _launcherConfig.rosUrl,
       rosStatus: widget.enableRos ? _rosStatus : 'Disabled',
       onRosUrlChanged: _applyRosBridge,

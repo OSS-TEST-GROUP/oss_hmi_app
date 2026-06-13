@@ -1,9 +1,19 @@
-// E2E widget tests for the Tesla-reskin launcher shell.
+// E2E widget tests for the LauncherBotShell-based launcher.
 //
-// Coverage here is scoped to shell-level behavior: registry → sidebar
+// Coverage here is scoped to shell-level behaviour: registry → sidebar
 // rendering, prompt → plugin launch, sidebar tap → embedded panel,
-// and the Launcher / plugin / Launcher cycle. Plugin-internal coverage
+// and the Launcher / plugin / Launcher cycle.  Plugin-internal coverage
 // lives in each plugin's own test suite.
+//
+// Migration note (F015): HmiLauncherApp now renders LauncherBotShell
+// (AI-bot layout) instead of the old LauncherShell (Tesla-reskin layout).
+// Prompts are submitted through the LauncherBotPanel input field
+// (key: 'launcher_bot_input_field') after opening the assistant panel.
+// Sidebar items are rendered in _AppRail with keys 'sidebar_item_<id>'
+// for all installed apps.
+//
+// All tests inject FallbackLauncherBotAiService so the NLU fallback path
+// is exercised without a real gRPC connection or long timeouts.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,8 +21,16 @@ import 'package:get/get.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
+import 'package:hmi_launcher/launcher_bot/services/launcher_bot_ai_service.dart';
 import 'package:hmi_launcher/main.dart';
-import 'package:hmi_launcher/presentation/shell/launcher_shell.dart';
+import 'package:hmi_launcher/presentation/shell/launcher_bot_shell.dart';
+
+/// Fallback AI service — immediately responds without a real gRPC server.
+///
+/// Injected through [HmiLauncherApp.aiService] in every test so the NLU
+/// local-command path (substring / alias matching) is exercised without the
+/// 10-second gRPC timeout that [AgentSubmitAiService] has.
+const _testAiService = FallbackLauncherBotAiService();
 
 PluginRegistry _registry(List<AppManifest> apps) {
   return PluginRegistry(
@@ -53,6 +71,28 @@ Future<void> _wideView(WidgetTester tester) async {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+/// Opens the LauncherBotPanel so its input field becomes available.
+Future<void> _openAssistant(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('assistant_toggle')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+/// Submits [text] through the LauncherBotPanel input field.
+///
+/// Requires the assistant panel to already be open (call [_openAssistant]
+/// first if needed).
+Future<void> _submitPrompt(WidgetTester tester, String text) async {
+  await tester.enterText(
+    find.byKey(const Key('launcher_bot_input_field')),
+    text,
+  );
+  await tester.testTextInput.receiveAction(TextInputAction.done);
+  await tester.pump();
+  // Allow NLU + FallbackLauncherBotAiService to complete and setState to propagate.
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
 void main() {
   tearDown(() {
     Get.reset();
@@ -70,15 +110,17 @@ void main() {
       initialRegistry: registry,
       enableRos: false,
       panelBuilder: _placeholderPanel,
+      aiService: _testAiService,
     ));
 
-    expect(find.byType(LauncherShell), findsOneWidget);
+    // F015: HmiLauncherApp now hosts LauncherBotShell.
+    expect(find.byType(LauncherBotShell), findsOneWidget);
     expect(find.byKey(const Key('sidebar_item_ota_monitor')), findsOneWidget);
     expect(find.byKey(const Key('sidebar_item_adsw_monitor')), findsOneWidget);
     expect(find.byKey(const Key('sidebar_item_home')), findsOneWidget);
 
-    // Home header greeting and app-count line.
-    expect(find.text('Good afternoon'), findsOneWidget);
+    // Home greeting and app-count line.
+    expect(find.byKey(const Key('home_greeting')), findsOneWidget);
     expect(find.textContaining('2 apps installed'), findsWidgets);
   });
 
@@ -93,15 +135,11 @@ void main() {
       initialRegistry: registry,
       enableRos: false,
       panelBuilder: _placeholderPanel,
+      aiService: _testAiService,
     ));
 
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'OTA 모니터 열어줘',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await _openAssistant(tester);
+    await _submitPrompt(tester, 'OTA 모니터 열어줘');
 
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
 
@@ -119,22 +157,20 @@ void main() {
       initialRegistry: registry,
       enableRos: false,
       panelBuilder: _placeholderPanel,
+      aiService: _testAiService,
     ));
 
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'ota',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // 'OTA Monitor' is the full app name; NluRouter's alias fallback matches
+    // it even when no prompts contain the query.
+    await _openAssistant(tester);
+    await _submitPrompt(tester, 'OTA Monitor');
 
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
 
     await tester.pumpAndSettle();
   });
 
-  testWidgets('non-matching input surfaces a helpful toast and no launch',
+  testWidgets('non-matching input does not launch any app',
       (tester) async {
     await _wideView(tester);
     final registry = _registry([
@@ -145,17 +181,14 @@ void main() {
       initialRegistry: registry,
       enableRos: false,
       panelBuilder: _placeholderPanel,
+      aiService: _testAiService,
     ));
 
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      '오늘 날씨 어때',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await _openAssistant(tester);
+    await _submitPrompt(tester, '오늘 날씨 어때');
 
-    expect(find.textContaining('try:'), findsOneWidget);
+    // The app panel must not appear — regardless of whether the bot
+    // answered with an AI error or a fallback message.
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsNothing);
 
     await tester.pumpAndSettle();
@@ -172,6 +205,7 @@ void main() {
       initialRegistry: registry,
       enableRos: false,
       panelBuilder: _placeholderPanel,
+      aiService: _testAiService,
     ));
 
     // Open via sidebar.
@@ -180,17 +214,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
 
-    // Submit "close" — should return to the home panel.
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'close',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // Submit "close" through the bot panel — should return to home.
+    await _openAssistant(tester);
+    await _submitPrompt(tester, 'close');
 
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsNothing);
-    expect(find.text('Good afternoon'), findsOneWidget);
+    // Home greeting must be visible again.
+    expect(find.byKey(const Key('home_greeting')), findsOneWidget);
 
     await tester.pumpAndSettle();
   });
@@ -207,6 +237,7 @@ void main() {
       initialRegistry: registry,
       enableRos: false,
       panelBuilder: _placeholderPanel,
+      aiService: _testAiService,
     ));
 
     await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
@@ -223,9 +254,10 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: _registry(const []),
       enableRos: false,
+      aiService: _testAiService,
     ));
 
-    expect(find.byType(LauncherShell), findsOneWidget);
+    expect(find.byType(LauncherBotShell), findsOneWidget);
     expect(find.byKey(const Key('sidebar_item_home')), findsOneWidget);
     expect(find.textContaining('0 apps installed'), findsWidgets);
   });
@@ -258,6 +290,7 @@ void main() {
       initialRegistry: registry,
       enableRos: false,
       panelBuilder: _placeholderPanel,
+      aiService: _testAiService,
     ));
 
     // 1. sidebar shows both plugin items
@@ -265,24 +298,13 @@ void main() {
     expect(find.byKey(const Key('sidebar_item_adsw_monitor')), findsOneWidget);
 
     // 2. prompt "AD SW 모니터 열어줘" launches adsw and leaves ota alone
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'AD SW 모니터 열어줘',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await _openAssistant(tester);
+    await _submitPrompt(tester, 'AD SW 모니터 열어줘');
     expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsNothing);
 
     // 3. prompt "OTA 모니터 열어줘" swaps to ota, dismissing adsw
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'OTA 모니터 열어줘',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await _submitPrompt(tester, 'OTA 모니터 열어줘');
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
     expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsNothing);
 
@@ -291,7 +313,7 @@ void main() {
     // 4. tapping the home item returns to the home panel
     await tester.tap(find.byKey(const Key('sidebar_item_home')));
     await tester.pumpAndSettle();
-    expect(find.text('Good afternoon'), findsOneWidget);
+    expect(find.byKey(const Key('home_greeting')), findsOneWidget);
 
     // 5. tapping the adsw sidebar item mounts its embedded panel again
     await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));

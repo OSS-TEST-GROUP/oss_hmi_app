@@ -29,7 +29,8 @@ void main() {
       expect(ota, isNotNull,
           reason: 'ota_monitor/manifest.json must be discovered by scanner');
       expect(ota!.name, 'OTA Monitor');
-      expect(ota.prompts, contains('OTA 모니터 열어줘'));
+      // Prompt list matches apps/ota_monitor/manifest.json (updated in F015).
+      expect(ota.prompts, contains('OTA 열어줘'));
       expect(ota.minLauncher, '4.0.0');
     });
 
@@ -48,7 +49,8 @@ void main() {
       final adsw = registry.findById('adsw_monitor');
       expect(adsw, isNotNull);
       expect(adsw!.name, 'AD SW');
-      expect(adsw.prompts, contains('AD SW 모니터 열어줘'));
+      // Prompt list matches apps/adsw_monitor/manifest.json (updated in F015).
+      expect(adsw.prompts, contains('AD SW 열어줘'));
     });
 
     test('both ota_monitor and adsw_monitor appear in the registry', () {

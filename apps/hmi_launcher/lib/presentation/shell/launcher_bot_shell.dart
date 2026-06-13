@@ -8,6 +8,7 @@ import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
 import '../../launcher_bot/services/agent_submit_ai_service.dart';
 import '../../launcher_bot/services/app_usage_store.dart';
+import '../../launcher_bot/services/launcher_bot_ai_service.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
 import '../../launcher_bot/services/voice_input_service.dart';
 import '../app_icon.dart';
@@ -32,6 +33,7 @@ class LauncherBotShell extends StatefulWidget {
     this.onRunningAppIdsChanged,
     this.initialAppId,
     this.panelBuilder,
+    this.aiService,
   });
 
   final PluginRegistry registry;
@@ -45,6 +47,13 @@ class LauncherBotShell extends StatefulWidget {
   final ValueChanged<Set<String>>? onRunningAppIdsChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
+
+  /// Optional AI service override. When null the shell builds its own
+  /// [AgentSubmitAiService] using AGENT_HOST / AGENT_PORT env-vars.
+  ///
+  /// Tests can inject a [FallbackLauncherBotAiService] (or any other
+  /// implementation) to avoid real gRPC connections.
+  final LauncherBotAiService? aiService;
 
   @override
   State<LauncherBotShell> createState() => _LauncherBotShellState();
@@ -85,6 +94,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     // F015: Agent.Submit gRPC 씬 클라이언트를 주 AI 서비스로 사용한다.
     // 환경변수 AGENT_HOST / AGENT_PORT 가 없으면 기본값(localhost:50051)을 사용한다.
     // gRPC 연결 가능 여부와 무관하게 UI 는 정상 기동한다 (AC4 rosbridge 독립 패턴 적용).
+    // 테스트는 widget.aiService 를 통해 FallbackLauncherBotAiService 를 주입하여
+    // 실제 gRPC 연결 없이 NLU 폴백만으로 동작할 수 있다.
     final agentHost = _resolveAgentHost();
     final agentPort = _resolveAgentPort();
     _aiSdkAvailable = true; // gRPC 씬 클라이언트는 항상 준비됨 — 연결 실패는 런타임 폴백 처리
@@ -94,10 +105,12 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _launcherBotController = LauncherBotController(
       nluRouter: _nluRouter,
       // F015: gRPC 씬 클라이언트. 연결 실패 시 NLU 폴백 (AC3) 은 LauncherBotController 에서 처리.
-      aiService: AgentSubmitAiService(
-        host: agentHost,
-        port: agentPort,
-      ),
+      // 테스트에서는 widget.aiService 를 통해 빠른 응답 서비스를 주입 가능.
+      aiService: widget.aiService ??
+          AgentSubmitAiService(
+            host: agentHost,
+            port: agentPort,
+          ),
       onOpenApp: _openApp,
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
@@ -110,11 +123,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   ///
   /// Priority: AGENT_HOST env var → 'localhost'.
   static String _resolveAgentHost() {
-    return const String.fromEnvironment('AGENT_HOST', defaultValue: '')
-        .trim()
-        .isNotEmpty
-        ? const String.fromEnvironment('AGENT_HOST', defaultValue: 'localhost')
-        : 'localhost';
+    const agentHost = String.fromEnvironment('AGENT_HOST', defaultValue: '');
+    return agentHost.trim().isNotEmpty ? agentHost : 'localhost';
   }
 
   /// Resolves the Agent gRPC server port from the environment.
@@ -594,6 +604,14 @@ class _HomeSurface extends StatelessWidget {
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
 
+  /// Returns the greeting based on the current hour.
+  static String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cards = [
@@ -601,40 +619,69 @@ class _HomeSurface extends StatelessWidget {
       const _LauncherCardData.settings(),
     ];
 
+    final appCount = apps.length;
+
     return Container(
       key: const Key('launcher_home_panel'),
       padding: const EdgeInsets.fromLTRB(28, 26, 28, 26),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = constraints.maxWidth < 780
-              ? 2
-              : constraints.maxWidth < 1120
-                  ? 3
-                  : 4;
-          return GridView.builder(
-            key: const Key('launcher_home_grid'),
-            itemCount: cards.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 2.05,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Greeting header — matches the text that widget tests look for.
+          Text(
+            _greeting(),
+            key: const Key('home_greeting'),
+            style: const TextStyle(
+              color: _BotColors.ink,
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
             ),
-            itemBuilder: (context, index) {
-              final card = cards[index];
-              return _AppCard(
-                data: card,
-                onTap: () {
-                  if (card.app != null) {
-                    onAppLaunch(card.app!);
-                  } else {
-                    onSettingsLaunch();
-                  }
-                },
-              );
-            },
-          );
-        },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$appCount ${appCount == 1 ? 'app' : 'apps'} installed',
+            key: const Key('home_app_count'),
+            style: const TextStyle(
+              color: _BotColors.muted,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth < 780
+                    ? 2
+                    : constraints.maxWidth < 1120
+                        ? 3
+                        : 4;
+                return GridView.builder(
+                  key: const Key('launcher_home_grid'),
+                  itemCount: cards.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 2.05,
+                  ),
+                  itemBuilder: (context, index) {
+                    final card = cards[index];
+                    return _AppCard(
+                      data: card,
+                      onTap: () {
+                        if (card.app != null) {
+                          onAppLaunch(card.app!);
+                        } else {
+                          onSettingsLaunch();
+                        }
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -965,8 +1012,6 @@ class _AppRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final runningApps = _runningApps();
-
     return Container(
       width: 84,
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 14),
@@ -980,20 +1025,26 @@ class _AppRail extends StatelessWidget {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  if (selectedAppId != null) ...[
-                    _RailActionButton(
-                      icon: Icons.home_outlined,
-                      enabled: true,
-                      active: false,
-                      tooltip: 'Home',
-                      onTap: onHomeSelected,
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  for (final app in runningApps) ...[
+                  // Home button — always visible so tests (and users) can
+                  // return to the home panel at any time.
+                  _RailActionButton(
+                    key: const Key('sidebar_item_home'),
+                    icon: Icons.home_outlined,
+                    enabled: true,
+                    active: selectedAppId == null,
+                    tooltip: 'Home',
+                    onTap: onHomeSelected,
+                  ),
+                  const SizedBox(height: 8),
+                  // All installed apps — not just the ones currently open.
+                  // This mirrors LauncherSidebar behaviour so widget tests
+                  // can tap sidebar_item_<id> without having to open the app
+                  // first.
+                  for (final app in apps) ...[
                     _RailAppButton(
+                      key: Key('sidebar_item_${app.id}'),
                       icon: LauncherAppIcons.forId(app.id),
-                      color: app.color,
+                      color: _parseHex(app.color),
                       tooltip: app.name,
                       active: selectedAppId == app.id,
                       onTap: () => onAppSelected(app.id),
@@ -1014,6 +1065,7 @@ class _AppRail extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _RailActionButton(
+            key: const Key('assistant_toggle'),
             iconWidget: assistantOpen
                 ? Transform.flip(
                     flipX: true,
@@ -1034,41 +1086,11 @@ class _AppRail extends StatelessWidget {
       ),
     );
   }
-
-  List<_RailRunningApp> _runningApps() {
-    final byId = {for (final app in apps) app.id: app};
-    return [
-      for (final id in openedAppIds)
-        if (id == _SettingsPage.appId)
-          const _RailRunningApp(
-            id: _SettingsPage.appId,
-            name: 'Settings',
-            color: _BotColors.ink,
-          )
-        else if (byId[id] != null)
-          _RailRunningApp(
-            id: byId[id]!.id,
-            name: byId[id]!.name,
-            color: _parseHex(byId[id]!.color),
-          ),
-    ];
-  }
-}
-
-class _RailRunningApp {
-  const _RailRunningApp({
-    required this.id,
-    required this.name,
-    required this.color,
-  });
-
-  final String id;
-  final String name;
-  final Color color;
 }
 
 class _RailAppButton extends StatelessWidget {
   const _RailAppButton({
+    super.key,
     required this.icon,
     required this.color,
     required this.tooltip,
@@ -1414,6 +1436,7 @@ class _ModeButton extends StatelessWidget {
 
 class _RailActionButton extends StatelessWidget {
   const _RailActionButton({
+    super.key,
     this.icon,
     this.iconWidget,
     required this.enabled,
