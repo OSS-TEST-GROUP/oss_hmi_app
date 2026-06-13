@@ -6,7 +6,6 @@
 //
 // 모킹 gRPC 서버는 Dart in-process로 구현한다 (외부 서버 불필요).
 
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
