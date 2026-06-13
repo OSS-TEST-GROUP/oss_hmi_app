@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../../domain/app_manifest.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
-import '../../launcher_bot/services/launcher_bot_ai_service.dart';
+import '../../launcher_bot/services/agent_submit_ai_service.dart';
 import '../../launcher_bot/services/app_usage_store.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
 import '../../launcher_bot/services/voice_input_service.dart';
@@ -59,6 +59,9 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   final AppUsageStore _usageStore = AppUsageStore();
   final VoiceInputService _voiceInputService = const VoiceInputService();
   VoiceCaptureSession? _voiceSession;
+  // F015: _aiSdkAvailable は gRPC 씬 클라이언트 가용성을 나타낸다.
+  // 내장 LLM FFI 는 제거됐으며 gRPC Agent.Submit 이 주 AI 백엔드다.
+  // 서버 미기동 시 NLU substring 폴백으로 이행한다 (AC3).
   late final bool _aiSdkAvailable;
   late bool _aiMode;
   String? _usageFocusAppId;
@@ -78,20 +81,49 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       if (widget.initialAppId != null) widget.initialAppId!,
     ];
     _startUsageFocus(_selectedAppId);
-    _aiSdkAvailable = GemmaLauncherBotAiService.isAvailable();
+
+    // F015: Agent.Submit gRPC 씬 클라이언트를 주 AI 서비스로 사용한다.
+    // 환경변수 AGENT_HOST / AGENT_PORT 가 없으면 기본값(localhost:50051)을 사용한다.
+    // gRPC 연결 가능 여부와 무관하게 UI 는 정상 기동한다 (AC4 rosbridge 독립 패턴 적용).
+    final agentHost = _resolveAgentHost();
+    final agentPort = _resolveAgentPort();
+    _aiSdkAvailable = true; // gRPC 씬 클라이언트는 항상 준비됨 — 연결 실패는 런타임 폴백 처리
     _aiMode = _aiSdkAvailable;
+
     _nluRouter = NluRouter(widget.registry.apps);
     _launcherBotController = LauncherBotController(
       nluRouter: _nluRouter,
-      aiService: _aiSdkAvailable
-          ? GemmaLauncherBotAiService()
-          : const FallbackLauncherBotAiService(),
+      // F015: gRPC 씬 클라이언트. 연결 실패 시 NLU 폴백 (AC3) 은 LauncherBotController 에서 처리.
+      aiService: AgentSubmitAiService(
+        host: agentHost,
+        port: agentPort,
+      ),
       onOpenApp: _openApp,
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
     );
     _notifyRunningAppIdsChanged();
     _loadUsageAndSuggest();
+  }
+
+  /// Resolves the Agent gRPC server hostname from the environment.
+  ///
+  /// Priority: AGENT_HOST env var → 'localhost'.
+  static String _resolveAgentHost() {
+    return const String.fromEnvironment('AGENT_HOST', defaultValue: '')
+        .trim()
+        .isNotEmpty
+        ? const String.fromEnvironment('AGENT_HOST', defaultValue: 'localhost')
+        : 'localhost';
+  }
+
+  /// Resolves the Agent gRPC server port from the environment.
+  ///
+  /// Priority: AGENT_PORT env var → 50051.
+  static int _resolveAgentPort() {
+    const portStr =
+        String.fromEnvironment('AGENT_PORT', defaultValue: '50051');
+    return int.tryParse(portStr.trim()) ?? 50051;
   }
 
   @override

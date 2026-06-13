@@ -43,6 +43,10 @@ dependencies:
   get: ^4.7.2
   roslibdart: ^0.0.1-dev+4
 
+  # F015: Agent.Submit gRPC thin client (ADR-014 결정 2, 5)
+  grpc: ^4.0.1
+  protobuf: ^3.1.0
+
   # L009: Plugin path dependencies
   ota_monitor:
     path: ../ota_monitor
