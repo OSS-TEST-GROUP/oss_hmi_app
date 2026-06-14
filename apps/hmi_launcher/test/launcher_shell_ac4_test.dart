@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
+import 'package:hmi_launcher/domain/app_visibility_store.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
 import 'package:hmi_launcher/main.dart';
 
@@ -56,6 +57,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: _emptyRegistry(),
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
     ));
 
     // 에러 다이얼로그 없이 MaterialApp 이 렌더링됐는지 확인
@@ -78,6 +80,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: _singleAppRegistry(),
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
     ));
 
     // LauncherBotShell 이 렌더링됐는지 확인
@@ -102,6 +105,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: _emptyRegistry(),
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
     ));
 
     await tester.pump();

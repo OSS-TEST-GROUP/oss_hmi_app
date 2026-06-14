@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../domain/app_manifest.dart';
+import '../../domain/app_visibility_store.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
 import '../../launcher_bot/services/agent_submit_ai_service.dart';
@@ -16,6 +17,7 @@ import '../launcher_bot/launcher_bot_panel.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
 import '../panels/lfc_embedded_panel.dart';
+import '../panels/manage_apps_panel.dart';
 import '../panels/ota_embedded_panel.dart';
 import 'launcher_app_area.dart';
 
@@ -23,6 +25,7 @@ class LauncherBotShell extends StatefulWidget {
   const LauncherBotShell({
     super.key,
     required this.registry,
+    required this.visibilityStore,
     required this.rosUrl,
     required this.rosStatus,
     required this.onRosUrlChanged,
@@ -37,6 +40,11 @@ class LauncherBotShell extends StatefulWidget {
   });
 
   final PluginRegistry registry;
+
+  /// Controls which apps are visible in the sidebar and home grid.
+  /// Must outlive the shell widget — owned by the parent page.
+  final AppVisibilityStore visibilityStore;
+
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
@@ -78,6 +86,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   bool _assistantOpen = false;
   bool _voiceCapturing = false;
   bool _usageSuggestionShown = false;
+  bool _manageAppsOpen = false;
+
+  /// Apps that are both compatible with this launcher version and currently
+  /// enabled in [AppVisibilityStore].  This is the list rendered in the
+  /// sidebar and home grid.
+  List<AppManifest> get _visibleApps => widget.registry.apps
+      .where((app) => widget.visibilityStore.isEnabled(app.id))
+      .toList(growable: false);
 
   @override
   void initState() {
@@ -101,7 +117,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _aiSdkAvailable = true; // gRPC 씬 클라이언트는 항상 준비됨 — 연결 실패는 런타임 폴백 처리
     _aiMode = _aiSdkAvailable;
 
-    _nluRouter = NluRouter(widget.registry.apps);
+    _nluRouter = NluRouter(_visibleApps);
     _launcherBotController = LauncherBotController(
       nluRouter: _nluRouter,
       // F015: gRPC 씬 클라이언트. 연결 실패 시 NLU 폴백 (AC3) 은 LauncherBotController 에서 처리.
@@ -115,8 +131,26 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
     );
+    // Rebuild whenever visibility changes so sidebar + home react instantly.
+    widget.visibilityStore.addListener(_onVisibilityChanged);
     _notifyRunningAppIdsChanged();
     _loadUsageAndSuggest();
+  }
+
+  void _onVisibilityChanged() {
+    _nluRouter = NluRouter(_visibleApps);
+    _launcherBotController.updateRouter(_nluRouter);
+    // If the currently selected app was hidden, go home.
+    final current = _selectedAppId;
+    if (current != null &&
+        current != _SettingsPage.appId &&
+        !_visibleApps.any((app) => app.id == current)) {
+      _openedAppIds.remove(current);
+      _focusedAppIds.remove(current);
+      _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
+    }
+    _notifyRunningAppIdsChanged();
+    setState(() {});
   }
 
   /// Resolves the Agent gRPC server hostname from the environment.
@@ -139,10 +173,15 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   @override
   void didUpdateWidget(covariant LauncherBotShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.registry != widget.registry) {
-      _nluRouter = NluRouter(widget.registry.apps);
+    if (oldWidget.visibilityStore != widget.visibilityStore) {
+      oldWidget.visibilityStore.removeListener(_onVisibilityChanged);
+      widget.visibilityStore.addListener(_onVisibilityChanged);
+    }
+    if (oldWidget.registry != widget.registry ||
+        oldWidget.visibilityStore != widget.visibilityStore) {
+      _nluRouter = NluRouter(_visibleApps);
       _launcherBotController.updateRouter(_nluRouter);
-      final validIds = widget.registry.apps.map((app) => app.id).toSet()
+      final validIds = _visibleApps.map((app) => app.id).toSet()
         ..add(_SettingsPage.appId);
       _openedAppIds.removeWhere((id) => !validIds.contains(id));
       _focusedAppIds.removeWhere((id) => !validIds.contains(id));
@@ -155,6 +194,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
   @override
   void dispose() {
+    widget.visibilityStore.removeListener(_onVisibilityChanged);
     _flushUsageFocus();
     _voiceSession?.stop();
     _launcherBotController.dispose();
@@ -164,7 +204,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   AppManifest? get _selectedApp {
     final id = _selectedAppId;
     if (id == null) return null;
-    for (final app in widget.registry.apps) {
+    for (final app in _visibleApps) {
       if (app.id == id) return app;
     }
     return null;
@@ -197,7 +237,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _notifyRunningAppIdsChanged() {
-    final appIds = widget.registry.apps.map((app) => app.id).toSet();
+    final appIds = _visibleApps.map((app) => app.id).toSet();
     widget.onRunningAppIdsChanged?.call({
       for (final id in _openedAppIds)
         if (appIds.contains(id)) id,
@@ -243,7 +283,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _startUsageFocus(String? appId) {
-    if (appId == null || widget.registry.findById(appId) == null) {
+    if (appId == null ||
+        !_visibleApps.any((app) => app.id == appId)) {
       _usageFocusAppId = null;
       _usageFocusStartedAt = null;
       return;
@@ -277,16 +318,16 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       );
       return;
     }
-    if (_selectedAppId != null || widget.registry.apps.isEmpty) {
+    if (_selectedAppId != null || _visibleApps.isEmpty) {
       debugPrint(
         '[LauncherBotShell] suggestion skip: '
-        'selected=$_selectedAppId appCount=${widget.registry.apps.length}',
+        'selected=$_selectedAppId appCount=${_visibleApps.length}',
       );
       return;
     }
 
     final usages = _usageStore.suggestionCandidates(
-      widget.registry.apps.map((app) => app.id).toSet(),
+      _visibleApps.map((app) => app.id).toSet(),
     );
     if (usages.isEmpty) {
       debugPrint('[LauncherBotShell] suggestion skip: no usage candidates');
@@ -413,6 +454,21 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
         settingsOpen ? 'Settings' : selected?.name ?? 'Launcher';
     _launcherBotController.updateContext(selectedName);
 
+    // Manage Apps panel replaces the main content area when open.
+    if (_manageAppsOpen) {
+      return Scaffold(
+        key: const Key('launcher_bot_shell'),
+        backgroundColor: _BotColors.canvas,
+        body: SafeArea(
+          child: ManageAppsPanel(
+            allApps: widget.registry.apps,
+            store: widget.visibilityStore,
+            onClose: () => setState(() => _manageAppsOpen = false),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       key: const Key('launcher_bot_shell'),
       backgroundColor: _BotColors.canvas,
@@ -431,12 +487,13 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
               onClose: _closeApp,
               onRestart: _restartLauncher,
               onModeChanged: _setAiMode,
+              onManageApps: () => setState(() => _manageAppsOpen = true),
             ),
             Expanded(
               child: Row(
                 children: [
                   _AppRail(
-                    apps: widget.registry.apps,
+                    apps: _visibleApps,
                     openedAppIds: _openedAppIds,
                     selectedAppId: _selectedAppId,
                     aiMode: _aiMode,
@@ -461,14 +518,14 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                         controller: _launcherBotController,
                         selectedName: selectedName,
                         aiMode: _aiMode && _aiSdkAvailable,
-                        apps: widget.registry.apps,
+                        apps: _visibleApps,
                         onClose: () => setState(() => _assistantOpen = false),
                       ),
                     ),
                   ),
                   Expanded(
                     child: _AppStage(
-                      apps: widget.registry.apps,
+                      apps: _visibleApps,
                       openedAppIds: _openedAppIds,
                       selectedAppId: _selectedAppId,
                       panelBuilder: widget.panelBuilder,
@@ -901,6 +958,7 @@ class _TopBar extends StatelessWidget {
     required this.onClose,
     required this.onRestart,
     required this.onModeChanged,
+    required this.onManageApps,
   });
 
   final String title;
@@ -912,6 +970,7 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onRestart;
   final ValueChanged<bool> onModeChanged;
+  final VoidCallback onManageApps;
 
   @override
   Widget build(BuildContext context) {
@@ -964,6 +1023,9 @@ class _TopBar extends StatelessWidget {
             const SizedBox(width: 10),
           ],
           _RestartLauncherButton(onTap: onRestart),
+          const SizedBox(width: 10),
+          // F017: Manage Apps entry point in the top bar grid area.
+          _ManageAppsButton(onTap: onManageApps),
           const SizedBox(width: 10),
           _ModeButton(
             label: 'Standard',
@@ -1537,6 +1599,39 @@ class _RestartLauncherButton extends StatelessWidget {
           ),
           child: const Icon(
             Icons.restart_alt,
+            color: _BotColors.ink,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// F017: Button that opens the Manage Apps panel.
+class _ManageAppsButton extends StatelessWidget {
+  const _ManageAppsButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Manage Apps',
+      child: InkWell(
+        key: const Key('manage_apps_button'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _BotColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _BotColors.line),
+          ),
+          child: const Icon(
+            Icons.apps,
             color: _BotColors.ink,
             size: 22,
           ),

@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
+import 'package:hmi_launcher/domain/app_visibility_store.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
 import 'package:hmi_launcher/launcher_bot/services/launcher_bot_ai_service.dart';
 import 'package:hmi_launcher/main.dart';
@@ -109,6 +110,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: registry,
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       panelBuilder: _placeholderPanel,
       aiService: _testAiService,
     ));
@@ -134,6 +136,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: registry,
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       panelBuilder: _placeholderPanel,
       aiService: _testAiService,
     ));
@@ -156,6 +159,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: registry,
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       panelBuilder: _placeholderPanel,
       aiService: _testAiService,
     ));
@@ -180,6 +184,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: registry,
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       panelBuilder: _placeholderPanel,
       aiService: _testAiService,
     ));
@@ -204,6 +209,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: registry,
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       panelBuilder: _placeholderPanel,
       aiService: _testAiService,
     ));
@@ -236,6 +242,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: registry,
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       panelBuilder: _placeholderPanel,
       aiService: _testAiService,
     ));
@@ -254,6 +261,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: _registry(const []),
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       aiService: _testAiService,
     ));
 
@@ -289,6 +297,7 @@ void main() {
     await tester.pumpWidget(HmiLauncherApp(
       initialRegistry: registry,
       enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
       panelBuilder: _placeholderPanel,
       aiService: _testAiService,
     ));

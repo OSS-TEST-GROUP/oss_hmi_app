@@ -8,6 +8,7 @@ import 'package:lfc_monitor/theme/lfc_palette.dart' as lfc_theme;
 import 'package:ota_monitor/theme/app_palette.dart' as ota_theme;
 import 'package:roslibdart/roslibdart.dart';
 
+import 'domain/app_visibility_store.dart';
 import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
 import 'launcher_bot/services/launcher_bot_ai_service.dart';
@@ -83,6 +84,7 @@ class HmiLauncherApp extends StatelessWidget {
     this.enableRos = true,
     this.panelBuilder,
     this.aiService,
+    this.visibilityStore,
   });
 
   /// Allows tests to inject a fixture registry so the UI doesn't depend on
@@ -101,6 +103,10 @@ class HmiLauncherApp extends StatelessWidget {
   /// own [AgentSubmitAiService]. Tests inject [FallbackLauncherBotAiService]
   /// to avoid real gRPC connections and long timeouts.
   final LauncherBotAiService? aiService;
+
+  /// F017: Optional visibility store override for tests.
+  /// When null, [LauncherHomePage] creates a file-backed store.
+  final AppVisibilityStore? visibilityStore;
 
   @override
   Widget build(BuildContext context) {
@@ -125,6 +131,7 @@ class HmiLauncherApp extends StatelessWidget {
         enableRos: enableRos,
         panelBuilder: panelBuilder,
         aiService: aiService,
+        visibilityStore: visibilityStore,
       ),
     );
   }
@@ -137,6 +144,7 @@ class LauncherHomePage extends StatefulWidget {
     this.enableRos = true,
     this.panelBuilder,
     this.aiService,
+    this.visibilityStore,
   });
 
   final PluginRegistry? initialRegistry;
@@ -144,12 +152,16 @@ class LauncherHomePage extends StatefulWidget {
   final AppPanelBuilder? panelBuilder;
   final LauncherBotAiService? aiService;
 
+  /// F017: Optional visibility store override for tests.
+  final AppVisibilityStore? visibilityStore;
+
   @override
   State<LauncherHomePage> createState() => _LauncherHomePageState();
 }
 
 class _LauncherHomePageState extends State<LauncherHomePage> {
   late final PluginRegistry _registry;
+  late final AppVisibilityStore _visibilityStore;
   late LauncherConfig _launcherConfig;
   String _rosStatus = 'Loading';
   LauncherRosKeeper? _rosKeeper;
@@ -163,8 +175,25 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
           appsRoot: resolveAppsRoot(),
           launcherVersion: launcherVersion,
         ).scan();
+    // F017: Visibility store — production uses XDG_CONFIG_HOME / ~/.config.
+    // Tests inject an in-memory store via widget.visibilityStore to avoid
+    // file-system I/O and to exercise the full toggle→sidebar lifecycle.
+    _visibilityStore = widget.visibilityStore ?? _resolveVisibilityStore();
+    _visibilityStore.load(); // async, best-effort — UI starts with all enabled
     _launcherConfig = LauncherConfig.defaults();
     _loadConfigAndInitRos();
+  }
+
+  static AppVisibilityStore _resolveVisibilityStore() {
+    final xdg = Platform.environment['XDG_CONFIG_HOME'];
+    if (xdg != null && xdg.isNotEmpty) {
+      return AppVisibilityStore.file('$xdg/hmi_launcher');
+    }
+    final home = Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      return AppVisibilityStore.file('$home/.config/hmi_launcher');
+    }
+    return AppVisibilityStore.file('/var/lib/hmi_launcher');
   }
 
   /// L009: Initialize unified ROS keeper for embedded plugins.
@@ -270,6 +299,10 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
 
   @override
   void dispose() {
+    // Only dispose the store when we created it (not when injected by caller).
+    if (widget.visibilityStore == null) {
+      _visibilityStore.dispose();
+    }
     _rosKeeper?.stop();
     super.dispose();
   }
@@ -278,6 +311,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   Widget build(BuildContext context) {
     return LauncherBotShell(
       registry: _registry,
+      visibilityStore: _visibilityStore,
       panelBuilder: widget.panelBuilder,
       aiService: widget.aiService,
       rosUrl: _launcherConfig.rosUrl,
