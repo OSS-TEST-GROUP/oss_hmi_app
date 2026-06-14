@@ -14,6 +14,7 @@ import '../../launcher_bot/services/launcher_bot_controller.dart';
 import '../../launcher_bot/services/voice_input_service.dart';
 import '../app_icon.dart';
 import '../launcher_bot/launcher_bot_panel.dart';
+import '../theme/hex_color.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
 import '../panels/lfc_embedded_panel.dart';
@@ -1106,7 +1107,7 @@ class _AppRail extends StatelessWidget {
                     _RailAppButton(
                       key: Key('sidebar_item_${app.id}'),
                       icon: LauncherAppIcons.forId(app.id),
-                      color: _parseHex(app.color),
+                      color: parseHexColor(app.color),
                       tooltip: app.name,
                       active: selectedAppId == app.id,
                       onTap: () => onAppSelected(app.id),
@@ -1657,7 +1658,7 @@ class _LauncherCardData {
       name: app.name,
       subtitle: app.category,
       icon: LauncherAppIcons.forApp(app),
-      color: _parseHex(app.color),
+      color: parseHexColor(app.color),
       app: app,
     );
   }
@@ -1676,14 +1677,6 @@ class _LauncherCardData {
   final IconData icon;
   final Color color;
   final AppManifest? app;
-}
-
-Color _parseHex(String hex) {
-  final normalized = hex.replaceFirst('#', '');
-  if (normalized.length != 6) return _BotColors.accent;
-  final value = int.tryParse(normalized, radix: 16);
-  if (value == null) return _BotColors.accent;
-  return Color(0xFF000000 | value);
 }
 
 abstract final class _BotColors {

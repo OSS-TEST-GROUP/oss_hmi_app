@@ -180,7 +180,7 @@ void main() {
         ),
       ));
 
-      await tester.tap(find.byType(IconButton).first);
+      await tester.tap(find.byKey(const Key('manage_apps_back_button')));
       await tester.pump();
 
       expect(closed, isTrue);
@@ -268,7 +268,7 @@ void main() {
       await tester.pump();
 
       // Close the panel by tapping the back button.
-      await tester.tap(find.byType(IconButton).first);
+      await tester.tap(find.byKey(const Key('manage_apps_back_button')));
       await tester.pump();
 
       // adsw_monitor must no longer appear in the sidebar.
@@ -308,7 +308,7 @@ void main() {
       await tester.tap(find.byKey(const Key('manage_toggle_adsw_monitor')));
       await tester.pump();
       // Close the panel.
-      await tester.tap(find.byType(IconButton).first);
+      await tester.tap(find.byKey(const Key('manage_apps_back_button')));
       await tester.pump();
 
       // Must now appear in the sidebar.
@@ -341,7 +341,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('manage_toggle_adsw_monitor')));
       await tester.pump();
-      await tester.tap(find.byType(IconButton).first);
+      await tester.tap(find.byKey(const Key('manage_apps_back_button')));
       await tester.pump();
 
       expect(find.textContaining('1 app installed'), findsWidgets);

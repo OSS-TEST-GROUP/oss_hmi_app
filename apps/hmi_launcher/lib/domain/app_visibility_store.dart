@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,14 +16,14 @@ import 'package:flutter/foundation.dart';
 /// unit tests can run the store without touching the real disk.
 class AppVisibilityStore extends ChangeNotifier {
   AppVisibilityStore({
-    String? Function()? readRaw,
+    FutureOr<String?> Function()? readRaw,
     Future<void> Function(String)? writeRaw,
     Set<String>? initialDisabled,
   })  : _readRaw = readRaw,
         _writeRaw = writeRaw,
         _disabled = initialDisabled ?? <String>{};
 
-  final String? Function()? _readRaw;
+  final FutureOr<String?> Function()? _readRaw;
   final Future<void> Function(String)? _writeRaw;
   Set<String> _disabled;
 
@@ -61,7 +62,7 @@ class AppVisibilityStore extends ChangeNotifier {
   Future<void> load() async {
     final readFn = _readRaw;
     if (readFn == null) return;
-    final raw = readFn();
+    final raw = await readFn();
     if (raw == null) return;
     try {
       final decoded = jsonDecode(raw);
@@ -98,15 +99,15 @@ class AppVisibilityStore extends ChangeNotifier {
   factory AppVisibilityStore.file(String storageDir) {
     final path = '$storageDir/app_visibility.json';
     return AppVisibilityStore(
-      readRaw: () {
+      readRaw: () async {
         final f = File(path);
-        if (!f.existsSync()) return null;
-        return f.readAsStringSync();
+        if (!await f.exists()) return null;
+        return f.readAsString();
       },
       writeRaw: (content) async {
         final f = File(path);
-        f.parent.createSync(recursive: true);
-        f.writeAsStringSync(content);
+        await f.parent.create(recursive: true);
+        await f.writeAsString(content);
       },
     );
   }

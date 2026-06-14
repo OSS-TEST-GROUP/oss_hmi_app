@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/app_manifest.dart';
 import '../../domain/app_visibility_store.dart';
+import '../theme/hex_color.dart';
 
 /// Full-screen (or dialog) panel that lists every discovered app and lets
 /// the user enable / disable each one via a toggle switch.
@@ -72,6 +73,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
+            key: const Key('manage_apps_back_button'),
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
             color: const Color(0xFF15191F),
             onPressed: onClose,
@@ -148,7 +150,7 @@ class _AppRow extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: _parseHex(app.color).withValues(alpha: 0.14),
+              color: parseHexColor(app.color).withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
@@ -196,13 +198,6 @@ class _AppRow extends StatelessWidget {
     );
   }
 
-  Color _parseHex(String hex) {
-    final s = hex.replaceAll('#', '');
-    if (s.length != 6) return const Color(0xFF2E6BE6);
-    final v = int.tryParse(s, radix: 16);
-    if (v == null) return const Color(0xFF2E6BE6);
-    return Color(0xFF000000 | v);
-  }
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────
