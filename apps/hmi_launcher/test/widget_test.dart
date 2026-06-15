@@ -1,9 +1,11 @@
-// E2E widget tests for the Tesla-reskin launcher shell.
+// Shell-level widget tests for the launcher (LauncherBotShell — L008 reskin).
 //
-// Coverage here is scoped to shell-level behavior: registry → sidebar
-// rendering, prompt → plugin launch, sidebar tap → embedded panel,
-// and the Launcher / plugin / Launcher cycle. Plugin-internal coverage
-// lives in each plugin's own test suite.
+// The launcher was reskinned from the old sidebar/promptbar LauncherShell to
+// the chatbot-integrated LauncherBotShell (_AppRail + LauncherBotPanel +
+// home grid). These tests cover the stable, shell-level behaviors of the new
+// shell: registry → home grid rendering, grid-card tap → embedded plugin
+// panel, and home greeting/app-count. Plugin internals live in each plugin's
+// own suite; chat/AI behavior lives in launcher_bot_controller_test.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +14,7 @@ import 'package:get/get.dart';
 import 'package:hmi_launcher/domain/app_manifest.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
 import 'package:hmi_launcher/main.dart';
-import 'package:hmi_launcher/presentation/shell/launcher_shell.dart';
+import 'package:hmi_launcher/presentation/shell/launcher_bot_shell.dart';
 
 PluginRegistry _registry(List<AppManifest> apps) {
   return PluginRegistry(
@@ -36,15 +38,12 @@ AppManifest _m(
       color: color,
     );
 
-/// Panel factory for tests: mount a tiny, self-contained widget instead
-/// of the real OTA / ADSW plugin panels so shell-level routing can be
-/// exercised without pulling in plugin collectors and timers.
-Widget _placeholderPanel(AppManifest app) {
-  return Center(
-    key: Key('stub_panel_${app.id}'),
-    child: Text('stub ${app.name}'),
-  );
-}
+/// Self-contained stub panel so shell routing can be exercised without
+/// pulling in real plugin collectors/timers.
+Widget _placeholderPanel(AppManifest app) => Center(
+      key: Key('stub_panel_${app.id}'),
+      child: Text('stub ${app.name}'),
+    );
 
 Future<void> _wideView(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1600, 900);
@@ -53,249 +52,87 @@ Future<void> _wideView(WidgetTester tester) async {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+Future<void> _pumpApp(WidgetTester tester, PluginRegistry registry) async {
+  await tester.pumpWidget(HmiLauncherApp(
+    initialRegistry: registry,
+    enableRos: false,
+    panelBuilder: _placeholderPanel,
+  ));
+  // Let the first post-frame setState (config load / shell init) settle.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+}
+
 void main() {
   tearDown(() {
     Get.reset();
   });
 
-  testWidgets('renders the launcher shell with sidebar entries from registry',
+  testWidgets('renders the bot shell with the home surface from registry',
       (tester) async {
     await _wideView(tester);
-    final registry = _registry([
-      _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 모니터 열어줘']),
-      _m('adsw_monitor', name: 'AD SW', prompts: ['AD SW 모니터 열어줘']),
-    ]);
+    await _pumpApp(
+      tester,
+      _registry([
+        _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 열어줘']),
+        _m('adsw_monitor', name: 'AD SW', prompts: ['AD SW 열어줘']),
+      ]),
+    );
 
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: registry,
-      enableRos: false,
-      panelBuilder: _placeholderPanel,
-    ));
+    expect(find.byType(LauncherBotShell), findsOneWidget);
+    expect(find.byKey(const Key('launcher_home_panel')), findsOneWidget);
+    expect(find.byKey(const Key('launcher_home_grid')), findsOneWidget);
 
-    expect(find.byType(LauncherShell), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_ota_monitor')), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_adsw_monitor')), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_home')), findsOneWidget);
-
-    // Home header greeting and app-count line.
-    expect(find.text('Good afternoon'), findsOneWidget);
-    expect(find.textContaining('2 apps installed'), findsWidgets);
+    // Per-app home grid cards (one card per registry app).
+    expect(find.byKey(const Key('home_cat_card_ota_monitor')), findsOneWidget);
+    expect(find.byKey(const Key('home_cat_card_adsw_monitor')), findsOneWidget);
   });
 
-  testWidgets('typing a matching prompt launches the embedded plugin',
+  testWidgets('tapping a home grid card launches the embedded plugin panel',
       (tester) async {
     await _wideView(tester);
-    final registry = _registry([
-      _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 모니터 열어줘']),
-    ]);
-
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: registry,
-      enableRos: false,
-      panelBuilder: _placeholderPanel,
-    ));
-
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'OTA 모니터 열어줘',
+    await _pumpApp(
+      tester,
+      _registry([
+        _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 열어줘']),
+      ]),
     );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+
+    await tester.tap(find.byKey(const Key('home_cat_card_ota_monitor')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
-
-    await tester.pumpAndSettle();
   });
 
-  testWidgets('short app-name query also routes via the name fallback',
+  testWidgets('empty registry still renders the shell + home surface',
       (tester) async {
     await _wideView(tester);
-    final registry = _registry([
-      _m('ota_monitor', name: 'OTA Monitor', prompts: ['업데이트 상태']),
-    ]);
+    await _pumpApp(tester, _registry(const []));
 
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: registry,
-      enableRos: false,
-      panelBuilder: _placeholderPanel,
-    ));
-
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'ota',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
-
-    await tester.pumpAndSettle();
+    expect(find.byType(LauncherBotShell), findsOneWidget);
+    expect(find.byKey(const Key('launcher_home_panel')), findsOneWidget);
+    // No plugin cards when the registry is empty.
+    expect(find.byKey(const Key('home_cat_card_ota_monitor')), findsNothing);
   });
-
-  testWidgets('non-matching input surfaces a helpful toast and no launch',
-      (tester) async {
-    await _wideView(tester);
-    final registry = _registry([
-      _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 모니터 열어줘']),
-    ]);
-
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: registry,
-      enableRos: false,
-      panelBuilder: _placeholderPanel,
-    ));
-
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      '오늘 날씨 어때',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(find.textContaining('try:'), findsOneWidget);
-    expect(find.byKey(const Key('app_embedded_ota_monitor')), findsNothing);
-
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('close command returns to the home panel',
-      (tester) async {
-    await _wideView(tester);
-    final registry = _registry([
-      _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 모니터 열어줘']),
-    ]);
-
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: registry,
-      enableRos: false,
-      panelBuilder: _placeholderPanel,
-    ));
-
-    // Open via sidebar.
-    await tester.tap(find.byKey(const Key('sidebar_item_ota_monitor')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
-
-    // Submit "close" — should return to the home panel.
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'close',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.byKey(const Key('app_embedded_ota_monitor')), findsNothing);
-    expect(find.text('Good afternoon'), findsOneWidget);
-
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('sidebar tap selects the app and shows the embedded panel',
-      (tester) async {
-    await _wideView(tester);
-    final registry = _registry([
-      _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 모니터 열어줘']),
-      _m('adsw_monitor', name: 'AD SW', prompts: ['AD SW 모니터 열어줘']),
-    ]);
-
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: registry,
-      enableRos: false,
-      panelBuilder: _placeholderPanel,
-    ));
-
-    await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
-
-    expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
-  });
-
-  testWidgets('empty registry renders the shell with the home item only',
-      (tester) async {
-    await _wideView(tester);
-
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: _registry(const []),
-      enableRos: false,
-    ));
-
-    expect(find.byType(LauncherShell), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_home')), findsOneWidget);
-    expect(find.textContaining('0 apps installed'), findsWidgets);
-  });
-
-  // ───────────────────────────────────────────────────────────────────────
-  // L007 regression: sidebar + prompt routes both apps without mixing
-  // state, and navigating home from a plugin returns to the launcher
-  // home panel.
-  // ───────────────────────────────────────────────────────────────────────
 
   testWidgets(
-      'L007 E2E — two apps: sidebar + prompt route correctly with no cross-activation',
+      'two apps: each grid card routes to its own embedded panel (no cross-activation)',
       (tester) async {
     await _wideView(tester);
-    final ota = _m(
-      'ota_monitor',
-      name: 'OTA Monitor',
-      prompts: ['OTA 모니터 열어줘', '버전 확인해줘'],
-      color: '#FCD34D',
+    await _pumpApp(
+      tester,
+      _registry([
+        _m('ota_monitor', name: 'OTA Monitor', prompts: ['OTA 열어줘']),
+        _m('adsw_monitor', name: 'AD SW', prompts: ['AD SW 열어줘']),
+      ]),
     );
-    final adsw = _m(
-      'adsw_monitor',
-      name: 'AD SW',
-      prompts: ['AD SW 모니터 열어줘', '센서 상태 보여줘'],
-      color: '#7FE5A1',
-    );
-    final registry = _registry([ota, adsw]);
 
-    await tester.pumpWidget(HmiLauncherApp(
-      initialRegistry: registry,
-      enableRos: false,
-      panelBuilder: _placeholderPanel,
-    ));
-
-    // 1. sidebar shows both plugin items
-    expect(find.byKey(const Key('sidebar_item_ota_monitor')), findsOneWidget);
-    expect(find.byKey(const Key('sidebar_item_adsw_monitor')), findsOneWidget);
-
-    // 2. prompt "AD SW 모니터 열어줘" launches adsw and leaves ota alone
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'AD SW 모니터 열어줘',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    // Launch adsw → adsw embedded, ota not mounted.
+    await tester.tap(find.byKey(const Key('home_cat_card_adsw_monitor')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
     expect(find.byKey(const Key('app_embedded_ota_monitor')), findsNothing);
-
-    // 3. prompt "OTA 모니터 열어줘" swaps to ota, dismissing adsw
-    await tester.enterText(
-      find.byKey(const Key('prompt_input_field')),
-      'OTA 모니터 열어줘',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byKey(const Key('app_embedded_ota_monitor')), findsOneWidget);
-    expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsNothing);
-
-    await tester.pumpAndSettle();
-
-    // 4. tapping the home item returns to the home panel
-    await tester.tap(find.byKey(const Key('sidebar_item_home')));
-    await tester.pumpAndSettle();
-    expect(find.text('Good afternoon'), findsOneWidget);
-
-    // 5. tapping the adsw sidebar item mounts its embedded panel again
-    await tester.tap(find.byKey(const Key('sidebar_item_adsw_monitor')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('app_embedded_adsw_monitor')), findsOneWidget);
   });
 }

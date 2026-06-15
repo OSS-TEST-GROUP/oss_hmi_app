@@ -52,6 +52,17 @@ void main() {
       expect(notifyCount, 1, reason: 'second ready should be a no-op');
     });
 
+    test('first heartbeat derives managerReady (F011 late-join safety)', () {
+      expect(c.managerReady, isFalse);
+
+      c.injectHeartbeatForTest(seq: 1, tsMs: 1000);
+
+      expect(c.managerReady, isTrue,
+          reason: 'heartbeat is the late-join-safe readiness proxy since '
+              'NotifyOtaManagerReady is a one-shot a late monitor may miss');
+      expect(c.heartbeatSeq, 1);
+    });
+
     test('status injects newest-first, capped at history limit', () {
       final small = ClientServiceController(ros: ros, historyLimit: 3);
       for (var i = 0; i < 5; i++) {

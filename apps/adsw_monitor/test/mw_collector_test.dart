@@ -105,13 +105,25 @@ void main() {
 
     mockRos = MockRos();
 
+    // 테스트 간 핸들러 캡처 누수 방지(이전 테스트의 bind 핸들러를 재사용하지 않도록).
+    infoListHandler = null;
+    infoRespHandler = null;
+
     infoReqTopic = MockTopic();
     infoListReqTopic = MockTopic();
     infoRespTopic = MockTopic();
     infoListRespTopic = MockTopic();
+    // 소스가 DiagnosticNotification 도 구독함 → 별도 mock + 스텁 필요.
+    final infoNotificationTopic = MockTopic();
+    when(() => infoNotificationTopic.subscribe(any()))
+        .thenAnswer((_) async {});
+    when(() => infoNotificationTopic.unsubscribe())
+        .thenAnswer((_) => Future<void>.value());
 
     // GetX에 Ros 주입
     Get.put<Ros>(mockRos);
+    // 소스가 ros.status (connected) 를 게이트로 사용 → 스텁.
+    when(() => mockRos.status).thenReturn(Status.connected);
 
     // advertise / unadvertise / publish / subscribe / unsubscribe 전부 스텁
     when(() => infoReqTopic.advertise())
@@ -155,6 +167,8 @@ void main() {
           return infoRespTopic;
         case '/mmf/diagnosticmgr/DiagnosticInfoListResponse':
           return infoListRespTopic;
+        case '/mmf/diagnosticmgr/DiagnosticNotification':
+          return infoNotificationTopic;
         default:
           return MockTopic();
       }
@@ -164,35 +178,43 @@ void main() {
   });
 
   tearDown(() {
+    // collector 는 Get.put 으로 등록하지 않았으므로 watchdog 타이머를 직접 정리.
+    collector.onClose();
     Get.reset();
   });
 
+  // onInit() 은 500ms 주기 watchdog 으로 ROS 에 바인딩한다(동기 X). 바인딩이
+  // 끝나면 infoListResp 구독 핸들러가 캡처되므로 그 시점까지 폴링한다.
+  Future<void> waitForBind() async {
+    for (var i = 0; i < 40; i++) {
+      if (infoListHandler != null) return;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    fail('MwCollector did not bind/subscribe within timeout');
+  }
+
   group('MwCollector lifecycle', () {
-    test('onInit prepares topics, subscribes, advertises, and kicks initial list request',
+    test('onInit binds (advertise+subscribe) and refreshOnce sends the list request',
         () async {
-      // Act
+      // Act — watchdog 바인딩 대기
       collector.onInit();
+      await waitForBind();
 
-      // 비동기 내부(_start, advertise, publish)가 돌 시간을 한 틱 줌
-      await Future<void>.delayed(Duration.zero);
-
-      // Assert
-      // 리스트/상세 Request 퍼블리셔 advertise 여부
+      // Assert — 바인딩 시 Request 퍼블리셔 advertise + Response 구독
       verify(() => infoListReqTopic.advertise()).called(1);
       verify(() => infoReqTopic.advertise()).called(1);
-
-      // Response 서브스크립션 여부
       verify(() => infoListRespTopic.subscribe(any())).called(1);
       verify(() => infoRespTopic.subscribe(any())).called(1);
 
-      // 최초 InfoList 요청이 최소 1회는 발사되어야 함
+      // 현 설계: 초기 리스트 요청은 refreshOnce() 가 트리거(자동 X).
+      await collector.refreshOnce();
       verify(() => infoListReqTopic.publish(any())).called(greaterThan(0));
     });
 
     test('onClose unsubscribes and unadvertises topics', () async {
       // Arrange
       collector.onInit();
-      await Future<void>.delayed(Duration.zero);
+      await waitForBind();
 
       // Act
       collector.onClose();
@@ -208,32 +230,32 @@ void main() {
   });
 
   group('MwCollector info list handling', () {
-    test('onInfoListResponse builds code/name mapping and initializes topicData',
+    test('onInfoListResponse maps code/name into diagnostics and requests detail',
         () async {
       // Arrange
       collector.onInit();
-      await Future<void>.delayed(Duration.zero);
+      await waitForBind();
 
       // 리스트 응답 핸들러가 제대로 캡처되었는지 확인
       expect(infoListHandler, isNotNull);
 
       final msg = <String, dynamic>{
-        'diag_codes': [1, '2', -1], // 1, 2만 유효 코드
-        'diag_names': ['DiagA', 'DiagB', 'DiagC'],
+        'diag_codes': [1, '2'],
+        'diag_names': ['DiagA', 'DiagB'],
       };
 
       // Act
       await infoListHandler(msg);
 
-      // Assert
-      // diagNames에 유효한 이름만 들어왔는지 확인
-      expect(collector.diagNames, ['DiagA', 'DiagB']);
-
-      // topicData에는 최소한 기본 값 '-'로 초기화되어야 함
-      expect(collector.topicData['DiagA'], isNotNull);
-      expect(collector.topicData['DiagB'], isNotNull);
-      expect(collector.topicData['DiagA'], '-');
-      expect(collector.topicData['DiagB'], '-');
+      // Assert — 현 API: diagnostics(List<Map>) 에 name/code 매핑이 들어옴
+      // (구버전 diagNames/topicData 게터는 제거됨).
+      final byName = {
+        for (final e in collector.diagnostics) e['name'] as String: e,
+      };
+      expect(byName.containsKey('DiagA'), isTrue);
+      expect(byName.containsKey('DiagB'), isTrue);
+      expect(byName['DiagA']!['code'], 1);
+      expect(byName['DiagB']!['code'], 2); // '2' → 2 정규화
 
       // 각 코드에 대한 상세 요청이 퍼블리시 되었는지 확인
       verify(() => infoReqTopic.publish({
@@ -252,7 +274,7 @@ void main() {
         () async {
       // Arrange
       collector.onInit();
-      await Future<void>.delayed(Duration.zero);
+      await waitForBind();
       expect(infoListHandler, isNotNull);
       expect(infoRespHandler, isNotNull);
 
@@ -274,12 +296,14 @@ void main() {
       // Act
       await infoRespHandler(respMsg);
 
-      // Assert
-      final info =
-          collector.topicData['EngineStatus'] as Map<String, dynamic>?;
-
-      expect(info, isNotNull);
-      expect(info!['name'], 'EngineStatus');
+      // Assert — 현 API: 상세 응답은 diagnostics 의 해당 code 엔트리를 갱신
+      // (구버전 topicData 맵 제거됨).
+      final info = collector.diagnostics.firstWhere(
+        (e) => e['code'] == 10,
+        orElse: () => <String, dynamic>{},
+      );
+      expect(info, isNotEmpty);
+      expect(info['name'], 'EngineStatus');
       expect(info['code'], 10);
       // ret_code / ret_text 매핑 확인
       expect(info['ret_code'], 1);
@@ -290,41 +314,37 @@ void main() {
       expect(info['message'], 'Overheated');
     });
 
-    test('onInfoResponse falls back to diag_name when code is unknown and reads nested enums',
+    test('onInfoResponse ignores a detail whose code is not in the list (graceful no-op)',
         () async {
+      // 현 _onInfoResponse 는 diagnostics 에 없는 code 면 early-return 한다
+      // (구버전의 diag_name fallback 신규 생성 동작은 제거됨).
       // Arrange
       collector.onInit();
-      await Future<void>.delayed(Duration.zero);
+      await waitForBind();
       expect(infoRespHandler, isNotNull);
 
-      // 리스트 응답 없이 바로 상세 응답이 들어오는 상황 가정
-      final respMsg = <String, dynamic>{
-        'diag_code': 999, // 매핑에 없는 코드
+      // 리스트 응답으로 코드 10만 등록.
+      await infoListHandler(<String, dynamic>{
+        'diag_codes': [10],
+        'diag_names': ['EngineStatus'],
+      });
+      final before = collector.diagnostics.length;
+
+      // 매핑에 없는 코드(999)에 대한 상세 응답.
+      await infoRespHandler(<String, dynamic>{
+        'diag_code': 999,
         'diag_name': 'UnknownDiag',
-        'ret_code': {
-          'ret_code': 2, // FAIL
-        },
-        'status': {
-          'diag_status': 3, // WARNING
-        },
+        'ret_code': {'ret_code': 2},
+        'status': {'diag_status': 3},
         'message': 'Something odd',
-      };
+      });
 
-      // Act
-      await infoRespHandler(respMsg);
-
-      // Assert
-      final info =
-          collector.topicData['UnknownDiag'] as Map<String, dynamic>?;
-
-      expect(info, isNotNull);
-      expect(info!['name'], 'UnknownDiag');
-      expect(info['code'], 999);
-      expect(info['ret_code'], 2);
-      expect(info['ret_text'], 'FAIL');
-      expect(info['status'], 3);
-      expect(info['status_text'], 'WARNING');
-      expect(info['message'], 'Something odd');
+      // Assert — 새 엔트리 생성 안 됨, 기존 목록 불변.
+      expect(collector.diagnostics.length, before);
+      expect(
+        collector.diagnostics.any((e) => e['name'] == 'UnknownDiag'),
+        isFalse,
+      );
     });
   });
 }

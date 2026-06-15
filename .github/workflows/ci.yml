@@ -1,0 +1,140 @@
+name: HMI CI
+
+# 정적분석(flutter analyze) · 단위테스트(flutter test test/) · 통합테스트(integration_test)
+# 를 GitHub Actions 로 수행한다. 대상: apps/ 하위 Flutter 앱 5종.
+#
+# - analyze / unit-test : public runner 에서 완전 실행.
+# - integration         : Linux 번들 빌드(통합 진입점 compile/link 검증) +
+#                         순수 UI E2E(oss_launcher_bot) 를 Xvfb 로 실행.
+#                         rosbridge 가 필요한 connectivity E2E(lfc/adsw/hmi)는
+#                         라이브 MMF 통합스택이 있어야 하므로 self-hosted 러너용
+#                         workflow_dispatch 입력으로 분리(아래 run-ros-e2e).
+
+on:
+  push:
+    branches: ['**']
+    paths: ['apps/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['apps/**', '.github/workflows/ci.yml']
+  workflow_dispatch:
+    inputs:
+      run-ros-e2e:
+        description: 'rosbridge 필요한 connectivity E2E 실행 (self-hosted + 라이브 MMF 스택 필요)'
+        type: boolean
+        default: false
+
+env:
+  # 다운스트림에서 팀의 Flutter 버전에 맞춰 조정. (빌더 이미지 기준 3.x)
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  analyze:
+    name: 정적분석 (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [adsw_monitor, lfc_monitor, ota_monitor, oss_launcher_bot, hmi_launcher]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      # hmi_launcher 는 ../ota_monitor 등 sibling 경로 의존 → 전체 체크아웃으로 해결됨.
+      - name: pub get
+        working-directory: apps/${{ matrix.app }}
+        run: flutter pub get
+      - name: flutter analyze
+        working-directory: apps/${{ matrix.app }}
+        run: flutter analyze
+
+  unit-test:
+    name: 단위테스트 (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [adsw_monitor, lfc_monitor, ota_monitor, oss_launcher_bot, hmi_launcher]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - name: pub get
+        working-directory: apps/${{ matrix.app }}
+        run: flutter pub get
+      - name: flutter test (unit, test/)
+        working-directory: apps/${{ matrix.app }}
+        run: flutter test test/ --reporter expanded
+
+  integration:
+    name: 통합테스트 빌드+UI (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [adsw_monitor, lfc_monitor, ota_monitor, oss_launcher_bot, hmi_launcher]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - name: Linux 데스크톱 빌드 의존성 + Xvfb/mesa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev clang cmake pkg-config \
+            xvfb libgl1-mesa-dri mesa-utils
+          flutter config --enable-linux-desktop
+      - name: pub get
+        working-directory: apps/${{ matrix.app }}
+        run: flutter pub get
+      # integration_test/ 가 실제 앱으로 compile/link 되는지 검증 (통합 진입점 빌드 게이트).
+      - name: Linux 번들 빌드 (통합 진입점 compile/link 검증)
+        working-directory: apps/${{ matrix.app }}
+        run: flutter build linux --debug
+      - name: integration_test 정적분석
+        working-directory: apps/${{ matrix.app }}
+        run: flutter analyze integration_test
+      # 순수 UI E2E(rosbridge 불필요)는 Xvfb 소프트웨어 렌더링으로 실제 실행.
+      - name: 순수 UI 통합 E2E (oss_launcher_bot, Xvfb)
+        if: matrix.app == 'oss_launcher_bot'
+        working-directory: apps/${{ matrix.app }}
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          xvfb-run -a -s "-screen 0 1366x920x24" \
+            flutter test integration_test/app_flow_test.dart -d linux
+
+  # rosbridge 가 필요한 connectivity E2E (lfc/adsw/hmi) — 라이브 MMF 통합스택 전제.
+  # public runner 엔 스택이 없으므로 self-hosted 러너에서 수동 트리거.
+  ros-e2e:
+    name: rosbridge connectivity E2E (self-hosted)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run-ros-e2e }}
+    runs-on: [self-hosted, linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [adsw_monitor, lfc_monitor, hmi_launcher]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+      - name: pub get
+        working-directory: apps/${{ matrix.app }}
+        run: flutter pub get
+      # 전제: 러너에서 docker-compose-integration.yaml(MMF) 가 떠 있어
+      #       ws://localhost:9090 (rosbridge) + lifecycle/OTA 발행이 동작 중.
+      - name: connectivity E2E (Xvfb, 라이브 스택)
+        working-directory: apps/${{ matrix.app }}
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          xvfb-run -a -s "-screen 0 1366x920x24" \
+            flutter test integration_test/connectivity_test.dart -d linux \
+              --dart-define=ROSBRIDGE_WS_URL=ws://localhost:9090

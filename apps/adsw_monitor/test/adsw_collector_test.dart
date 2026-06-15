@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:roslibdart/roslibdart.dart';
+// adsw_collector.dart also defines a SubscribeHandler typedef; hide roslibdart's
+// to resolve the ambiguous import (the test uses adsw_collector's).
+import 'package:roslibdart/roslibdart.dart' hide SubscribeHandler;
 import 'package:adsw_monitor/controller/adsw_collector.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:get/get.dart';
@@ -30,6 +32,8 @@ void main() {
 
     // subscribe 호출 시 에러가 나지 않도록 스텁
     when(() => mockTopic.subscribe(any())).thenAnswer((_) async {});
+    // subscribeTopic() 가 ros.status 를 확인하므로 connected 로 스텁.
+    when(() => mockRos.status).thenReturn(Status.connected);
 
     collector = AdswCollector(topicFactory: mockTopicFactory);
   });

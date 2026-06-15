@@ -43,8 +43,10 @@ class _FakeMwViewPageState extends State<FakeMwViewPage> {
                 onTap: () => _toggleSection('diagnostic'),
                 children: [
                   Obx(() {
-                    final names = widget.collector.diagNames.toList();
-                    if (names.isEmpty) {
+                    // 현 API: collector.diagnostics (List<Map>) 직접 순회
+                    // (구버전 diagNames/topicData 게터는 제거됨).
+                    final entries = widget.collector.diagnostics.toList();
+                    if (entries.isEmpty) {
                       // ✅ 리스트 오기 전 상태
                       return const KeyValueItem(
                         label: 'Waiting for diagnostic list…',
@@ -66,8 +68,7 @@ class _FakeMwViewPageState extends State<FakeMwViewPage> {
                       }
                     }
 
-                    String? _subtitle(dynamic raw) {
-                      if (raw is! Map) return null;
+                    String _subtitle(Map raw) {
                       final code = raw['code'];
                       final retT = raw['ret_text'];
                       final msg = raw['message'];
@@ -83,25 +84,15 @@ class _FakeMwViewPageState extends State<FakeMwViewPage> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final name in names)
-                          Builder(builder: (_) {
-                            final raw = widget.collector.topicData[name];
-                            final statusNum = (raw is Map)
-                                ? raw['status'] as int?
-                                : (raw is num ? raw.toInt() : null);
-
-                            final value = (raw is Map &&
-                                    raw['status_text'] != null)
+                        for (final raw in entries)
+                          KeyValueItem(
+                            label: '${raw['name'] ?? '-'}',
+                            value: raw['status_text'] != null
                                 ? raw['status_text'] as String
-                                : '-';
-
-                            return KeyValueItem(
-                              label: name,
-                              value: value,
-                              subtitle: _subtitle(raw),
-                              status: _statusOf(statusNum),
-                            );
-                          })
+                                : '-',
+                            subtitle: _subtitle(raw),
+                            status: _statusOf(raw['status'] as int?),
+                          ),
                       ],
                     );
                   }),
@@ -180,17 +171,18 @@ void main() {
       expect(find.text('Waiting for diagnostic list…'), findsOneWidget);
       expect(find.text('-'), findsOneWidget);
 
-      // when: diagNames와 topicData를 채워서 실제 진단 정보가 들어온 상황을 시뮬레이션
-      collector.diagNames.assignAll(['EngineStatus']);
-      collector.topicData['EngineStatus'] = {
-        'name': 'EngineStatus',
-        'code': 10,
-        'ret_code': 1,
-        'ret_text': 'PASS',
-        'status': 2,
-        'status_text': 'FATAL',
-        'message': 'Overheated',
-      };
+      // when: diagnostics 를 채워서 실제 진단 정보가 들어온 상황을 시뮬레이션
+      collector.diagnostics.assignAll([
+        {
+          'name': 'EngineStatus',
+          'code': 10,
+          'ret_code': 1,
+          'ret_text': 'PASS',
+          'status': 2,
+          'status_text': 'FATAL',
+          'message': 'Overheated',
+        },
+      ]);
 
       await tester.pump(); // Obx 리렌더
 
