@@ -1,5 +1,3 @@
-import 'app_config.dart'
-    show AppConfig;
 
 // 웹이면 web용, 아니면 io용 구현 선택
 export 'config_loader_web.dart'

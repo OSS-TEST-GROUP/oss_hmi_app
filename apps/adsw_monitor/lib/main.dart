@@ -60,9 +60,9 @@ void main(List<String> args) {
         MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: ThemeData.dark(),
-          home: WebPromptBootstrap(
+          home: const WebPromptBootstrap(
             onConfigured: startRosWithUri,
-            child: const AdswMonitorApp(),
+            child: AdswMonitorApp(),
           ),
         ),
       );
@@ -73,7 +73,7 @@ void main(List<String> args) {
 
       Get.put<Ros>(rosKeeper.ros, permanent: true);
 
-      runApp(AdswMonitorApp());
+      runApp(const AdswMonitorApp());
     }
   });
 }

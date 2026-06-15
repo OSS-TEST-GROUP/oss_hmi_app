@@ -88,6 +88,7 @@ class _AdswViewPageState extends State<AdswViewPage>
             if (_adswCollector.isLaneDeparture.value == 'true') {
               Future.microtask(
                 () => showDialog(
+                  // ignore: use_build_context_synchronously
                   context: context,
                   builder: (BuildContext context) {
                     return AlertDialog(

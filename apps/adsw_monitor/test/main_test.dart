@@ -35,7 +35,7 @@ class MockRos extends Mock implements Ros {}
 
 /// 실제 네트워크 연결 없이 start 호출 여부 + ros 등록을 테스트하기 위한 RosKeeper 더미
 class TestRosKeeper extends RosKeeper {
-  TestRosKeeper(AppConfig cfg, this.mockRos) : super(cfg);
+  TestRosKeeper(super.cfg, this.mockRos);
 
   final MockRos mockRos;
   bool startCalled = false;
@@ -72,17 +72,17 @@ void main() {
   });
 
   // 바인딩 초기화
-  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('AdswMonitorHomePage tab switching works with stubbed pages',
       (WidgetTester tester) async {
     // 🔹 테스트용 윈도우 사이즈를 넓게 잡아줘서 Row가 안 넘치게 함
-    binding.window.physicalSizeTestValue = const Size(1400, 900);
-    binding.window.devicePixelRatioTestValue = 1.0;
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
 
     addTearDown(() {
-      binding.window.clearPhysicalSizeTestValue();
-      binding.window.clearDevicePixelRatioTestValue();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
     });
 
     // 전역 변수 최소 세팅 (dispose에서 rosKeeper.stop() 호출해도 죽지 않게)

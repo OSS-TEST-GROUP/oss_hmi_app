@@ -257,7 +257,7 @@ class _HeroArt extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            base.withOpacity(0.85),
+            base.withValues(alpha: 0.85),
             LauncherTokens.t1,
           ],
         ),

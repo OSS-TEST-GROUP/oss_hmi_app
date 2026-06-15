@@ -54,7 +54,7 @@ class _FakeMwViewPageState extends State<FakeMwViewPage> {
                       );
                     }
 
-                    StatusType _statusOf(int? s) {
+                    StatusType statusOf(int? s) {
                       // MwViewPage에서 쓰는 매핑과 동일
                       switch (s) {
                         case 1:
@@ -68,7 +68,7 @@ class _FakeMwViewPageState extends State<FakeMwViewPage> {
                       }
                     }
 
-                    String _subtitle(Map raw) {
+                    String subtitle(Map raw) {
                       final code = raw['code'];
                       final retT = raw['ret_text'];
                       final msg = raw['message'];
@@ -90,8 +90,8 @@ class _FakeMwViewPageState extends State<FakeMwViewPage> {
                             value: raw['status_text'] != null
                                 ? raw['status_text'] as String
                                 : '-',
-                            subtitle: _subtitle(raw),
-                            status: _statusOf(raw['status'] as int?),
+                            subtitle: subtitle(raw),
+                            status: statusOf(raw['status'] as int?),
                           ),
                       ],
                     );
