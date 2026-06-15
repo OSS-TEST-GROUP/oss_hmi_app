@@ -21,7 +21,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Key surfaces render.
-    expect(find.text('Launcher AI Copilot'), findsOneWidget);
+    expect(find.text('LAUNCHER BOT'), findsWidgets);
     expect(find.text('내비 실행'), findsOneWidget);
 
     // Tap the navigation quick prompt → composer is populated with its
