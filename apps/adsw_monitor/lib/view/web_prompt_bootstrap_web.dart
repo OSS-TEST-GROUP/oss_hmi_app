@@ -1,5 +1,4 @@
-// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
 
 class WebPromptBootstrap extends StatefulWidget {
@@ -24,7 +23,7 @@ class _WebPromptBootstrapState extends State<WebPromptBootstrap> {
   @override
   void initState() {
     super.initState();
-    final saved = html.window.localStorage[_kRosUrlKey];
+    final saved = web.window.localStorage.getItem(_kRosUrlKey);
     if (saved != null && saved.isNotEmpty) {
       _boot(Uri.parse(saved));
     } else {
@@ -59,7 +58,7 @@ class _WebPromptBootstrapState extends State<WebPromptBootstrap> {
               try { uri = Uri.parse(txt); } catch (_) {}
               if (uri == null || !uri.hasScheme) return;
 
-              html.window.localStorage[_kRosUrlKey] = uri.toString();
+              web.window.localStorage.setItem(_kRosUrlKey, uri.toString());
               Navigator.of(ctx).pop();
               _boot(uri);
             },

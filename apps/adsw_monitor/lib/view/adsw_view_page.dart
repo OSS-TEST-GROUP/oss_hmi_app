@@ -86,9 +86,9 @@ class _AdswViewPageState extends State<AdswViewPage>
         children: [
           Obx(() {
             if (_adswCollector.isLaneDeparture.value == 'true') {
-              Future.microtask(
-                () => showDialog(
-                  // ignore: use_build_context_synchronously
+              Future.microtask(() {
+                if (!context.mounted) return;
+                showDialog(
                   context: context,
                   builder: (BuildContext context) {
                     return AlertDialog(
@@ -116,8 +116,8 @@ class _AdswViewPageState extends State<AdswViewPage>
                       ],
                     );
                   },
-                ),
-              );
+                );
+              });
               return const SizedBox();
             } else {
               return const SizedBox();

@@ -39,6 +39,7 @@ dependencies:
   get: ^4.7.2
   mocktail: ^1.0.4
   mockito: ^5.4.4
+  web: ^1.1.0   # web 빌드용 localStorage (dart:html 대체)
 
 dev_dependencies:
   flutter_test:
