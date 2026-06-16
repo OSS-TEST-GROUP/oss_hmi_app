@@ -3,7 +3,7 @@ import 'package:flutter/services.dart' show rootBundle, AssetBundle;
 import 'app_config.dart';
 
 Future<AppConfig> loadConfig([
-  List<String>? _unused,
+  List<String>? unused,
   AssetBundle? bundle, // 테스트용 주입 포인트
 ]) async {
   final b = bundle ?? rootBundle;

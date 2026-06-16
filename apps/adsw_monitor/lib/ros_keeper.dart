@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:roslibdart/roslibdart.dart';
 import '../config/app_config.dart';
 import 'package:get/get.dart';
@@ -21,6 +22,7 @@ class RosKeeper {
 
   final AppConfig cfg;
   final RosFactory _rosFactory;
+  // ignore: unused_field — 생성자 주입 시드(테스트 호환), 클래스 내부 미사용
   final TopicFactory _topicFactory;
   final TimerFactory _timerFactory;
 
@@ -52,7 +54,7 @@ class RosKeeper {
 
     _statusSub = _ros!.statusStream.listen(
       (s) async {
-        print('[ROS] status=$s');
+        debugPrint('[ROS] status=$s');
 
         if (s == Status.connected) {
           await _onConnected();
@@ -60,9 +62,9 @@ class RosKeeper {
           _restored = false;
         }
       },
-      // (s) => print('[ROS] status=$s'),
-      onError: (e, st) => print('[ROS] statusStream error: $e'),
-      onDone: () => print('[ROS] statusStream done'),
+      // (s) => debugPrint('[ROS] status=$s'),
+      onError: (e, st) => debugPrint('[ROS] statusStream error: $e'),
+      onDone: () => debugPrint('[ROS] statusStream done'),
     );
 
     _reconnectPoll?.cancel();
@@ -108,7 +110,7 @@ class RosKeeper {
     } catch (_) {}
 
     _restored = true;
-    print('[ROS] onConnected: restored topics & DI updated');
+    debugPrint('[ROS] onConnected: restored topics & DI updated');
   }
 
   Future<bool> _safeCloseWithResult(Ros r) async {
@@ -116,13 +118,13 @@ class RosKeeper {
       await r.close().timeout(const Duration(seconds: 2));
       return true;
     } catch (e) {
-      print('[RECON] close timeout/failed: $e');
+      debugPrint('[RECON] close timeout/failed: $e');
       return false;
     }
   }
 
   void _recreateRos() {
-    print('[RECON] recreate Ros');
+    debugPrint('[RECON] recreate Ros');
 
     _statusSub?.cancel();
     _statusSub = null;
@@ -138,21 +140,21 @@ class RosKeeper {
 
     _statusSub = _ros!.statusStream.listen(
       (s) async {
-        print('[ROS] status=$s');
+        debugPrint('[ROS] status=$s');
         if (s == Status.connected) {
           await _onConnected();
         } else {
           _restored = false;
         }
       },
-      //(s) => print('[ROS] status=$s'),
-      onError: (e, st) => print('[ROS] statusStream error: $e'),
-      onDone: () => print('[ROS] statusStream done'),
+      //(s) => debugPrint('[ROS] status=$s'),
+      onError: (e, st) => debugPrint('[ROS] statusStream error: $e'),
+      onDone: () => debugPrint('[ROS] statusStream done'),
     );
   }
 
   void _kickReconnect() {
-    print('[RECON] kick called. stopping=$_stopping reconnecting=$_reconnecting status=${_ros?.status}');
+    debugPrint('[RECON] kick called. stopping=$_stopping reconnecting=$_reconnecting status=${_ros?.status}');
     if (_stopping || _reconnecting) return;
 
     final r0 = _ros;
@@ -162,7 +164,7 @@ class RosKeeper {
 
     unawaited(() async {
       try {
-        print('[RECON] loop start');
+        debugPrint('[RECON] loop start');
 
         var delay = const Duration(seconds: 1);
         const maxDelay = Duration(seconds: 8);
@@ -177,10 +179,10 @@ class RosKeeper {
           }
 
           try {
-            print('[RECON] connect try. status=${r.status}');
+            debugPrint('[RECON] connect try. status=${r.status}');
             r.connect();
           } catch (e) {
-            print('[RECON] connect threw: $e');
+            debugPrint('[RECON] connect threw: $e');
           }
 
           await Future<void>.delayed(const Duration(seconds: 1));
@@ -189,9 +191,9 @@ class RosKeeper {
             return;
           }
 
-          print('[RECON] E: before close');
+          debugPrint('[RECON] E: before close');
           final ok = await _safeCloseWithResult(r);
-          print('[RECON] F: after close ok=$ok');
+          debugPrint('[RECON] F: after close ok=$ok');
 
           if (!ok) {
             _recreateRos();
@@ -203,7 +205,7 @@ class RosKeeper {
         }
       } finally {
         _reconnecting = false;
-        print('[RECON] loop end');
+        debugPrint('[RECON] loop end');
       }
     }());
   }

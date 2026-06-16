@@ -31,7 +31,7 @@ void main() {
       createdTimerDurations = [];
 
       when(() => mockRos.statusStream)
-          .thenAnswer((_) => Stream<Status>.empty());
+          .thenAnswer((_) => const Stream<Status>.empty());
       when(() => mockRos.status).thenReturn(Status.none);
     });
 
@@ -81,9 +81,9 @@ void main() {
       final mockRos1 = MockRos();
       final mockRos2 = MockRos();
       when(() => mockRos1.statusStream)
-          .thenAnswer((_) => Stream<Status>.empty());
+          .thenAnswer((_) => const Stream<Status>.empty());
       when(() => mockRos2.statusStream)
-          .thenAnswer((_) => Stream<Status>.empty());
+          .thenAnswer((_) => const Stream<Status>.empty());
       when(() => mockRos1.status).thenReturn(Status.none);
       when(() => mockRos2.status).thenReturn(Status.none);
       when(() => mockRos1.close()).thenAnswer((_) async {});

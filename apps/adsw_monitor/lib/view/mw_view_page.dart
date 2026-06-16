@@ -135,9 +135,9 @@ class MwViewPageState extends State<MwViewPage>
                 child: Obx(() {
                   final logs = _mwCollector.notificationLogs.toList();
 
-                  String _label(DiagNotificationItem it) => it.label;
+                  String label(DiagNotificationItem it) => it.label;
 
-                  String _value(DiagNotificationItem it) {
+                  String value(DiagNotificationItem it) {
                     final lines = <String>[];
 
                     // status (숫자 + 텍스트)
@@ -173,7 +173,7 @@ class MwViewPageState extends State<MwViewPage>
                   }
 
                   // 상태 색상 매핑
-                  StatusType _statusOf(DiagNotificationItem it) {
+                  StatusType statusOf(DiagNotificationItem it) {
                     // DiagnosticStatusType 매핑:
                     // 1 PASS, 2 FATAL, 3 WARNING 같은 식이면
                     switch (it.status) {
@@ -202,9 +202,9 @@ class MwViewPageState extends State<MwViewPage>
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 10),
                               child: KeyValueItem(
-                                label: _label(it),
-                                value: _value(it),
-                                status: _statusOf(it),
+                                label: label(it),
+                                value: value(it),
+                                status: statusOf(it),
                               ),
                             );
                           },
@@ -227,7 +227,7 @@ class MwViewPageState extends State<MwViewPage>
           Obx(() {
             final list = _mwCollector.diagnostics;
 
-            StatusType _statusOf(int? s) {
+            StatusType statusOf(int? s) {
               switch (s) {
                 case 1:
                   return StatusType.good;
@@ -240,7 +240,7 @@ class MwViewPageState extends State<MwViewPage>
               }
             }
 
-            String _subtitle(Map<String, dynamic> raw) {
+            String subtitle(Map<String, dynamic> raw) {
               final code = raw['code'];
               final retT = raw['ret_text'];
               final msg = raw['message'];
@@ -290,8 +290,8 @@ class MwViewPageState extends State<MwViewPage>
                             child: KeyValueItem(
                               label: label,
                               value: value,
-                              subtitle: _subtitle(raw),
-                              status: _statusOf(statusNum),
+                              subtitle: subtitle(raw),
+                              status: statusOf(statusNum),
                             ),
                           );
                         },
