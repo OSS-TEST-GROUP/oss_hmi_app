@@ -22,10 +22,12 @@
 FROM ubuntu:22.04
 
 ARG FLUTTER_VERSION=3.41.8
-ARG AGL_SDK_URL=https://repo.obigo.com/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
+# AGL SDK 20.0.3 (build-toolchain 플레이버 — engine_sdk.zip / native protoc·grpc_cpp_plugin / pyyaml / utf8_validity / ONNX GenAI 포함)
+ARG AGL_SDK_URL=https://repo.obigo.com/repository/yocto-adt/agl/poky-agl-glibc-x86_64-agl-ivi-demo-flutter-aarch64-p3737-0000-p3701-0005-toolchain-20.0.3.sh
 ARG AGL_SDK_USER=ossdev
 ARG AGL_SDK_PASSWORD=ossdev1234
-ARG AGL_SDK_INSTALL_DIR=/opt/agl-sdk
+# SDK 가 빌드된 기본 경로에 설치 → ELF relocation 불필요(install dir 불일치 회피)
+ARG AGL_SDK_INSTALL_DIR=/opt/agl-sdk/20.0.3-aarch64
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV FLUTTER_ROOT=/opt/flutter
@@ -82,9 +84,17 @@ RUN set -e; \
     fi; \
     wget ${WGET_OPTS} "${AGL_SDK_URL}" -O /tmp/agl-sdk-installer.sh && \
     chmod +x /tmp/agl-sdk-installer.sh && \
-    /tmp/agl-sdk-installer.sh -d "${AGL_SDK_INSTALL_DIR}" -y && \
-    rm /tmp/agl-sdk-installer.sh && \
+    /tmp/agl-sdk-installer.sh -d "${AGL_SDK_INSTALL_DIR}" -y; \
+    # installer 의 relocate 단계는 Flutter 문서 파일명(작은따옴표)에서 xargs 가 깨져
+    # "Abort!" 후 exit 0 으로 끝날 수 있음 → relocate_sdk.sh 를 명시적으로 재실행해 보강.
+    ( sh "${AGL_SDK_INSTALL_DIR}/relocate_sdk.sh" || true ) && \
+    rm -f /tmp/agl-sdk-installer.sh && \
     chmod -R go+rwX "${AGL_SDK_INSTALL_DIR}"
+
+# 컨테이너가 host UID 로 실행될 때, 이미지에 root 로 설치된 SDK 내 Flutter git repo
+# (create_aot 의 flutter clean/build)가 "dubious ownership" 으로 막히는 것을 방지.
+# 엔트리포인트의 경로 고정 safe.directory 는 install dir 버전 경로와 어긋나므로 system-wide 로 허용.
+RUN git config --system --add safe.directory '*'
 
 # AOT 빌드 스크립트 설치
 COPY tools/create_aot_with_yocto_sdk.py /usr/local/bin/create_aot_with_yocto_sdk.py
