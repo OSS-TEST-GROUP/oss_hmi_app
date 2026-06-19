@@ -46,7 +46,22 @@ docker run -d --name oss-hmi-launcher --restart unless-stopped --privileged --ne
   -e XDG_RUNTIME_DIR="${RUNTIME_DIR}" -e WAYLAND_DISPLAY=wayland-0 \
   "${IMAGE}"
 
+# 3) agl-shell activate — weston.ini 가 activate-by-default=false 이므로
+#    앱이 surface 를 만들어도 명시적 activate 전까지 화면에 뜨지 않는다.
+#    surface 등록 대기 후 출력(output)에 activate.
+APP_ID="${APP_ID:-hmi_launcher}"
+if command -v agl-shell-activator >/dev/null 2>&1; then
+  echo "[*] surface 등록 대기 후 agl-shell activate..."
+  sleep 6
+  OUT="$(su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=wayland-0; agl-shell-activator -a getoutputs 2>/dev/null" | tr -d ' \t' | head -1)"
+  OUT="${OUT:-DP-1}"
+  su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=wayland-0; agl-shell-activator -a activate -p ${APP_ID} -o ${OUT}" \
+    && echo "[+] '${APP_ID}' activated on ${OUT}" \
+    || echo "[!] activate 실패 — 수동: agl-shell-activator -a activate -p ${APP_ID} -o ${OUT}"
+fi
+
 echo "[+] oss-hmi-launcher 시작됨."
 echo "    상태:  docker ps --filter name=oss-hmi-launcher"
 echo "    로그:  docker logs -f oss-hmi-launcher"
 echo "    중지:  docker rm -f oss-hmi-launcher"
+echo "    재활성화:  agl-shell-activator -a activate -p ${APP_ID} -o DP-1  (agl-driver 권한)"
