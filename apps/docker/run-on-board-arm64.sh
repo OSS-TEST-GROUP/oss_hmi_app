@@ -18,15 +18,20 @@ WL_DISP="${WL_DISP:-wayland-0}"
 
 # wayland 소켓 경로 자동 감지 — 부팅/세션에 따라 /run/wayland-0(시스템 세션) 또는
 # /run/user/1001/wayland-0(유저 세션) 로 달라진다. 존재하는 쪽을 XDG_RUNTIME_DIR 로.
-if [ -S "/run/${WL_DISP}" ]; then
-  RUNTIME_DIR="/run"
-elif [ -S "/run/user/${WL_UID}/${WL_DISP}" ]; then
-  RUNTIME_DIR="/run/user/${WL_UID}"
-else
-  FOUND="$(find /run -maxdepth 3 -name "${WL_DISP}" -type s 2>/dev/null | head -1)"
-  if [ -n "$FOUND" ]; then RUNTIME_DIR="$(dirname "$FOUND")"; else
-    echo "[!] wayland 소켓(${WL_DISP}) 을 /run 에서 찾지 못함 — 컴포지터가 떠 있는지 확인"; exit 1
+# 부팅 시점엔 컴포지터가 소켓을 만들기 전일 수 있으므로 최대 ~40초 대기.
+RUNTIME_DIR=""
+i=0
+while [ $i -lt 40 ]; do
+  if [ -S "/run/${WL_DISP}" ]; then RUNTIME_DIR="/run"; break
+  elif [ -S "/run/user/${WL_UID}/${WL_DISP}" ]; then RUNTIME_DIR="/run/user/${WL_UID}"; break
+  else
+    FOUND="$(find /run -maxdepth 3 -name "${WL_DISP}" -type s 2>/dev/null | head -1)"
+    if [ -n "$FOUND" ]; then RUNTIME_DIR="$(dirname "$FOUND")"; break; fi
   fi
+  i=$((i+1)); sleep 1
+done
+if [ -z "$RUNTIME_DIR" ]; then
+  echo "[!] wayland 소켓(${WL_DISP}) 을 /run 에서 찾지 못함 — 컴포지터가 떠 있는지 확인"; exit 1
 fi
 echo "[*] wayland 소켓: ${RUNTIME_DIR}/${WL_DISP}"
 
@@ -58,24 +63,16 @@ docker run -d --name oss-hmi-launcher --restart unless-stopped --privileged --ne
   -v /usr/share/egl/egl_external_platform.d:/usr/share/egl/egl_external_platform.d:ro \
   -e LD_LIBRARY_PATH=/opt/nv-gl -e HOME=/tmp \
   -e XDG_RUNTIME_DIR="${RUNTIME_DIR}" -e WAYLAND_DISPLAY=${WL_DISP} \
-  "${IMAGE}"
+  "${IMAGE}" --window-type BG
 
-# 3) agl-shell activate — weston.ini 가 activate-by-default=false 이므로
-#    앱이 surface 를 만들어도 명시적 activate 전까지 화면에 뜨지 않는다.
-#    surface 등록 대기 후 출력(output)에 activate.
-APP_ID="${APP_ID:-hmi_launcher}"
-if command -v agl-shell-activator >/dev/null 2>&1; then
-  echo "[*] surface 등록 대기 후 agl-shell activate..."
-  sleep 6
-  OUT="$(su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=${WL_DISP}; agl-shell-activator -a getoutputs 2>/dev/null" | tr -d ' \t' | head -1)"
-  OUT="${OUT:-DP-1}"
-  su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=${WL_DISP}; agl-shell-activator -a activate -p ${APP_ID} -o ${OUT}" \
-    && echo "[+] '${APP_ID}' activated on ${OUT}" \
-    || echo "[!] activate 실패 — 수동: agl-shell-activator -a activate -p ${APP_ID} -o ${OUT}"
-fi
+# 3) --window-type BG 로 띄우면 flutter-auto 가 agl-shell 의 BACKGROUND 역할을
+#    요청한다 → 컴포지터가 black curtain 을 걷고 우리 앱을 출력 전체(background/home)
+#    에 배치한다. 따라서 별도 agl-shell-activator activate 가 필요 없다.
+#    (오히려 BACKGROUND 앱을 activate 하면 agl-compositor 가 SIGSEGV 로 죽는다.)
+#    기본 homescreen(flutter-ics-homescreen.service)은 비활성화되어 있어야 한다
+#    (한 출력에 background 는 하나뿐).
 
-echo "[+] oss-hmi-launcher 시작됨."
+echo "[+] oss-hmi-launcher 시작됨 (window-type=BG, 기본 home)."
 echo "    상태:  docker ps --filter name=oss-hmi-launcher"
 echo "    로그:  docker logs -f oss-hmi-launcher"
 echo "    중지:  docker rm -f oss-hmi-launcher"
-echo "    재활성화:  agl-shell-activator -a activate -p ${APP_ID} -o DP-1  (agl-driver 권한)"
