@@ -82,9 +82,10 @@ ADD output/${APP_NAME}-arm64-release.tar.gz /
 COPY ${APP_NAME}/config/${CONFIG_FILE} ${BUNDLE_PATH}/data/flutter_assets/assets/config/${CONFIG_FILE}
 
 # Plugin manifests: hmi_launcher scans HMI_APPS_ROOT for <app>/manifest.json.
-RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor
 COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
 COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
+COPY lfc_monitor/manifest.json /apps/lfc_monitor/manifest.json
 
 # flutter-auto entrypoint script.
 # The flutter-auto binary is expected to be mounted from the host, or it

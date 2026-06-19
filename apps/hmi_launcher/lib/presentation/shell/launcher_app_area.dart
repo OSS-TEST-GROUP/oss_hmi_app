@@ -4,6 +4,7 @@ import '../../domain/app_manifest.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
 import '../panels/launcher_home_panel.dart';
+import '../panels/lfc_embedded_panel.dart';
 import '../panels/ota_embedded_panel.dart';
 import '../theme/launcher_tokens.dart';
 
@@ -82,6 +83,8 @@ class LauncherAppArea extends StatelessWidget {
         return OtaEmbeddedPanel(key: key);
       case 'adsw_monitor':
         return AdswEmbeddedPanel(key: key);
+      case 'lfc_monitor':
+        return LfcEmbeddedPanel(key: key);
       default:
         return AppPlaceholderPanel(key: key, app: app);
     }
