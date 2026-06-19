@@ -13,8 +13,22 @@
 set -e
 IMAGE="${IMAGE:-oss-hmi-launcher:3.32.5}"
 APP_VER="${APP_VER:-3.32.5}"
-WL_UID="${WL_UID:-1001}"                    # agl-driver (wayland-0 소유자)
-RUNTIME_DIR="/run/user/${WL_UID}"
+WL_UID="${WL_UID:-1001}"                    # agl-driver
+WL_DISP="${WL_DISP:-wayland-0}"
+
+# wayland 소켓 경로 자동 감지 — 부팅/세션에 따라 /run/wayland-0(시스템 세션) 또는
+# /run/user/1001/wayland-0(유저 세션) 로 달라진다. 존재하는 쪽을 XDG_RUNTIME_DIR 로.
+if [ -S "/run/${WL_DISP}" ]; then
+  RUNTIME_DIR="/run"
+elif [ -S "/run/user/${WL_UID}/${WL_DISP}" ]; then
+  RUNTIME_DIR="/run/user/${WL_UID}"
+else
+  FOUND="$(find /run -maxdepth 3 -name "${WL_DISP}" -type s 2>/dev/null | head -1)"
+  if [ -n "$FOUND" ]; then RUNTIME_DIR="$(dirname "$FOUND")"; else
+    echo "[!] wayland 소켓(${WL_DISP}) 을 /run 에서 찾지 못함 — 컴포지터가 떠 있는지 확인"; exit 1
+  fi
+fi
+echo "[*] wayland 소켓: ${RUNTIME_DIR}/${WL_DISP}"
 
 # 1) NVIDIA/GL 드라이버 스택을 컨테이너용 디렉토리로 스테이징.
 #    libc/bash 의존성(libc.so.6 등)은 제외 — 전체 /usr/lib 를 LD_LIBRARY_PATH 에
@@ -35,7 +49,7 @@ fi
 docker rm -f oss-hmi-launcher 2>/dev/null || true
 docker run -d --name oss-hmi-launcher --restart unless-stopped --privileged --network host \
   --user "${WL_UID}:${WL_UID}" --group-add 44 --group-add 1008 \
-  -v "${RUNTIME_DIR}:${RUNTIME_DIR}" \
+  -v "${RUNTIME_DIR}/${WL_DISP}:${RUNTIME_DIR}/${WL_DISP}" \
   -v /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro \
   -v "/usr/share/flutter/${APP_VER}/release/lib/libflutter_engine.so:/usr/share/flutter/${APP_VER}/release/lib/libflutter_engine.so:ro" \
   -v "/usr/share/flutter/${APP_VER}/release/data/icudtl.dat:/usr/share/flutter/icudtl.dat:ro" \
@@ -43,7 +57,7 @@ docker run -d --name oss-hmi-launcher --restart unless-stopped --privileged --ne
   -v /usr/share/glvnd/egl_vendor.d:/usr/share/glvnd/egl_vendor.d:ro \
   -v /usr/share/egl/egl_external_platform.d:/usr/share/egl/egl_external_platform.d:ro \
   -e LD_LIBRARY_PATH=/opt/nv-gl -e HOME=/tmp \
-  -e XDG_RUNTIME_DIR="${RUNTIME_DIR}" -e WAYLAND_DISPLAY=wayland-0 \
+  -e XDG_RUNTIME_DIR="${RUNTIME_DIR}" -e WAYLAND_DISPLAY=${WL_DISP} \
   "${IMAGE}"
 
 # 3) agl-shell activate — weston.ini 가 activate-by-default=false 이므로
@@ -53,9 +67,9 @@ APP_ID="${APP_ID:-hmi_launcher}"
 if command -v agl-shell-activator >/dev/null 2>&1; then
   echo "[*] surface 등록 대기 후 agl-shell activate..."
   sleep 6
-  OUT="$(su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=wayland-0; agl-shell-activator -a getoutputs 2>/dev/null" | tr -d ' \t' | head -1)"
+  OUT="$(su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=${WL_DISP}; agl-shell-activator -a getoutputs 2>/dev/null" | tr -d ' \t' | head -1)"
   OUT="${OUT:-DP-1}"
-  su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=wayland-0; agl-shell-activator -a activate -p ${APP_ID} -o ${OUT}" \
+  su agl-driver -s /bin/sh -c "export XDG_RUNTIME_DIR=${RUNTIME_DIR} WAYLAND_DISPLAY=${WL_DISP}; agl-shell-activator -a activate -p ${APP_ID} -o ${OUT}" \
     && echo "[+] '${APP_ID}' activated on ${OUT}" \
     || echo "[!] activate 실패 — 수동: agl-shell-activator -a activate -p ${APP_ID} -o ${OUT}"
 fi
