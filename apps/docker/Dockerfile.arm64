@@ -26,7 +26,7 @@
 #     --device /dev/dri \
 #     adsw_monitor:arm64
 
-FROM --platform=linux/arm64 ubuntu:22.04
+FROM --platform=linux/arm64 ubuntu:24.04
 
 ARG APP_NAME=adsw_monitor
 ARG APP_VERSION=3.32.2
@@ -59,6 +59,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libharfbuzz0b \
     libglib2.0-0 \
     libdbus-1-3 \
+    # flutter-auto(AGL) 가 링크하는 런타임 (ldd 로 확인된 누락분)
+    libc++1 \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    libsecret-1-0 \
     fonts-noto \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
