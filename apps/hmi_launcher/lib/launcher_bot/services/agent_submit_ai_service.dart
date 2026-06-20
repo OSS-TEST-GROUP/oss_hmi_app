@@ -6,6 +6,8 @@ import 'package:grpc/grpc.dart';
 
 import '../../domain/app_manifest.dart';
 import '../../generated/agent.pbgrpc.dart';
+import '../../generated/common.pb.dart';
+import '../../generated/speech.pbgrpc.dart';
 import 'app_usage_store.dart';
 import 'launcher_bot_ai_service.dart';
 
@@ -31,6 +33,7 @@ class AgentSubmitAiService implements LauncherBotAiService {
   final ClientChannel? _overrideChannel;
 
   AgentClient? _client;
+  SpeechServiceClient? _speechClient;
   ClientChannel? _channel;
   String _sessionId = '';
 
@@ -51,8 +54,13 @@ class AgentSubmitAiService implements LauncherBotAiService {
     }
   }
 
-  AgentClient _ensureClient() {
-    if (_client != null) return _client!;
+  /// Lazily opens (and caches) the gRPC channel. Both [AgentClient] and
+  /// [SpeechServiceClient] share this one channel — Agent.Submit and
+  /// SpeechService are served by the same daemon on the same port, so the
+  /// HTTP/2 connection is established once and reused across every call.
+  ClientChannel _ensureChannel() {
+    final existing = _channel;
+    if (existing != null) return existing;
     final ch = _overrideChannel ??
         ClientChannel(
           _host,
@@ -62,11 +70,27 @@ class AgentSubmitAiService implements LauncherBotAiService {
           ),
         );
     _channel = ch;
-    _client = AgentClient(
-      ch,
+    return ch;
+  }
+
+  AgentClient _ensureClient() {
+    return _client ??= AgentClient(
+      _ensureChannel(),
       options: CallOptions(timeout: const Duration(seconds: 10)),
     );
-    return _client!;
+  }
+
+  /// SpeechService stub on the shared, persistent channel. Created once and
+  /// reused so spoken commands skip per-call channel/handshake setup — the
+  /// latency the launcher bot was paying when each transcription opened a
+  /// fresh connection.
+  SpeechServiceClient _ensureSpeechClient() {
+    return _speechClient ??= SpeechServiceClient(
+      _ensureChannel(),
+      // STT (whisper) can take several seconds, and the first call after a
+      // daemon (re)start incurs CUDA warmup — keep the deadline generous.
+      options: CallOptions(timeout: const Duration(seconds: 30)),
+    );
   }
 
   @override
@@ -118,17 +142,45 @@ class AgentSubmitAiService implements LauncherBotAiService {
     required Float32List pcm,
     required int sampleRate,
     required int channels,
-  }) {
-    // F015 범위: 음성 전사는 gRPC를 통하지 않음.
-    // 호출 측에서 AgentSubmitException 으로 폴백 처리.
-    throw const AgentSubmitException(
-      'Agent gRPC 씬 클라이언트는 오디오 전사를 지원하지 않습니다.',
-    );
+  }) async {
+    if (pcm.isEmpty) {
+      throw const AgentSubmitException('전사할 음성 데이터가 비어 있습니다.');
+    }
+
+    final client = _ensureSpeechClient();
+
+    // Float32List PCM([-1,1]) → little-endian f32 bytes. All target platforms
+    // (aarch64 board, x86 dev) are little-endian, so the raw view is pcm_f32le
+    // as the daemon's decoder expects — no quantisation, no copy of samples.
+    final audioBytes =
+        pcm.buffer.asUint8List(pcm.offsetInBytes, pcm.lengthInBytes);
+
+    final request = TranscribeRequest()
+      ..audio = audioBytes
+      ..format = (AudioFormat()
+        ..sampleRateHz = sampleRate
+        ..encoding = 'pcm_f32le')
+      ..enablePostprocess = true;
+
+    try {
+      final response = await client.transcribe(request);
+      if (!response.success) {
+        throw AgentSubmitException(
+          '음성 전사 실패: ${response.errorMessage.isEmpty ? "원인 미상" : response.errorMessage}',
+        );
+      }
+      return response.transcript.trim();
+    } on GrpcError catch (e) {
+      throw AgentSubmitException(
+        'gRPC Transcribe 실패 [${e.codeName}]: ${e.message ?? e.toString()}',
+      );
+    }
   }
 
   @override
   void dispose() {
     _client = null;
+    _speechClient = null;
     _channel?.shutdown();
     _channel = null;
   }
