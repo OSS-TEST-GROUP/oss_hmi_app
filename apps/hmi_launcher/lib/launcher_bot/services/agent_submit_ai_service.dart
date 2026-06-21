@@ -115,15 +115,91 @@ class AgentSubmitAiService implements LauncherBotAiService {
     }
   }
 
+  /// Natural-language intent routing. Asks the on-device LLM (gemma via
+  /// Agent.Submit) to classify the utterance into an app action, so phrasings
+  /// beyond the manifest's literal prompts ("OTA 좀 띄워줄래?") still launch the
+  /// right app. Returns null for non-app utterances → the controller falls
+  /// back to the NLU keyword router and finally to a conversational answer.
+  ///
+  /// The classification call is stateless (sessionId empty) so it never
+  /// pollutes the chat session.
   @override
   Future<LauncherBotAiIntent?> resolveIntent({
     required String prompt,
     required List<AppManifest> apps,
     required String currentContext,
   }) async {
-    // Agent.Submit 은 자유형 텍스트 응답만 반환한다.
-    // intent routing 은 LauncherBotController 에서 NLU 폴백으로 처리한다.
-    return null;
+    if (apps.isEmpty || prompt.trim().isEmpty) return null;
+
+    final catalog = apps.map((a) => '- ${a.id}: ${a.name}').join('\n');
+    final routerPrompt = 'You are the intent router for an automotive app '
+        'launcher. Output one routing token for the user utterance.\n'
+        'Apps (open with its exact id):\n$catalog\n'
+        'Currently open: ${currentContext.isEmpty ? "(none)" : currentContext}\n\n'
+        'Rules:\n'
+        '- OPEN <app_id>: user wants to launch/show one of the apps listed.\n'
+        '- CLOSE: user wants to close/exit the current app.\n'
+        '- SETTINGS: user wants settings/preferences/config (설정/환경설정). '
+        'Settings is NOT one of the apps — never OPEN an app for a settings request.\n'
+        '- NONE: questions, chit-chat, or anything not about launching those apps.\n'
+        'If unsure, answer NONE. Never invent an app id.\n\n'
+        'Examples:\n'
+        'OTA 좀 띄워줘 -> OPEN ota_monitor\n'
+        '설정 열어줘 -> SETTINGS\n'
+        '지금 몇 시야? -> NONE\n\n'
+        'User said: "$prompt"\n'
+        'Answer with EXACTLY ONE line (OPEN <app_id> | CLOSE | SETTINGS | NONE), '
+        'no explanation:';
+
+    final client = _ensureClient();
+    final request = AgentSubmitRequest()
+      ..text = routerPrompt
+      ..sessionId = ''; // stateless — keep the routing call out of chat history
+
+    try {
+      final response = await client.submit(request);
+      return _parseIntent(response.text, apps);
+    } on GrpcError {
+      return null; // unreachable/timeout → NLU + conversational fallback
+    }
+  }
+
+  /// Parses the router's single-line reply into an intent. Unknown / NONE /
+  /// unparseable → null (conversational fallback).
+  LauncherBotAiIntent? _parseIntent(String reply, List<AppManifest> apps) {
+    // Strip chat-template special tokens (e.g. <|im_end|>) the model may leak.
+    final cleaned = reply.replaceAll(RegExp(r'<\|[^|]*\|>'), ' ');
+    final line = cleaned
+        .split('\n')
+        .map((l) => l.trim())
+        .firstWhere((l) => l.isNotEmpty, orElse: () => '');
+    if (line.isEmpty) return null;
+    final upper = line.toUpperCase();
+
+    if (upper.startsWith('OPEN')) {
+      final rest = line.substring(4).trim().toLowerCase();
+      for (final app in apps) {
+        final id = app.id.toLowerCase();
+        if (rest == id || rest.contains(id)) {
+          return LauncherBotAiIntent(
+            action: LauncherBotAiIntentAction.openApp,
+            appId: app.id,
+          );
+        }
+      }
+      return null; // OPEN but no recognizable id → let other paths handle it
+    }
+    if (upper.startsWith('CLOSE')) {
+      return const LauncherBotAiIntent(
+        action: LauncherBotAiIntentAction.closeApp,
+      );
+    }
+    if (upper.startsWith('SETTINGS')) {
+      return const LauncherBotAiIntent(
+        action: LauncherBotAiIntentAction.openSettings,
+      );
+    }
+    return null; // NONE / anything else → conversational answer
   }
 
   @override
