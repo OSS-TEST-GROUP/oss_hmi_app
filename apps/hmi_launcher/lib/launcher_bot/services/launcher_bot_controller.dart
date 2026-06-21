@@ -15,12 +15,14 @@ class LauncherBotController extends ChangeNotifier {
     required String? Function() onCloseApp,
     required VoidCallback onOpenSettings,
     String contextName = 'Launcher',
+    DateTime Function()? now,
   })  : _nluRouter = nluRouter,
         _aiService = aiService,
         _onOpenApp = onOpenApp,
         _onCloseApp = onCloseApp,
         _onOpenSettings = onOpenSettings,
-        _contextName = contextName {
+        _contextName = contextName,
+        _now = now ?? DateTime.now {
     _messages.add(
       LauncherBotMessage(
         speaker: LauncherBotSpeaker.bot,
@@ -38,6 +40,10 @@ class LauncherBotController extends ChangeNotifier {
   final String? Function() _onCloseApp;
   final VoidCallback _onOpenSettings;
   String _contextName;
+
+  /// Wall-clock provider for message timestamps — defaults to [DateTime.now],
+  /// overridden by the shell to honour the user's selected timezone.
+  final DateTime Function() _now;
 
   final List<LauncherBotMessage> _messages = [];
   bool _isGenerating = false;
@@ -617,7 +623,7 @@ class LauncherBotController extends ChangeNotifier {
   }
 
   String _nowLabel() {
-    return _timeLabel(DateTime.now());
+    return _timeLabel(_now());
   }
 
   String _timeLabel(DateTime time, {bool withSeconds = false}) {

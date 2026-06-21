@@ -9,6 +9,7 @@ import 'package:ota_monitor/theme/app_palette.dart' as ota_theme;
 import 'package:roslibdart/roslibdart.dart';
 
 import 'domain/app_visibility_store.dart';
+import 'domain/timezone_store.dart';
 import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
 import 'launcher_bot/services/launcher_bot_ai_service.dart';
@@ -86,6 +87,7 @@ class HmiLauncherApp extends StatelessWidget {
     this.aiService,
     this.visibilityStore,
     this.botAvailabilityProbe,
+    this.timezoneStore,
   });
 
   /// Allows tests to inject a fixture registry so the UI doesn't depend on
@@ -113,6 +115,10 @@ class HmiLauncherApp extends StatelessWidget {
   /// [LauncherBotShell]; when null the shell uses the real daemon probe.
   final BotAvailabilityProbe? botAvailabilityProbe;
 
+  /// Optional timezone store override (tests). When null the page creates a
+  /// file-backed store defaulting to Korea (KST).
+  final TimezoneStore? timezoneStore;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -138,6 +144,7 @@ class HmiLauncherApp extends StatelessWidget {
         aiService: aiService,
         visibilityStore: visibilityStore,
         botAvailabilityProbe: botAvailabilityProbe,
+        timezoneStore: timezoneStore,
       ),
     );
   }
@@ -152,6 +159,7 @@ class LauncherHomePage extends StatefulWidget {
     this.aiService,
     this.visibilityStore,
     this.botAvailabilityProbe,
+    this.timezoneStore,
   });
 
   final PluginRegistry? initialRegistry;
@@ -165,6 +173,9 @@ class LauncherHomePage extends StatefulWidget {
   /// Optional launcher-bot availability probe override (tests).
   final BotAvailabilityProbe? botAvailabilityProbe;
 
+  /// Optional timezone store override (tests).
+  final TimezoneStore? timezoneStore;
+
   @override
   State<LauncherHomePage> createState() => _LauncherHomePageState();
 }
@@ -172,6 +183,7 @@ class LauncherHomePage extends StatefulWidget {
 class _LauncherHomePageState extends State<LauncherHomePage> {
   late final PluginRegistry _registry;
   late final AppVisibilityStore _visibilityStore;
+  late final TimezoneStore _timezoneStore;
   late LauncherConfig _launcherConfig;
   String _rosStatus = 'Loading';
   LauncherRosKeeper? _rosKeeper;
@@ -190,6 +202,9 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
     // file-system I/O and to exercise the full toggle→sidebar lifecycle.
     _visibilityStore = widget.visibilityStore ?? _resolveVisibilityStore();
     _visibilityStore.load(); // async, best-effort — UI starts with all enabled
+    // Display timezone — defaults to Korea (KST). Tests inject in-memory.
+    _timezoneStore = widget.timezoneStore ?? _resolveTimezoneStore();
+    _timezoneStore.load(); // async, best-effort — UI starts on KST
     _launcherConfig = LauncherConfig.defaults();
     _loadConfigAndInitRos();
   }
@@ -204,6 +219,18 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       return AppVisibilityStore.file('$home/.config/hmi_launcher');
     }
     return AppVisibilityStore.file('/var/lib/hmi_launcher');
+  }
+
+  static TimezoneStore _resolveTimezoneStore() {
+    final xdg = Platform.environment['XDG_CONFIG_HOME'];
+    if (xdg != null && xdg.isNotEmpty) {
+      return TimezoneStore.file('$xdg/hmi_launcher');
+    }
+    final home = Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      return TimezoneStore.file('$home/.config/hmi_launcher');
+    }
+    return TimezoneStore.file('/var/lib/hmi_launcher');
   }
 
   /// L009: Initialize unified ROS keeper for embedded plugins.
@@ -313,6 +340,9 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
     if (widget.visibilityStore == null) {
       _visibilityStore.dispose();
     }
+    if (widget.timezoneStore == null) {
+      _timezoneStore.dispose();
+    }
     _rosKeeper?.stop();
     super.dispose();
   }
@@ -323,6 +353,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       botAvailabilityProbe: widget.botAvailabilityProbe,
       registry: _registry,
       visibilityStore: _visibilityStore,
+      timezoneStore: _timezoneStore,
       panelBuilder: widget.panelBuilder,
       aiService: widget.aiService,
       rosUrl: _launcherConfig.rosUrl,

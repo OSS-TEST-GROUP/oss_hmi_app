@@ -7,6 +7,7 @@ import '../../domain/app_manifest.dart';
 import '../../domain/app_visibility_store.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
+import '../../domain/timezone_store.dart';
 import '../../launcher_bot/services/agent_submit_ai_service.dart';
 import '../../launcher_bot/services/app_usage_store.dart';
 import '../../launcher_bot/services/launcher_bot_ai_service.dart';
@@ -41,6 +42,7 @@ class LauncherBotShell extends StatefulWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.onAppThemeChanged,
+    required this.timezoneStore,
     this.onRunningAppIdsChanged,
     this.initialAppId,
     this.panelBuilder,
@@ -53,6 +55,9 @@ class LauncherBotShell extends StatefulWidget {
   /// Controls which apps are visible in the sidebar and home grid.
   /// Must outlive the shell widget — owned by the parent page.
   final AppVisibilityStore visibilityStore;
+
+  /// Display timezone (greeting + chat timestamps). Defaults to Korea (KST).
+  final TimezoneStore timezoneStore;
 
   final Uri rosUrl;
   final String rosStatus;
@@ -159,11 +164,19 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       onOpenApp: _openApp,
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
+      now: () => widget.timezoneStore.now(),
     );
     // Rebuild whenever visibility changes so sidebar + home react instantly.
     widget.visibilityStore.addListener(_onVisibilityChanged);
+    widget.timezoneStore.addListener(_onTimezoneChanged);
     _notifyRunningAppIdsChanged();
     _loadUsageAndSuggest();
+  }
+
+  // Timezone change (from Settings) → rebuild so the greeting and chat
+  // timestamps re-render in the newly selected zone.
+  void _onTimezoneChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onVisibilityChanged() {
@@ -238,6 +251,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   @override
   void dispose() {
     widget.visibilityStore.removeListener(_onVisibilityChanged);
+    widget.timezoneStore.removeListener(_onTimezoneChanged);
     _flushUsageFocus();
     _voiceSession?.stop();
     _launcherBotController.dispose();
@@ -583,6 +597,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       adswTheme: widget.adswTheme,
                       lfcTheme: widget.lfcTheme,
                       aiSdkAvailable: _aiSdkAvailable,
+                      timezoneStore: widget.timezoneStore,
                       onAppThemeChanged: widget.onAppThemeChanged,
                     ),
                   ),
@@ -610,6 +625,7 @@ class _AppStage extends StatelessWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.aiSdkAvailable,
+    required this.timezoneStore,
     required this.onAppThemeChanged,
     this.panelBuilder,
   });
@@ -619,6 +635,7 @@ class _AppStage extends StatelessWidget {
   final String? selectedAppId;
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
+  final TimezoneStore timezoneStore;
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
@@ -644,6 +661,7 @@ class _AppStage extends StatelessWidget {
           _HomeSurface(
             key: const ValueKey('home_panel'),
             apps: apps,
+            now: timezoneStore.now(),
             onAppLaunch: onAppLaunch,
             onSettingsLaunch: onSettingsLaunch,
           ),
@@ -672,6 +690,7 @@ class _AppStage extends StatelessWidget {
         adswTheme: adswTheme,
         lfcTheme: lfcTheme,
         aiSdkAvailable: aiSdkAvailable,
+        timezoneStore: timezoneStore,
         onAppThemeChanged: onAppThemeChanged,
       );
     }
@@ -698,17 +717,21 @@ class _HomeSurface extends StatelessWidget {
   const _HomeSurface({
     super.key,
     required this.apps,
+    required this.now,
     required this.onAppLaunch,
     required this.onSettingsLaunch,
   });
 
   final List<AppManifest> apps;
+
+  /// Wall-clock time in the user-selected timezone (default KST).
+  final DateTime now;
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
 
-  /// Returns the greeting based on the current hour.
-  static String _greeting() {
-    final hour = DateTime.now().hour;
+  /// Returns the greeting based on the hour in the selected timezone.
+  static String _greeting(DateTime now) {
+    final hour = now.hour;
     if (hour < 12) return 'Good morning';
     if (hour < 17) return 'Good afternoon';
     return 'Good evening';
@@ -731,7 +754,7 @@ class _HomeSurface extends StatelessWidget {
         children: [
           // Greeting header — matches the text that widget tests look for.
           Text(
-            _greeting(),
+            _greeting(now),
             key: const Key('home_greeting'),
             style: const TextStyle(
               color: _BotColors.ink,
@@ -799,6 +822,7 @@ class _SettingsPage extends StatefulWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.aiSdkAvailable,
+    required this.timezoneStore,
     required this.onAppThemeChanged,
   });
 
@@ -811,6 +835,7 @@ class _SettingsPage extends StatefulWidget {
   final String adswTheme;
   final String lfcTheme;
   final bool aiSdkAvailable;
+  final TimezoneStore timezoneStore;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
 
   @override
@@ -959,6 +984,16 @@ class _SettingsPageState extends State<_SettingsPage> {
                         value: widget.lfcTheme,
                         onChanged: (theme) =>
                             widget.onAppThemeChanged('lfc_monitor', theme),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _SettingsPanel(
+                    title: 'Localization',
+                    children: [
+                      _TimezoneSettingRow(
+                        selectedId: widget.timezoneStore.selectedId,
+                        onChanged: (id) => widget.timezoneStore.select(id),
                       ),
                     ],
                   ),
@@ -1428,6 +1463,65 @@ class _ThemeSettingRow extends StatelessWidget {
             label: 'Dark',
             selected: value == 'dark',
             onTap: () => onChanged('dark'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Timezone picker row — label + dropdown over the curated catalog.
+/// Changing it persists via TimezoneStore and refreshes the greeting/clock.
+class _TimezoneSettingRow extends StatelessWidget {
+  const _TimezoneSettingRow({
+    required this.selectedId,
+    required this.onChanged,
+  });
+
+  final String selectedId;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _BotColors.canvas,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Time zone',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _BotColors.ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          DropdownButton<String>(
+            key: const Key('timezone_dropdown'),
+            value: selectedId,
+            underline: const SizedBox.shrink(),
+            borderRadius: BorderRadius.circular(8),
+            style: const TextStyle(
+              color: _BotColors.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+            items: [
+              for (final tz in kTimezoneCatalog)
+                DropdownMenuItem<String>(
+                  value: tz.id,
+                  child: Text(tz.label),
+                ),
+            ],
+            onChanged: (id) {
+              if (id != null) onChanged(id);
+            },
           ),
         ],
       ),
