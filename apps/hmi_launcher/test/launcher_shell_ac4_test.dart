@@ -15,6 +15,13 @@ import 'package:hmi_launcher/domain/app_visibility_store.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
 import 'package:hmi_launcher/main.dart';
 
+// Deterministic launcher-bot availability probes — avoid opening a real
+// socket (and leaving a pending connection timer) in widget tests.
+Future<bool> _botUnavailable({required String host, required int port}) async =>
+    false;
+Future<bool> _botAvailable({required String host, required int port}) async =>
+    true;
+
 PluginRegistry _emptyRegistry() {
   return PluginRegistry(const []);
 }
@@ -58,6 +65,7 @@ void main() {
       initialRegistry: _emptyRegistry(),
       enableRos: false,
       visibilityStore: AppVisibilityStore.inMemory(),
+      botAvailabilityProbe: _botUnavailable,
     ));
 
     // 에러 다이얼로그 없이 MaterialApp 이 렌더링됐는지 확인
@@ -81,6 +89,7 @@ void main() {
       initialRegistry: _singleAppRegistry(),
       enableRos: false,
       visibilityStore: AppVisibilityStore.inMemory(),
+      botAvailabilityProbe: _botUnavailable,
     ));
 
     // LauncherBotShell 이 렌더링됐는지 확인
@@ -88,6 +97,28 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(AlertDialog), findsNothing);
+
+    // 데몬 미연결 시 봇 진입점(assistant_toggle)은 숨겨진다.
+    expect(find.byKey(const Key('assistant_toggle')), findsNothing);
+  });
+
+  testWidgets('데몬 연결 가능하면 launcher_bot 진입점이 노출된다',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(HmiLauncherApp(
+      initialRegistry: _singleAppRegistry(),
+      enableRos: false,
+      visibilityStore: AppVisibilityStore.inMemory(),
+      botAvailabilityProbe: _botAvailable,
+    ));
+    await tester.pump(); // probe(microtask) 완료 → setState 로 봇 노출
+
+    expect(find.byKey(const Key('assistant_toggle')), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
   });
 
@@ -106,6 +137,7 @@ void main() {
       initialRegistry: _emptyRegistry(),
       enableRos: false,
       visibilityStore: AppVisibilityStore.inMemory(),
+      botAvailabilityProbe: _botUnavailable,
     ));
 
     await tester.pump();

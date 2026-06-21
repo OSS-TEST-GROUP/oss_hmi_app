@@ -22,6 +22,13 @@ import '../panels/manage_apps_panel.dart';
 import '../panels/ota_embedded_panel.dart';
 import 'launcher_app_area.dart';
 
+/// Probes whether the v_agentos daemon is reachable, deciding launcher-bot
+/// visibility at startup. Matches [AgentSubmitAiService.canConnect].
+typedef BotAvailabilityProbe = Future<bool> Function({
+  required String host,
+  required int port,
+});
+
 class LauncherBotShell extends StatefulWidget {
   const LauncherBotShell({
     super.key,
@@ -38,6 +45,7 @@ class LauncherBotShell extends StatefulWidget {
     this.initialAppId,
     this.panelBuilder,
     this.aiService,
+    this.botAvailabilityProbe,
   });
 
   final PluginRegistry registry;
@@ -64,6 +72,12 @@ class LauncherBotShell extends StatefulWidget {
   /// implementation) to avoid real gRPC connections.
   final LauncherBotAiService? aiService;
 
+  /// Optional startup availability probe. Defaults to
+  /// [AgentSubmitAiService.canConnect]. Tests inject a deterministic probe to
+  /// decide bot visibility without opening a real socket (and without leaving
+  /// a pending connection timer).
+  final BotAvailabilityProbe? botAvailabilityProbe;
+
   @override
   State<LauncherBotShell> createState() => _LauncherBotShellState();
 }
@@ -77,11 +91,13 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   final AppUsageStore _usageStore = AppUsageStore();
   final VoiceInputService _voiceInputService = const VoiceInputService();
   VoiceCaptureSession? _voiceSession;
-  // F015: _aiSdkAvailable は gRPC 씬 클라이언트 가용성을 나타낸다.
-  // 내장 LLM FFI 는 제거됐으며 gRPC Agent.Submit 이 주 AI 백엔드다.
-  // 서버 미기동 시 NLU substring 폴백으로 이행한다 (AC3).
-  late final bool _aiSdkAvailable;
-  late bool _aiMode;
+  // _aiSdkAvailable: 런처봇 가용성 = v_agentos 데몬(:50051) 연결 가능 여부.
+  // 기동 시 canConnect probe 로 결정한다. 데몬을 제공하지 않으면(또는
+  // LAUNCHER_BOT_ENABLED=0) false 가 되고, 봇 진입점·패널·모드 토글을 모두
+  // 숨긴다 — 데몬 없는 빌드에서 봇은 무의미하므로 노출하지 않는다.
+  // (probe 성공 후 호출 실패 시의 일시적 NLU substring 폴백은 그대로 유지.)
+  bool _aiSdkAvailable = false;
+  bool _aiMode = false;
   String? _usageFocusAppId;
   DateTime? _usageFocusStartedAt;
   bool _assistantOpen = false;
@@ -115,7 +131,19 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     // 실제 gRPC 연결 없이 NLU 폴백만으로 동작할 수 있다.
     final agentHost = _resolveAgentHost();
     final agentPort = _resolveAgentPort();
-    _aiSdkAvailable = true; // gRPC 씬 클라이언트는 항상 준비됨 — 연결 실패는 런타임 폴백 처리
+    // 봇 가용성 판단:
+    //  - 테스트가 aiService 를 주입하면 항상 활성 (gRPC 없이 동작 검증).
+    //  - LAUNCHER_BOT_ENABLED=0 이면 강제 비활성 (데몬 없는 빌드 패키징용).
+    //  - 그 외에는 기동 시 데몬(:50051) 연결 probe 로 결정. probe 완료 전까지는
+    //    숨김 상태로 두어, 데몬이 없을 때 봇이 잠깐 떴다 사라지는 깜빡임을 막는다.
+    //    systemd 가 데몬을 런처보다 먼저 띄우므로(Before=oss-hmi-launcher)
+    //    데몬을 제공하면 probe 는 즉시 성공한다.
+    final forceDisabled = Platform.environment['LAUNCHER_BOT_ENABLED'] == '0';
+    if (widget.aiService != null) {
+      _aiSdkAvailable = true;
+    } else if (!forceDisabled) {
+      _probeAgentAvailability(agentHost, agentPort);
+    }
     _aiMode = _aiSdkAvailable;
 
     _nluRouter = NluRouter(_visibleApps);
@@ -169,6 +197,20 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     const portStr =
         String.fromEnvironment('AGENT_PORT', defaultValue: '50051');
     return int.tryParse(portStr.trim()) ?? 50051;
+  }
+
+  /// Probes the v_agentos daemon at startup. The launcher bot only reveals
+  /// itself when the daemon answers — without it the bot has no LLM and no
+  /// STT, so it stays hidden rather than degrading to a keyword launcher.
+  Future<void> _probeAgentAvailability(String host, int port) async {
+    final probe = widget.botAvailabilityProbe ?? AgentSubmitAiService.canConnect;
+    final reachable = await probe(host: host, port: port);
+    if (!mounted || !reachable) return;
+    setState(() {
+      _aiSdkAvailable = true;
+      _aiMode = true;
+    });
+    _loadUsageAndSuggest();
   }
 
   @override
@@ -513,7 +555,9 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 260),
                     curve: Curves.easeOutCubic,
-                    width: _assistantOpen ? 440 : 0,
+                    // 봇 비활성 시 패널을 절대 펼치지 않는다(진입점이 숨겨져
+                    // _assistantOpen 이 참이 될 수 없지만 방어적으로 가드).
+                    width: (_assistantOpen && _aiSdkAvailable) ? 440 : 0,
                     child: ClipRect(
                       child: LauncherBotPanel(
                         controller: _launcherBotController,
@@ -1027,19 +1071,23 @@ class _TopBar extends StatelessWidget {
           const SizedBox(width: 10),
           // F017: Manage Apps entry point in the top bar grid area.
           _ManageAppsButton(onTap: onManageApps),
-          const SizedBox(width: 10),
-          _ModeButton(
-            label: 'Standard',
-            active: !aiMode,
-            onTap: () => onModeChanged(false),
-          ),
-          const SizedBox(width: 8),
-          _ModeButton(
-            label: 'AI SDK',
-            active: aiMode,
-            enabled: aiSdkAvailable,
-            onTap: () => onModeChanged(true),
-          ),
+          // Standard/AI-SDK 모드 토글은 봇이 활성일 때만 의미가 있다.
+          // 데몬 미제공 시 봇 전체가 숨겨지므로 토글도 숨긴다.
+          if (aiSdkAvailable) ...[
+            const SizedBox(width: 10),
+            _ModeButton(
+              label: 'Standard',
+              active: !aiMode,
+              onTap: () => onModeChanged(false),
+            ),
+            const SizedBox(width: 8),
+            _ModeButton(
+              label: 'AI SDK',
+              active: aiMode,
+              enabled: aiSdkAvailable,
+              onTap: () => onModeChanged(true),
+            ),
+          ],
         ],
       ),
     );
@@ -1118,31 +1166,36 @@ class _AppRail extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          _RailActionButton(
-            icon: Icons.mic_none,
-            enabled: false,
-            active: false,
-            tooltip: 'Voice command is disabled',
-            onTap: onVoiceCommand,
-          ),
-          const SizedBox(height: 8),
-          _RailActionButton(
-            key: const Key('assistant_toggle'),
-            iconWidget: assistantOpen
-                ? Transform.flip(
-                    flipX: true,
-                    child: const Icon(
-                      Icons.start_outlined,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.chat_bubble_outline_rounded),
-            active: assistantOpen,
-            enabled: true,
-            tooltip: assistantOpen ? 'Hide Launcher Bot' : 'Open Launcher Bot',
-            onTap: onAssistantToggle,
-          ),
+          // 봇 진입점(음성·어시스턴트 토글)은 v_agentos 데몬이 연결됐을 때만
+          // 노출한다. 데몬 미제공 시 봇 자체를 숨긴다.
+          if (aiSdkAvailable) ...[
+            const SizedBox(height: 8),
+            _RailActionButton(
+              icon: Icons.mic_none,
+              enabled: false,
+              active: false,
+              tooltip: 'Voice command is disabled',
+              onTap: onVoiceCommand,
+            ),
+            const SizedBox(height: 8),
+            _RailActionButton(
+              key: const Key('assistant_toggle'),
+              iconWidget: assistantOpen
+                  ? Transform.flip(
+                      flipX: true,
+                      child: const Icon(
+                        Icons.start_outlined,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.chat_bubble_outline_rounded),
+              active: assistantOpen,
+              enabled: true,
+              tooltip:
+                  assistantOpen ? 'Hide Launcher Bot' : 'Open Launcher Bot',
+              onTap: onAssistantToggle,
+            ),
+          ],
           //const SizedBox(height: 8),
           //const _RailUtility(icon: Icons.power_settings_new),
         ],

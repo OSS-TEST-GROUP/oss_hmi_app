@@ -85,6 +85,7 @@ class HmiLauncherApp extends StatelessWidget {
     this.panelBuilder,
     this.aiService,
     this.visibilityStore,
+    this.botAvailabilityProbe,
   });
 
   /// Allows tests to inject a fixture registry so the UI doesn't depend on
@@ -107,6 +108,10 @@ class HmiLauncherApp extends StatelessWidget {
   /// F017: Optional visibility store override for tests.
   /// When null, [LauncherHomePage] creates a file-backed store.
   final AppVisibilityStore? visibilityStore;
+
+  /// Optional launcher-bot availability probe override (tests). Forwarded to
+  /// [LauncherBotShell]; when null the shell uses the real daemon probe.
+  final BotAvailabilityProbe? botAvailabilityProbe;
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +137,7 @@ class HmiLauncherApp extends StatelessWidget {
         panelBuilder: panelBuilder,
         aiService: aiService,
         visibilityStore: visibilityStore,
+        botAvailabilityProbe: botAvailabilityProbe,
       ),
     );
   }
@@ -145,6 +151,7 @@ class LauncherHomePage extends StatefulWidget {
     this.panelBuilder,
     this.aiService,
     this.visibilityStore,
+    this.botAvailabilityProbe,
   });
 
   final PluginRegistry? initialRegistry;
@@ -154,6 +161,9 @@ class LauncherHomePage extends StatefulWidget {
 
   /// F017: Optional visibility store override for tests.
   final AppVisibilityStore? visibilityStore;
+
+  /// Optional launcher-bot availability probe override (tests).
+  final BotAvailabilityProbe? botAvailabilityProbe;
 
   @override
   State<LauncherHomePage> createState() => _LauncherHomePageState();
@@ -310,6 +320,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   @override
   Widget build(BuildContext context) {
     return LauncherBotShell(
+      botAvailabilityProbe: widget.botAvailabilityProbe,
       registry: _registry,
       visibilityStore: _visibilityStore,
       panelBuilder: widget.panelBuilder,
