@@ -17,6 +17,7 @@ class AppManifest {
     required this.version,
     required this.entry,
     this.category = 'misc',
+    this.description = '',
     this.color = '#64748B',
     this.prompts = const [],
     this.permissions = const [],
@@ -42,6 +43,10 @@ class AppManifest {
   /// Category tag used for sidebar grouping and sort order.
   /// Known values in v4: `monitoring`, `visualization`, `assistant`, `misc`.
   final String category;
+
+  /// Short one-line description shown as the app card subtitle. When empty,
+  /// the card falls back to [category]. Keep it concise (≈1–3 words).
+  final String description;
 
   /// Hex color (#RRGGBB) rendered as the accent on sidebar items and cards.
   final String color;
@@ -110,6 +115,7 @@ class AppManifest {
       version: requireString('version'),
       entry: requireString('entry'),
       category: (json['category'] as String?) ?? 'misc',
+      description: (json['description'] as String?) ?? '',
       color: (json['color'] as String?) ?? '#64748B',
       prompts: asStringList('prompts'),
       permissions: asStringList('permissions'),

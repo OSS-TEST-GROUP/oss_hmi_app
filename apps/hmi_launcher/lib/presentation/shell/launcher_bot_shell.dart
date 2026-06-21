@@ -1809,7 +1809,9 @@ class _LauncherCardData {
     return _LauncherCardData(
       id: app.id,
       name: app.name,
-      subtitle: app.category,
+      // Prefer the manifest's human description; fall back to the category
+      // tag (e.g. "monitoring") for apps that don't declare one.
+      subtitle: app.description.isNotEmpty ? app.description : app.category,
       icon: LauncherAppIcons.forApp(app),
       color: parseHexColor(app.color),
       app: app,

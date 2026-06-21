@@ -4,6 +4,7 @@
   "icon": "🔄",
   "version": "1.0.0",
   "category": "monitoring",
+  "description": "Service & process health",
   "color": "#60A5FA",
   "prompts": [
     "LFC 실행해줘",

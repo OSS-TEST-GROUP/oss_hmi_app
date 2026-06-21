@@ -4,6 +4,7 @@
   "icon": "📦",
   "version": "1.0.0",
   "category": "monitoring",
+  "description": "Software updates",
   "color": "#FCD34D",
   "prompts": [
     "OTA Monitor 실행해줘",
