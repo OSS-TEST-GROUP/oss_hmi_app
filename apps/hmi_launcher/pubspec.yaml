@@ -82,6 +82,7 @@ flutter:
     - config/launcher_config.json
     - assets/config/
     - assets/audio/
+    - assets/images/
 
   fonts:
     - family: Orbitron

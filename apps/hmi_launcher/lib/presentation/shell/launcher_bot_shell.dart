@@ -1063,13 +1063,19 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Text(
-            'AGL',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 4.2,
-              color: _BotColors.ink,
+          Image.asset(
+            'assets/images/obigo_logo.png',
+            height: 34,
+            filterQuality: FilterQuality.high,
+            // Fallback to the text wordmark if the asset is unavailable.
+            errorBuilder: (context, error, stack) => const Text(
+              'OBIGO',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 4.2,
+                color: _BotColors.ink,
+              ),
             ),
           ),
           const SizedBox(width: 18),
