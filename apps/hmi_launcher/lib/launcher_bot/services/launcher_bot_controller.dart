@@ -15,12 +15,14 @@ class LauncherBotController extends ChangeNotifier {
     required String? Function() onCloseApp,
     required VoidCallback onOpenSettings,
     String contextName = 'Launcher',
+    DateTime Function()? now,
   })  : _nluRouter = nluRouter,
         _aiService = aiService,
         _onOpenApp = onOpenApp,
         _onCloseApp = onCloseApp,
         _onOpenSettings = onOpenSettings,
-        _contextName = contextName {
+        _contextName = contextName,
+        _now = now ?? DateTime.now {
     _messages.add(
       LauncherBotMessage(
         speaker: LauncherBotSpeaker.bot,
@@ -39,9 +41,14 @@ class LauncherBotController extends ChangeNotifier {
   final VoidCallback _onOpenSettings;
   String _contextName;
 
+  /// Wall-clock provider for message timestamps — defaults to [DateTime.now],
+  /// overridden by the shell to honour the user's selected timezone.
+  final DateTime Function() _now;
+
   final List<LauncherBotMessage> _messages = [];
   bool _isGenerating = false;
   String? _pendingSuggestionAppId;
+  bool _disposed = false;
 
   List<LauncherBotMessage> get messages => List.unmodifiable(_messages);
   bool get isGenerating => _isGenerating;
@@ -68,7 +75,9 @@ class LauncherBotController extends ChangeNotifier {
   Future<bool> suggestFrequentApp({
     required List<AppUsageStats> usages,
   }) async {
-    if (_isGenerating || _pendingSuggestionAppId != null) return false;
+    if (_disposed || _isGenerating || _pendingSuggestionAppId != null) {
+      return false;
+    }
 
     _isGenerating = true;
     notifyListeners();
@@ -79,6 +88,7 @@ class LauncherBotController extends ChangeNotifier {
         usages: usages,
         currentContext: _contextName,
       );
+      if (_disposed) return false;
       final app = _appById(suggestion?.appId);
       if (suggestion == null || app == null) return false;
       final suggestionText = _suggestionTextWithAppName(
@@ -108,7 +118,7 @@ class LauncherBotController extends ChangeNotifier {
       return false;
     } finally {
       _isGenerating = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -179,15 +189,17 @@ class LauncherBotController extends ChangeNotifier {
         details: _performanceLabel(generationStartedAt),
       );
     } catch (error) {
-      _messages[pendingIndex] = _messages[pendingIndex].copyWith(
-        text: 'AI 응답 생성에 실패했습니다. $error',
-        timestamp: _nowLabel(),
-        intent: 'Error',
-        details: _performanceLabel(generationStartedAt),
-      );
+      if (!_disposed) {
+        _messages[pendingIndex] = _messages[pendingIndex].copyWith(
+          text: 'AI 응답 생성에 실패했습니다. $error',
+          timestamp: _nowLabel(),
+          intent: 'Error',
+          details: _performanceLabel(generationStartedAt),
+        );
+      }
     } finally {
       _isGenerating = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -605,12 +617,13 @@ class LauncherBotController extends ChangeNotifier {
   }
 
   void _addMessage(LauncherBotMessage message) {
+    if (_disposed) return;
     _messages.add(message);
     notifyListeners();
   }
 
   String _nowLabel() {
-    return _timeLabel(DateTime.now());
+    return _timeLabel(_now());
   }
 
   String _timeLabel(DateTime time, {bool withSeconds = false}) {
@@ -622,6 +635,7 @@ class LauncherBotController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _aiService.dispose();
     super.dispose();
   }

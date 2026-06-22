@@ -69,6 +69,11 @@ foreach(candidate ${OBIGO_OASIS_CANDIDATE_DIRS})
   endif()
 endforeach()
 
+# F015: chatbot_bridge (내장 LLM FFI) 는 F015 에서 Dart 측 FFI 가 제거됐다.
+# Dart 코드(gemma_chatbot_service.dart)에서 dart:ffi / chatbot_bridge 의존이 삭제됐으므로
+# chatbot_bridge.so 는 빌드되더라도 로드·호출되지 않는다.
+# SDK 가 없으면 아래 if() 블록 전체가 건너뛰어져 chatbot_bridge 가 빌드 대상에서 제외된다.
+# 새 AI 백엔드: Agent.Submit gRPC (agent_submit_ai_service.dart, ADR-014 결정 2).
 set(CHATBOT_BRIDGE_ENABLED FALSE)
 if(NOT "${OBIGO_OASIS_DIR}" STREQUAL "")
   set(OBIGO_OASIS_INCLUDE_DIR "${OBIGO_OASIS_DIR}/include")

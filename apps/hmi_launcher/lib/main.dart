@@ -8,12 +8,14 @@ import 'package:lfc_monitor/theme/lfc_palette.dart' as lfc_theme;
 import 'package:ota_monitor/theme/app_palette.dart' as ota_theme;
 import 'package:roslibdart/roslibdart.dart';
 
+import 'domain/app_visibility_store.dart';
+import 'domain/timezone_store.dart';
 import 'domain/launcher_config.dart';
 import 'domain/plugin_registry.dart';
+import 'launcher_bot/services/launcher_bot_ai_service.dart';
 import 'presentation/keyboard/keyboard_host.dart';
 import 'presentation/shell/launcher_app_area.dart';
 import 'presentation/shell/launcher_bot_shell.dart';
-import 'presentation/shell/launcher_shell.dart';
 import 'presentation/theme/launcher_tokens.dart';
 import 'ros/launcher_ros_keeper.dart';
 
@@ -82,6 +84,10 @@ class HmiLauncherApp extends StatelessWidget {
     this.initialRegistry,
     this.enableRos = true,
     this.panelBuilder,
+    this.aiService,
+    this.visibilityStore,
+    this.botAvailabilityProbe,
+    this.timezoneStore,
   });
 
   /// Allows tests to inject a fixture registry so the UI doesn't depend on
@@ -92,9 +98,26 @@ class HmiLauncherApp extends StatelessWidget {
   /// real network connections.
   final bool enableRos;
 
-  /// Optional plugin-panel factory override. Forwarded to [LauncherShell]
+  /// Optional plugin-panel factory override. Forwarded to [LauncherBotShell]
   /// via [LauncherHomePage]; used by tests to skip plugin internals.
   final AppPanelBuilder? panelBuilder;
+
+  /// Optional AI service override. When null [LauncherBotShell] builds its
+  /// own [AgentSubmitAiService]. Tests inject [FallbackLauncherBotAiService]
+  /// to avoid real gRPC connections and long timeouts.
+  final LauncherBotAiService? aiService;
+
+  /// F017: Optional visibility store override for tests.
+  /// When null, [LauncherHomePage] creates a file-backed store.
+  final AppVisibilityStore? visibilityStore;
+
+  /// Optional launcher-bot availability probe override (tests). Forwarded to
+  /// [LauncherBotShell]; when null the shell uses the real daemon probe.
+  final BotAvailabilityProbe? botAvailabilityProbe;
+
+  /// Optional timezone store override (tests). When null the page creates a
+  /// file-backed store defaulting to Korea (KST).
+  final TimezoneStore? timezoneStore;
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +141,10 @@ class HmiLauncherApp extends StatelessWidget {
         initialRegistry: initialRegistry,
         enableRos: enableRos,
         panelBuilder: panelBuilder,
+        aiService: aiService,
+        visibilityStore: visibilityStore,
+        botAvailabilityProbe: botAvailabilityProbe,
+        timezoneStore: timezoneStore,
       ),
     );
   }
@@ -129,11 +156,25 @@ class LauncherHomePage extends StatefulWidget {
     this.initialRegistry,
     this.enableRos = true,
     this.panelBuilder,
+    this.aiService,
+    this.visibilityStore,
+    this.botAvailabilityProbe,
+    this.timezoneStore,
   });
 
   final PluginRegistry? initialRegistry;
   final bool enableRos;
   final AppPanelBuilder? panelBuilder;
+  final LauncherBotAiService? aiService;
+
+  /// F017: Optional visibility store override for tests.
+  final AppVisibilityStore? visibilityStore;
+
+  /// Optional launcher-bot availability probe override (tests).
+  final BotAvailabilityProbe? botAvailabilityProbe;
+
+  /// Optional timezone store override (tests).
+  final TimezoneStore? timezoneStore;
 
   @override
   State<LauncherHomePage> createState() => _LauncherHomePageState();
@@ -141,6 +182,8 @@ class LauncherHomePage extends StatefulWidget {
 
 class _LauncherHomePageState extends State<LauncherHomePage> {
   late final PluginRegistry _registry;
+  late final AppVisibilityStore _visibilityStore;
+  late final TimezoneStore _timezoneStore;
   late LauncherConfig _launcherConfig;
   String _rosStatus = 'Loading';
   LauncherRosKeeper? _rosKeeper;
@@ -154,8 +197,40 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
           appsRoot: resolveAppsRoot(),
           launcherVersion: launcherVersion,
         ).scan();
+    // F017: Visibility store — production uses XDG_CONFIG_HOME / ~/.config.
+    // Tests inject an in-memory store via widget.visibilityStore to avoid
+    // file-system I/O and to exercise the full toggle→sidebar lifecycle.
+    _visibilityStore = widget.visibilityStore ?? _resolveVisibilityStore();
+    _visibilityStore.load(); // async, best-effort — UI starts with all enabled
+    // Display timezone — defaults to Korea (KST). Tests inject in-memory.
+    _timezoneStore = widget.timezoneStore ?? _resolveTimezoneStore();
+    _timezoneStore.load(); // async, best-effort — UI starts on KST
     _launcherConfig = LauncherConfig.defaults();
     _loadConfigAndInitRos();
+  }
+
+  static AppVisibilityStore _resolveVisibilityStore() {
+    final xdg = Platform.environment['XDG_CONFIG_HOME'];
+    if (xdg != null && xdg.isNotEmpty) {
+      return AppVisibilityStore.file('$xdg/hmi_launcher');
+    }
+    final home = Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      return AppVisibilityStore.file('$home/.config/hmi_launcher');
+    }
+    return AppVisibilityStore.file('/var/lib/hmi_launcher');
+  }
+
+  static TimezoneStore _resolveTimezoneStore() {
+    final xdg = Platform.environment['XDG_CONFIG_HOME'];
+    if (xdg != null && xdg.isNotEmpty) {
+      return TimezoneStore.file('$xdg/hmi_launcher');
+    }
+    final home = Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      return TimezoneStore.file('$home/.config/hmi_launcher');
+    }
+    return TimezoneStore.file('/var/lib/hmi_launcher');
   }
 
   /// L009: Initialize unified ROS keeper for embedded plugins.
@@ -261,6 +336,13 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
 
   @override
   void dispose() {
+    // Only dispose the store when we created it (not when injected by caller).
+    if (widget.visibilityStore == null) {
+      _visibilityStore.dispose();
+    }
+    if (widget.timezoneStore == null) {
+      _timezoneStore.dispose();
+    }
     _rosKeeper?.stop();
     super.dispose();
   }
@@ -268,8 +350,12 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   @override
   Widget build(BuildContext context) {
     return LauncherBotShell(
+      botAvailabilityProbe: widget.botAvailabilityProbe,
       registry: _registry,
+      visibilityStore: _visibilityStore,
+      timezoneStore: _timezoneStore,
       panelBuilder: widget.panelBuilder,
+      aiService: widget.aiService,
       rosUrl: _launcherConfig.rosUrl,
       rosStatus: widget.enableRos ? _rosStatus : 'Disabled',
       onRosUrlChanged: _applyRosBridge,

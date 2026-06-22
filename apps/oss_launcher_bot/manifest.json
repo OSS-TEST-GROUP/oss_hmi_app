@@ -1,0 +1,19 @@
+{
+  "id": "oss_launcher_bot",
+  "name": "Launcher Bot",
+  "icon": "🤖",
+  "version": "1.0.0",
+  "category": "assistant",
+  "color": "#6366F1",
+  "prompts": [
+    "런처 봇 열어줘",
+    "런처 봇 실행해줘",
+    "AI 어시스턴트 열어줘",
+    "어시스턴트 실행",
+    "Launch Bot 열어줘",
+    "Launcher Bot 실행"
+  ],
+  "entry": "oss_launcher_bot/main.dart",
+  "permissions": [],
+  "min_launcher": "4.0.0"
+}

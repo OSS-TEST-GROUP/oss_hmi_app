@@ -54,6 +54,9 @@ Future<void> _pumpApp(WidgetTester tester, PluginRegistry registry) async {
     initialRegistry: registry,
     enableRos: false,
     panelBuilder: _placeholderPanel,
+    // Deterministic launcher-bot probe — no real socket / pending timer.
+    botAvailabilityProbe: ({required String host, required int port}) async =>
+        false,
   ));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));

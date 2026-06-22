@@ -4,24 +4,37 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../domain/app_manifest.dart';
+import '../../domain/app_visibility_store.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
-import '../../launcher_bot/services/launcher_bot_ai_service.dart';
+import '../../domain/timezone_store.dart';
+import '../../launcher_bot/services/agent_submit_ai_service.dart';
 import '../../launcher_bot/services/app_usage_store.dart';
+import '../../launcher_bot/services/launcher_bot_ai_service.dart';
 import '../../launcher_bot/services/launcher_bot_controller.dart';
 import '../../launcher_bot/services/voice_input_service.dart';
 import '../app_icon.dart';
 import '../launcher_bot/launcher_bot_panel.dart';
+import '../theme/hex_color.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
 import '../panels/lfc_embedded_panel.dart';
+import '../panels/manage_apps_panel.dart';
 import '../panels/ota_embedded_panel.dart';
 import 'launcher_app_area.dart';
+
+/// Probes whether the v_agentos daemon is reachable, deciding launcher-bot
+/// visibility at startup. Matches [AgentSubmitAiService.canConnect].
+typedef BotAvailabilityProbe = Future<bool> Function({
+  required String host,
+  required int port,
+});
 
 class LauncherBotShell extends StatefulWidget {
   const LauncherBotShell({
     super.key,
     required this.registry,
+    required this.visibilityStore,
     required this.rosUrl,
     required this.rosStatus,
     required this.onRosUrlChanged,
@@ -29,12 +42,23 @@ class LauncherBotShell extends StatefulWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.onAppThemeChanged,
+    required this.timezoneStore,
     this.onRunningAppIdsChanged,
     this.initialAppId,
     this.panelBuilder,
+    this.aiService,
+    this.botAvailabilityProbe,
   });
 
   final PluginRegistry registry;
+
+  /// Controls which apps are visible in the sidebar and home grid.
+  /// Must outlive the shell widget — owned by the parent page.
+  final AppVisibilityStore visibilityStore;
+
+  /// Display timezone (greeting + chat timestamps). Defaults to Korea (KST).
+  final TimezoneStore timezoneStore;
+
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
@@ -45,6 +69,19 @@ class LauncherBotShell extends StatefulWidget {
   final ValueChanged<Set<String>>? onRunningAppIdsChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
+
+  /// Optional AI service override. When null the shell builds its own
+  /// [AgentSubmitAiService] using AGENT_HOST / AGENT_PORT env-vars.
+  ///
+  /// Tests can inject a [FallbackLauncherBotAiService] (or any other
+  /// implementation) to avoid real gRPC connections.
+  final LauncherBotAiService? aiService;
+
+  /// Optional startup availability probe. Defaults to
+  /// [AgentSubmitAiService.canConnect]. Tests inject a deterministic probe to
+  /// decide bot visibility without opening a real socket (and without leaving
+  /// a pending connection timer).
+  final BotAvailabilityProbe? botAvailabilityProbe;
 
   @override
   State<LauncherBotShell> createState() => _LauncherBotShellState();
@@ -59,13 +96,26 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   final AppUsageStore _usageStore = AppUsageStore();
   final VoiceInputService _voiceInputService = const VoiceInputService();
   VoiceCaptureSession? _voiceSession;
-  late final bool _aiSdkAvailable;
-  late bool _aiMode;
+  // _aiSdkAvailable: 런처봇 가용성 = v_agentos 데몬(:50051) 연결 가능 여부.
+  // 기동 시 canConnect probe 로 결정한다. 데몬을 제공하지 않으면(또는
+  // LAUNCHER_BOT_ENABLED=0) false 가 되고, 봇 진입점·패널·모드 토글을 모두
+  // 숨긴다 — 데몬 없는 빌드에서 봇은 무의미하므로 노출하지 않는다.
+  // (probe 성공 후 호출 실패 시의 일시적 NLU substring 폴백은 그대로 유지.)
+  bool _aiSdkAvailable = false;
+  bool _aiMode = false;
   String? _usageFocusAppId;
   DateTime? _usageFocusStartedAt;
   bool _assistantOpen = false;
   bool _voiceCapturing = false;
   bool _usageSuggestionShown = false;
+  bool _manageAppsOpen = false;
+
+  /// Apps that are both compatible with this launcher version and currently
+  /// enabled in [AppVisibilityStore].  This is the list rendered in the
+  /// sidebar and home grid.
+  List<AppManifest> get _visibleApps => widget.registry.apps
+      .where((app) => widget.visibilityStore.isEnabled(app.id))
+      .toList(growable: false);
 
   @override
   void initState() {
@@ -78,29 +128,116 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       if (widget.initialAppId != null) widget.initialAppId!,
     ];
     _startUsageFocus(_selectedAppId);
-    _aiSdkAvailable = GemmaLauncherBotAiService.isAvailable();
+
+    // F015: Agent.Submit gRPC 씬 클라이언트를 주 AI 서비스로 사용한다.
+    // 환경변수 AGENT_HOST / AGENT_PORT 가 없으면 기본값(localhost:50051)을 사용한다.
+    // gRPC 연결 가능 여부와 무관하게 UI 는 정상 기동한다 (AC4 rosbridge 독립 패턴 적용).
+    // 테스트는 widget.aiService 를 통해 FallbackLauncherBotAiService 를 주입하여
+    // 실제 gRPC 연결 없이 NLU 폴백만으로 동작할 수 있다.
+    final agentHost = _resolveAgentHost();
+    final agentPort = _resolveAgentPort();
+    // 봇 가용성 판단:
+    //  - 테스트가 aiService 를 주입하면 항상 활성 (gRPC 없이 동작 검증).
+    //  - LAUNCHER_BOT_ENABLED=0 이면 강제 비활성 (데몬 없는 빌드 패키징용).
+    //  - 그 외에는 기동 시 데몬(:50051) 연결 probe 로 결정. probe 완료 전까지는
+    //    숨김 상태로 두어, 데몬이 없을 때 봇이 잠깐 떴다 사라지는 깜빡임을 막는다.
+    //    systemd 가 데몬을 런처보다 먼저 띄우므로(Before=oss-hmi-launcher)
+    //    데몬을 제공하면 probe 는 즉시 성공한다.
+    final forceDisabled = Platform.environment['LAUNCHER_BOT_ENABLED'] == '0';
+    if (widget.aiService != null) {
+      _aiSdkAvailable = true;
+    } else if (!forceDisabled) {
+      _probeAgentAvailability(agentHost, agentPort);
+    }
     _aiMode = _aiSdkAvailable;
-    _nluRouter = NluRouter(widget.registry.apps);
+
+    _nluRouter = NluRouter(_visibleApps);
     _launcherBotController = LauncherBotController(
       nluRouter: _nluRouter,
-      aiService: _aiSdkAvailable
-          ? GemmaLauncherBotAiService()
-          : const FallbackLauncherBotAiService(),
+      // F015: gRPC 씬 클라이언트. 연결 실패 시 NLU 폴백 (AC3) 은 LauncherBotController 에서 처리.
+      // 테스트에서는 widget.aiService 를 통해 빠른 응답 서비스를 주입 가능.
+      aiService: widget.aiService ??
+          AgentSubmitAiService(
+            host: agentHost,
+            port: agentPort,
+          ),
       onOpenApp: _openApp,
       onCloseApp: _closeApp,
       onOpenSettings: _openSettings,
+      now: () => widget.timezoneStore.now(),
     );
+    // Rebuild whenever visibility changes so sidebar + home react instantly.
+    widget.visibilityStore.addListener(_onVisibilityChanged);
+    widget.timezoneStore.addListener(_onTimezoneChanged);
     _notifyRunningAppIdsChanged();
+    _loadUsageAndSuggest();
+  }
+
+  // Timezone change (from Settings) → rebuild so the greeting and chat
+  // timestamps re-render in the newly selected zone.
+  void _onTimezoneChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onVisibilityChanged() {
+    _nluRouter = NluRouter(_visibleApps);
+    _launcherBotController.updateRouter(_nluRouter);
+    // If the currently selected app was hidden, go home.
+    final current = _selectedAppId;
+    if (current != null &&
+        current != _SettingsPage.appId &&
+        !_visibleApps.any((app) => app.id == current)) {
+      _openedAppIds.remove(current);
+      _focusedAppIds.remove(current);
+      _selectedAppId = _focusedAppIds.isEmpty ? null : _focusedAppIds.last;
+    }
+    _notifyRunningAppIdsChanged();
+    setState(() {});
+  }
+
+  /// Resolves the Agent gRPC server hostname from the environment.
+  ///
+  /// Priority: AGENT_HOST env var → 'localhost'.
+  static String _resolveAgentHost() {
+    const agentHost = String.fromEnvironment('AGENT_HOST', defaultValue: '');
+    return agentHost.trim().isNotEmpty ? agentHost : 'localhost';
+  }
+
+  /// Resolves the Agent gRPC server port from the environment.
+  ///
+  /// Priority: AGENT_PORT env var → 50051.
+  static int _resolveAgentPort() {
+    const portStr =
+        String.fromEnvironment('AGENT_PORT', defaultValue: '50051');
+    return int.tryParse(portStr.trim()) ?? 50051;
+  }
+
+  /// Probes the v_agentos daemon at startup. The launcher bot only reveals
+  /// itself when the daemon answers — without it the bot has no LLM and no
+  /// STT, so it stays hidden rather than degrading to a keyword launcher.
+  Future<void> _probeAgentAvailability(String host, int port) async {
+    final probe = widget.botAvailabilityProbe ?? AgentSubmitAiService.canConnect;
+    final reachable = await probe(host: host, port: port);
+    if (!mounted || !reachable) return;
+    setState(() {
+      _aiSdkAvailable = true;
+      _aiMode = true;
+    });
     _loadUsageAndSuggest();
   }
 
   @override
   void didUpdateWidget(covariant LauncherBotShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.registry != widget.registry) {
-      _nluRouter = NluRouter(widget.registry.apps);
+    if (oldWidget.visibilityStore != widget.visibilityStore) {
+      oldWidget.visibilityStore.removeListener(_onVisibilityChanged);
+      widget.visibilityStore.addListener(_onVisibilityChanged);
+    }
+    if (oldWidget.registry != widget.registry ||
+        oldWidget.visibilityStore != widget.visibilityStore) {
+      _nluRouter = NluRouter(_visibleApps);
       _launcherBotController.updateRouter(_nluRouter);
-      final validIds = widget.registry.apps.map((app) => app.id).toSet()
+      final validIds = _visibleApps.map((app) => app.id).toSet()
         ..add(_SettingsPage.appId);
       _openedAppIds.removeWhere((id) => !validIds.contains(id));
       _focusedAppIds.removeWhere((id) => !validIds.contains(id));
@@ -113,6 +250,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
   @override
   void dispose() {
+    widget.visibilityStore.removeListener(_onVisibilityChanged);
+    widget.timezoneStore.removeListener(_onTimezoneChanged);
     _flushUsageFocus();
     _voiceSession?.stop();
     _launcherBotController.dispose();
@@ -122,7 +261,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   AppManifest? get _selectedApp {
     final id = _selectedAppId;
     if (id == null) return null;
-    for (final app in widget.registry.apps) {
+    for (final app in _visibleApps) {
       if (app.id == id) return app;
     }
     return null;
@@ -155,7 +294,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _notifyRunningAppIdsChanged() {
-    final appIds = widget.registry.apps.map((app) => app.id).toSet();
+    final appIds = _visibleApps.map((app) => app.id).toSet();
     widget.onRunningAppIdsChanged?.call({
       for (final id in _openedAppIds)
         if (appIds.contains(id)) id,
@@ -201,7 +340,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _startUsageFocus(String? appId) {
-    if (appId == null || widget.registry.findById(appId) == null) {
+    if (appId == null ||
+        !_visibleApps.any((app) => app.id == appId)) {
       _usageFocusAppId = null;
       _usageFocusStartedAt = null;
       return;
@@ -235,16 +375,16 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
       );
       return;
     }
-    if (_selectedAppId != null || widget.registry.apps.isEmpty) {
+    if (_selectedAppId != null || _visibleApps.isEmpty) {
       debugPrint(
         '[LauncherBotShell] suggestion skip: '
-        'selected=$_selectedAppId appCount=${widget.registry.apps.length}',
+        'selected=$_selectedAppId appCount=${_visibleApps.length}',
       );
       return;
     }
 
     final usages = _usageStore.suggestionCandidates(
-      widget.registry.apps.map((app) => app.id).toSet(),
+      _visibleApps.map((app) => app.id).toSet(),
     );
     if (usages.isEmpty) {
       debugPrint('[LauncherBotShell] suggestion skip: no usage candidates');
@@ -371,6 +511,21 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
         settingsOpen ? 'Settings' : selected?.name ?? 'Launcher';
     _launcherBotController.updateContext(selectedName);
 
+    // Manage Apps panel replaces the main content area when open.
+    if (_manageAppsOpen) {
+      return Scaffold(
+        key: const Key('launcher_bot_shell'),
+        backgroundColor: _BotColors.canvas,
+        body: SafeArea(
+          child: ManageAppsPanel(
+            allApps: widget.registry.apps,
+            store: widget.visibilityStore,
+            onClose: () => setState(() => _manageAppsOpen = false),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       key: const Key('launcher_bot_shell'),
       backgroundColor: _BotColors.canvas,
@@ -389,12 +544,13 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
               onClose: _closeApp,
               onRestart: _restartLauncher,
               onModeChanged: _setAiMode,
+              onManageApps: () => setState(() => _manageAppsOpen = true),
             ),
             Expanded(
               child: Row(
                 children: [
                   _AppRail(
-                    apps: widget.registry.apps,
+                    apps: _visibleApps,
                     openedAppIds: _openedAppIds,
                     selectedAppId: _selectedAppId,
                     aiMode: _aiMode,
@@ -413,20 +569,22 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 260),
                     curve: Curves.easeOutCubic,
-                    width: _assistantOpen ? 440 : 0,
+                    // 봇 비활성 시 패널을 절대 펼치지 않는다(진입점이 숨겨져
+                    // _assistantOpen 이 참이 될 수 없지만 방어적으로 가드).
+                    width: (_assistantOpen && _aiSdkAvailable) ? 440 : 0,
                     child: ClipRect(
                       child: LauncherBotPanel(
                         controller: _launcherBotController,
                         selectedName: selectedName,
                         aiMode: _aiMode && _aiSdkAvailable,
-                        apps: widget.registry.apps,
+                        apps: _visibleApps,
                         onClose: () => setState(() => _assistantOpen = false),
                       ),
                     ),
                   ),
                   Expanded(
                     child: _AppStage(
-                      apps: widget.registry.apps,
+                      apps: _visibleApps,
                       openedAppIds: _openedAppIds,
                       selectedAppId: _selectedAppId,
                       panelBuilder: widget.panelBuilder,
@@ -439,6 +597,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       adswTheme: widget.adswTheme,
                       lfcTheme: widget.lfcTheme,
                       aiSdkAvailable: _aiSdkAvailable,
+                      timezoneStore: widget.timezoneStore,
                       onAppThemeChanged: widget.onAppThemeChanged,
                     ),
                   ),
@@ -466,6 +625,7 @@ class _AppStage extends StatelessWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.aiSdkAvailable,
+    required this.timezoneStore,
     required this.onAppThemeChanged,
     this.panelBuilder,
   });
@@ -475,6 +635,7 @@ class _AppStage extends StatelessWidget {
   final String? selectedAppId;
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
+  final TimezoneStore timezoneStore;
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
@@ -500,6 +661,7 @@ class _AppStage extends StatelessWidget {
           _HomeSurface(
             key: const ValueKey('home_panel'),
             apps: apps,
+            now: timezoneStore.now(),
             onAppLaunch: onAppLaunch,
             onSettingsLaunch: onSettingsLaunch,
           ),
@@ -528,6 +690,7 @@ class _AppStage extends StatelessWidget {
         adswTheme: adswTheme,
         lfcTheme: lfcTheme,
         aiSdkAvailable: aiSdkAvailable,
+        timezoneStore: timezoneStore,
         onAppThemeChanged: onAppThemeChanged,
       );
     }
@@ -554,13 +717,25 @@ class _HomeSurface extends StatelessWidget {
   const _HomeSurface({
     super.key,
     required this.apps,
+    required this.now,
     required this.onAppLaunch,
     required this.onSettingsLaunch,
   });
 
   final List<AppManifest> apps;
+
+  /// Wall-clock time in the user-selected timezone (default KST).
+  final DateTime now;
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
+
+  /// Returns the greeting based on the hour in the selected timezone.
+  static String _greeting(DateTime now) {
+    final hour = now.hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -569,40 +744,69 @@ class _HomeSurface extends StatelessWidget {
       const _LauncherCardData.settings(),
     ];
 
+    final appCount = apps.length;
+
     return Container(
       key: const Key('launcher_home_panel'),
       padding: const EdgeInsets.fromLTRB(28, 26, 28, 26),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = constraints.maxWidth < 780
-              ? 2
-              : constraints.maxWidth < 1120
-                  ? 3
-                  : 4;
-          return GridView.builder(
-            key: const Key('launcher_home_grid'),
-            itemCount: cards.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 2.05,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Greeting header — matches the text that widget tests look for.
+          Text(
+            _greeting(now),
+            key: const Key('home_greeting'),
+            style: const TextStyle(
+              color: _BotColors.ink,
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
             ),
-            itemBuilder: (context, index) {
-              final card = cards[index];
-              return _AppCard(
-                data: card,
-                onTap: () {
-                  if (card.app != null) {
-                    onAppLaunch(card.app!);
-                  } else {
-                    onSettingsLaunch();
-                  }
-                },
-              );
-            },
-          );
-        },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$appCount ${appCount == 1 ? 'app' : 'apps'} installed',
+            key: const Key('home_app_count'),
+            style: const TextStyle(
+              color: _BotColors.muted,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth < 780
+                    ? 2
+                    : constraints.maxWidth < 1120
+                        ? 3
+                        : 4;
+                return GridView.builder(
+                  key: const Key('launcher_home_grid'),
+                  itemCount: cards.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 2.05,
+                  ),
+                  itemBuilder: (context, index) {
+                    final card = cards[index];
+                    return _AppCard(
+                      data: card,
+                      onTap: () {
+                        if (card.app != null) {
+                          onAppLaunch(card.app!);
+                        } else {
+                          onSettingsLaunch();
+                        }
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -618,6 +822,7 @@ class _SettingsPage extends StatefulWidget {
     required this.adswTheme,
     required this.lfcTheme,
     required this.aiSdkAvailable,
+    required this.timezoneStore,
     required this.onAppThemeChanged,
   });
 
@@ -630,6 +835,7 @@ class _SettingsPage extends StatefulWidget {
   final String adswTheme;
   final String lfcTheme;
   final bool aiSdkAvailable;
+  final TimezoneStore timezoneStore;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
 
   @override
@@ -783,6 +989,16 @@ class _SettingsPageState extends State<_SettingsPage> {
                   ),
                   const SizedBox(height: 16),
                   _SettingsPanel(
+                    title: 'Localization',
+                    children: [
+                      _TimezoneSettingRow(
+                        selectedId: widget.timezoneStore.selectedId,
+                        onChanged: (id) => widget.timezoneStore.select(id),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _SettingsPanel(
                     title: 'Runtime',
                     children: [
                       _SettingStatus(
@@ -822,6 +1038,7 @@ class _TopBar extends StatelessWidget {
     required this.onClose,
     required this.onRestart,
     required this.onModeChanged,
+    required this.onManageApps,
   });
 
   final String title;
@@ -833,6 +1050,7 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onRestart;
   final ValueChanged<bool> onModeChanged;
+  final VoidCallback onManageApps;
 
   @override
   Widget build(BuildContext context) {
@@ -845,13 +1063,19 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Text(
-            'AGL',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 4.2,
-              color: _BotColors.ink,
+          Image.asset(
+            'assets/images/obigo_logo.png',
+            height: 34,
+            filterQuality: FilterQuality.high,
+            // Fallback to the text wordmark if the asset is unavailable.
+            errorBuilder: (context, error, stack) => const Text(
+              'OBIGO',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 4.2,
+                color: _BotColors.ink,
+              ),
             ),
           ),
           const SizedBox(width: 18),
@@ -886,18 +1110,25 @@ class _TopBar extends StatelessWidget {
           ],
           _RestartLauncherButton(onTap: onRestart),
           const SizedBox(width: 10),
-          _ModeButton(
-            label: 'Standard',
-            active: !aiMode,
-            onTap: () => onModeChanged(false),
-          ),
-          const SizedBox(width: 8),
-          _ModeButton(
-            label: 'AI SDK',
-            active: aiMode,
-            enabled: aiSdkAvailable,
-            onTap: () => onModeChanged(true),
-          ),
+          // F017: Manage Apps entry point in the top bar grid area.
+          _ManageAppsButton(onTap: onManageApps),
+          // Standard/AI-SDK 모드 토글은 봇이 활성일 때만 의미가 있다.
+          // 데몬 미제공 시 봇 전체가 숨겨지므로 토글도 숨긴다.
+          if (aiSdkAvailable) ...[
+            const SizedBox(width: 10),
+            _ModeButton(
+              label: 'Standard',
+              active: !aiMode,
+              onTap: () => onModeChanged(false),
+            ),
+            const SizedBox(width: 8),
+            _ModeButton(
+              label: 'AI SDK',
+              active: aiMode,
+              enabled: aiSdkAvailable,
+              onTap: () => onModeChanged(true),
+            ),
+          ],
         ],
       ),
     );
@@ -933,8 +1164,6 @@ class _AppRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final runningApps = _runningApps();
-
     return Container(
       width: 84,
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 14),
@@ -948,20 +1177,26 @@ class _AppRail extends StatelessWidget {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  if (selectedAppId != null) ...[
-                    _RailActionButton(
-                      icon: Icons.home_outlined,
-                      enabled: true,
-                      active: false,
-                      tooltip: 'Home',
-                      onTap: onHomeSelected,
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  for (final app in runningApps) ...[
+                  // Home button — always visible so tests (and users) can
+                  // return to the home panel at any time.
+                  _RailActionButton(
+                    key: const Key('sidebar_item_home'),
+                    icon: Icons.home_outlined,
+                    enabled: true,
+                    active: selectedAppId == null,
+                    tooltip: 'Home',
+                    onTap: onHomeSelected,
+                  ),
+                  const SizedBox(height: 8),
+                  // All installed apps — not just the ones currently open.
+                  // This mirrors LauncherSidebar behaviour so widget tests
+                  // can tap sidebar_item_<id> without having to open the app
+                  // first.
+                  for (final app in apps) ...[
                     _RailAppButton(
+                      key: Key('sidebar_item_${app.id}'),
                       icon: LauncherAppIcons.forId(app.id),
-                      color: app.color,
+                      color: parseHexColor(app.color),
                       tooltip: app.name,
                       active: selectedAppId == app.id,
                       onTap: () => onAppSelected(app.id),
@@ -972,71 +1207,47 @@ class _AppRail extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          _RailActionButton(
-            icon: Icons.mic_none,
-            enabled: false,
-            active: false,
-            tooltip: 'Voice command is disabled',
-            onTap: onVoiceCommand,
-          ),
-          const SizedBox(height: 8),
-          _RailActionButton(
-            iconWidget: assistantOpen
-                ? Transform.flip(
-                    flipX: true,
-                    child: const Icon(
-                      Icons.start_outlined,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.chat_bubble_outline_rounded),
-            active: assistantOpen,
-            enabled: true,
-            tooltip: assistantOpen ? 'Hide Launcher Bot' : 'Open Launcher Bot',
-            onTap: onAssistantToggle,
-          ),
+          // 봇 진입점(음성·어시스턴트 토글)은 v_agentos 데몬이 연결됐을 때만
+          // 노출한다. 데몬 미제공 시 봇 자체를 숨긴다.
+          if (aiSdkAvailable) ...[
+            const SizedBox(height: 8),
+            _RailActionButton(
+              icon: Icons.mic_none,
+              enabled: false,
+              active: false,
+              tooltip: 'Voice command is disabled',
+              onTap: onVoiceCommand,
+            ),
+            const SizedBox(height: 8),
+            _RailActionButton(
+              key: const Key('assistant_toggle'),
+              iconWidget: assistantOpen
+                  ? Transform.flip(
+                      flipX: true,
+                      child: const Icon(
+                        Icons.start_outlined,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.chat_bubble_outline_rounded),
+              active: assistantOpen,
+              enabled: true,
+              tooltip:
+                  assistantOpen ? 'Hide Launcher Bot' : 'Open Launcher Bot',
+              onTap: onAssistantToggle,
+            ),
+          ],
           //const SizedBox(height: 8),
           //const _RailUtility(icon: Icons.power_settings_new),
         ],
       ),
     );
   }
-
-  List<_RailRunningApp> _runningApps() {
-    final byId = {for (final app in apps) app.id: app};
-    return [
-      for (final id in openedAppIds)
-        if (id == _SettingsPage.appId)
-          const _RailRunningApp(
-            id: _SettingsPage.appId,
-            name: 'Settings',
-            color: _BotColors.ink,
-          )
-        else if (byId[id] != null)
-          _RailRunningApp(
-            id: byId[id]!.id,
-            name: byId[id]!.name,
-            color: _parseHex(byId[id]!.color),
-          ),
-    ];
-  }
-}
-
-class _RailRunningApp {
-  const _RailRunningApp({
-    required this.id,
-    required this.name,
-    required this.color,
-  });
-
-  final String id;
-  final String name;
-  final Color color;
 }
 
 class _RailAppButton extends StatelessWidget {
   const _RailAppButton({
+    super.key,
     required this.icon,
     required this.color,
     required this.tooltip,
@@ -1265,6 +1476,65 @@ class _ThemeSettingRow extends StatelessWidget {
   }
 }
 
+/// Timezone picker row — label + dropdown over the curated catalog.
+/// Changing it persists via TimezoneStore and refreshes the greeting/clock.
+class _TimezoneSettingRow extends StatelessWidget {
+  const _TimezoneSettingRow({
+    required this.selectedId,
+    required this.onChanged,
+  });
+
+  final String selectedId;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _BotColors.canvas,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Time zone',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _BotColors.ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          DropdownButton<String>(
+            key: const Key('timezone_dropdown'),
+            value: selectedId,
+            underline: const SizedBox.shrink(),
+            borderRadius: BorderRadius.circular(8),
+            style: const TextStyle(
+              color: _BotColors.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+            items: [
+              for (final tz in kTimezoneCatalog)
+                DropdownMenuItem<String>(
+                  value: tz.id,
+                  child: Text(tz.label),
+                ),
+            ],
+            onChanged: (id) {
+              if (id != null) onChanged(id);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ThemeChoice extends StatelessWidget {
   const _ThemeChoice({
     required this.label,
@@ -1382,6 +1652,7 @@ class _ModeButton extends StatelessWidget {
 
 class _RailActionButton extends StatelessWidget {
   const _RailActionButton({
+    super.key,
     this.icon,
     this.iconWidget,
     required this.enabled,
@@ -1491,6 +1762,39 @@ class _RestartLauncherButton extends StatelessWidget {
   }
 }
 
+/// F017: Button that opens the Manage Apps panel.
+class _ManageAppsButton extends StatelessWidget {
+  const _ManageAppsButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Manage Apps',
+      child: InkWell(
+        key: const Key('manage_apps_button'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _BotColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _BotColors.line),
+          ),
+          child: const Icon(
+            Icons.apps,
+            color: _BotColors.ink,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LauncherCardData {
   const _LauncherCardData({
     required this.id,
@@ -1505,9 +1809,11 @@ class _LauncherCardData {
     return _LauncherCardData(
       id: app.id,
       name: app.name,
-      subtitle: app.category,
+      // Prefer the manifest's human description; fall back to the category
+      // tag (e.g. "monitoring") for apps that don't declare one.
+      subtitle: app.description.isNotEmpty ? app.description : app.category,
       icon: LauncherAppIcons.forApp(app),
-      color: _parseHex(app.color),
+      color: parseHexColor(app.color),
       app: app,
     );
   }
@@ -1526,14 +1832,6 @@ class _LauncherCardData {
   final IconData icon;
   final Color color;
   final AppManifest? app;
-}
-
-Color _parseHex(String hex) {
-  final normalized = hex.replaceFirst('#', '');
-  if (normalized.length != 6) return _BotColors.accent;
-  final value = int.tryParse(normalized, radix: 16);
-  if (value == null) return _BotColors.accent;
-  return Color(0xFF000000 | value);
 }
 
 abstract final class _BotColors {

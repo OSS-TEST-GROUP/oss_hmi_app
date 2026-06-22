@@ -1,0 +1,16 @@
+[Unit]
+Description=OSS HMI Launcher (hmi_launcher) as default home app
+# 컴포지터와 docker 가 준비된 뒤 실행. 기본 homescreen 은 비활성화되어 있어야 한다.
+Requires=agl-compositor.service docker.service
+After=agl-compositor.service docker.service graphical.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# 소켓 자동 감지 + NVIDIA GL 스택 마운트 + 컨테이너 실행(--window-type BG)
+ExecStart=/bin/sh /opt/run-oss-hmi-launcher.sh
+ExecStop=/usr/bin/docker stop oss-hmi-launcher
+TimeoutStartSec=120
+
+[Install]
+WantedBy=graphical.target

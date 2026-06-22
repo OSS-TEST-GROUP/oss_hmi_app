@@ -57,6 +57,10 @@ Future<void> _pumpApp(WidgetTester tester, PluginRegistry registry) async {
     initialRegistry: registry,
     enableRos: false,
     panelBuilder: _placeholderPanel,
+    // Deterministic launcher-bot probe — avoid a real socket (and its pending
+    // timer) so these home/embed tests stay hermetic. Bot stays hidden.
+    botAvailabilityProbe: ({required String host, required int port}) async =>
+        false,
   ));
   // Let the first post-frame setState (config load / shell init) settle.
   await tester.pump();
