@@ -149,19 +149,30 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
     // counts as a tap outside the TextField on desktop, which immediately
     // unfocuses the editor — so TextInputBridge.insert() finds no focused
     // editor and KeyboardHost debounces the keyboard away.
+    // KeyboardHost mounts at MaterialApp.builder level — above any
+    // Scaffold/Material — so the theme's NotoSansKR fontFamily (which Material
+    // applies via DefaultTextStyle) never reaches the key labels, and the
+    // 한글 자판이 tofu(□□)로 깨졌다. Re-assert the Korean family here so every
+    // descendant Text (jamo keys, special keys) resolves 한글.
     return TextFieldTapRegion(
-      child: Container(
-        key: const Key('virtual_keyboard'),
-        height: VirtualKeyboard.height,
-        decoration: const BoxDecoration(
-          color: LauncherTokens.bg2,
-          border: Border(top: BorderSide(color: LauncherTokens.b1)),
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(
+          fontFamily: LauncherTokens.fontBody,
+          fontFamilyFallback: LauncherTokens.fontFallback,
         ),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Column(
-          children: [
-            Expanded(child: _buildRows()),
-          ],
+        child: Container(
+          key: const Key('virtual_keyboard'),
+          height: VirtualKeyboard.height,
+          decoration: const BoxDecoration(
+            color: LauncherTokens.bg2,
+            border: Border(top: BorderSide(color: LauncherTokens.b1)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          child: Column(
+            children: [
+              Expanded(child: _buildRows()),
+            ],
+          ),
         ),
       ),
     );
