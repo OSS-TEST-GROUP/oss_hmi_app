@@ -139,6 +139,16 @@ class Palette {
         ? ThemeData.dark()
         : ThemeData.light();
     return base.copyWith(
+      // 한글 폰트 — 임베디드 시 호스트(hmi_launcher) 번들의 NotoSansKR 사용.
+      // 미지정 시 기본 폰트에 한글 글리프가 없어 tofu(□□) 로 깨졌음.
+      textTheme: base.textTheme.apply(
+        fontFamily: 'NotoSansKR',
+        fontFamilyFallback: const ['NotoSansKR'],
+      ),
+      primaryTextTheme: base.primaryTextTheme.apply(
+        fontFamily: 'NotoSansKR',
+        fontFamilyFallback: const ['NotoSansKR'],
+      ),
       scaffoldBackgroundColor: background,
       colorScheme: ColorScheme(
         brightness: brightness,

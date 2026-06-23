@@ -84,6 +84,11 @@ class AdswPalette {
         bodyColor: text,
         displayColor: text,
         fontFamily: 'NotoSansKR',
+        fontFamilyFallback: const ['NotoSansKR'],
+      ),
+      primaryTextTheme: base.primaryTextTheme.apply(
+        fontFamily: 'NotoSansKR',
+        fontFamilyFallback: const ['NotoSansKR'],
       ),
       iconTheme: IconThemeData(color: text),
       dividerTheme: DividerThemeData(color: line, thickness: 1),

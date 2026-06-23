@@ -127,6 +127,8 @@ class HmiLauncherApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: LauncherTokens.fontBody,
+        // 한글 글리프 폴백 — fontFamily 가 라틴 전용이어도 한글이 NotoSansKR 로 렌더.
+        fontFamilyFallback: LauncherTokens.fontFallback,
         scaffoldBackgroundColor: LauncherTokens.bg0,
         colorScheme: const ColorScheme.light(
           primary: LauncherTokens.accent,
