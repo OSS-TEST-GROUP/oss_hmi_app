@@ -350,3 +350,83 @@ config.json은 컨테이너에 볼륨 마운트되어 있으므로, 호스트 �
          │                               │
    adsw_monitor:arm64          adsw_monitor:arm64-test
 ```
+
+---
+
+## 6. 레지스트리 push (registry.obigo.com)
+
+빌드한 런타임 이미지를 사내 레지스트리 `registry.obigo.com` 에 올려 보드/타 머신에서
+pull 해 쓰는 절차입니다. 네임스페이스 관례: **`registry.obigo.com/oss/<image>`**
+(예: `oss/oss-hmi-launcher`, `oss/adsw_monitor`).
+
+> 아래 예시는 `oss-hmi-launcher` (arm64) 기준. 다른 앱도 이미지명만 바꿔 동일하게 적용.
+> arm64 이미지를 x86_64 호스트에서 push 하려면 buildx(+QEMU) 필요.
+
+### 6-1. 로그인 (최초 1회 / 캐시 만료 시)
+
+```bash
+docker login registry.obigo.com        # username / password 입력
+# 성공하면 ~/.docker/config.json 의 auths 에 캐시됨 → 이후 생략 가능
+```
+
+### 6-2. 빌드 + push (버전 + latest 동시) — 권장
+
+buildx `--push` 는 빌드와 레지스트리 업로드를 한 번에 처리합니다(로컬 load 불필요).
+
+```bash
+cd apps
+docker buildx build --builder mmf-buildx --platform linux/arm64 \
+  -f docker/Dockerfile.arm64 \
+  --build-arg APP_NAME=hmi_launcher \
+  --build-arg APP_VERSION=3.32.5 \
+  --build-arg CONFIG_FILE=launcher_config.json \
+  -t registry.obigo.com/oss/oss-hmi-launcher:3.32.12 \
+  -t registry.obigo.com/oss/oss-hmi-launcher:latest \
+  --push .
+```
+
+> `APP_VERSION`(번들 경로 결정, 보드 flutter 엔진 버전) 과 이미지 **태그**(`3.32.12`)는
+> 서로 별개다. `:latest` 는 포인터 태그라 새 버전 push 시 함께 갱신해야 최신이 유지된다.
+
+### 6-3. 빌드 + push (분리) — 로컬 이미지를 tag 후 push
+
+이미 로컬에 런타임 이미지가 있을 때:
+
+```bash
+# 로컬 이미지(태그 없음) → 레지스트리 태그 부여
+docker tag oss-hmi-launcher:3.32.12 registry.obigo.com/oss/oss-hmi-launcher:3.32.12
+docker tag oss-hmi-launcher:3.32.12 registry.obigo.com/oss/oss-hmi-launcher:latest
+
+# push (개별 또는 모든 태그)
+docker push registry.obigo.com/oss/oss-hmi-launcher:3.32.12
+docker push registry.obigo.com/oss/oss-hmi-launcher:latest
+# 또는 한 번에:
+docker push --all-tags registry.obigo.com/oss/oss-hmi-launcher
+```
+
+### 6-4. push 결과 검증 (pull 없이)
+
+```bash
+docker buildx imagetools inspect registry.obigo.com/oss/oss-hmi-launcher:latest
+docker manifest inspect registry.obigo.com/oss/oss-hmi-launcher:3.32.12   # arm64 확인
+```
+
+### 6-5. 보드/타 머신에서 pull & 실행
+
+```bash
+docker pull registry.obigo.com/oss/oss-hmi-launcher:latest
+
+# run 스크립트의 IMAGE= 로 지정 (일반 / AI 제외)
+IMAGE=registry.obigo.com/oss/oss-hmi-launcher:latest APP_VER=3.32.5 sh run-on-board-arm64.sh
+IMAGE=registry.obigo.com/oss/oss-hmi-launcher:latest APP_VER=3.32.5 sh run-on-board-no-ai.sh
+```
+
+### 6-6. 관리 / 정리
+
+```bash
+docker images registry.obigo.com/oss/oss-hmi-launcher     # 로컬 태그 목록
+docker rmi registry.obigo.com/oss/oss-hmi-launcher:3.32.12 # 로컬 태그 제거(레지스트리 무관)
+docker buildx prune -f                                     # buildx 캐시 정리
+docker logout registry.obigo.com
+```
+
