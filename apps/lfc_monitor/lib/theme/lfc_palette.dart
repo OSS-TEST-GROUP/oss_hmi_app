@@ -105,6 +105,15 @@ class LfcPalette {
         ? ThemeData.dark()
         : ThemeData.light();
     return base.copyWith(
+      // 한글 폰트 — 임베디드 시 호스트(hmi_launcher) 번들의 NotoSansKR 사용.
+      textTheme: base.textTheme.apply(
+        fontFamily: 'NotoSansKR',
+        fontFamilyFallback: const ['NotoSansKR'],
+      ),
+      primaryTextTheme: base.primaryTextTheme.apply(
+        fontFamily: 'NotoSansKR',
+        fontFamilyFallback: const ['NotoSansKR'],
+      ),
       scaffoldBackgroundColor: background,
       colorScheme: ColorScheme(
         brightness: brightness,

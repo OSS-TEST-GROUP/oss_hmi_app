@@ -50,11 +50,17 @@ abstract final class LauncherTokens {
   static const double sidebarWidth = 220.0;
 
   // ── Typography ──
-  // Inter is the design intent; not bundled, so Flutter falls back to the
-  // platform's default sans-serif. Keep the string to document intent.
-  static const String fontDisplay = 'Inter';
-  static const String fontBody = 'Inter';
+  // NotoSansKR is bundled (assets/fonts/noto_sans_kr) and covers Latin + 한글,
+  // so it is the body/display family — 'Inter' was never bundled and made all
+  // Korean text render as tofu(□□). Pair with fontFallback below on any style
+  // that uses a Latin-only family (mono/display) so 한글 still resolves.
+  static const String fontDisplay = 'NotoSansKR';
+  static const String fontBody = 'NotoSansKR';
   static const String fontMono = 'JetBrainsMono';
+
+  /// Korean-capable fallback for styles that set a Latin-only fontFamily
+  /// (e.g. JetBrainsMono / 'monospace'). Use as `fontFamilyFallback`.
+  static const List<String> fontFallback = ['NotoSansKR'];
 
   // ── Legacy compat (traffic-light dots from v2) ──
   // Retained only so in-flight imports keep compiling. Unused by Tesla shell.
