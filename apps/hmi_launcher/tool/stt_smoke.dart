@@ -11,8 +11,8 @@ import 'dart:typed_data';
 
 import 'package:grpc/grpc.dart';
 
-import '../lib/generated/common.pb.dart';
-import '../lib/generated/speech.pbgrpc.dart';
+import 'package:hmi_launcher/generated/common.pb.dart';
+import 'package:hmi_launcher/generated/speech.pbgrpc.dart';
 
 Future<void> main(List<String> args) async {
   final host = args.isNotEmpty ? args[0] : '127.0.0.1';
