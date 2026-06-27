@@ -28,7 +28,7 @@ rosbridge_server 는 중계기일 뿐이므로, 반대편에 요청을 받아 �
 | `rclpy` | distro 번들 또는 `pip install rclpy` | `python3 -c "import rclpy"` |
 | `mmf_interfaces` | obigo 사내 패키지 | `ros2 interface show mmf_interfaces/msg/GetAppUpdateSettings` |
 | Xvfb 또는 실제 디스플레이 | - | `echo $DISPLAY` |
-| Flutter | `3.41.2+` | `flutter --version` |
+| Flutter | `3.41.8` | `flutter --version` (보드 배포 = docker/Dockerfile.build.arm64 핀) |
 
 `mmf_interfaces` 는 pub.dev 외부 사내 리포지토리에 존재한다고 가정한다. 해당 워크스페이스
 를 빌드해서 `install/setup.bash` 를 source 해야 `ota_manager_mock.py` 의 `from
