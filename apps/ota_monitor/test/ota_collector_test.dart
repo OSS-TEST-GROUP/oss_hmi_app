@@ -196,6 +196,7 @@ void main() {
       collector.onGetAppListResponse({
         'app_names': ['from_manager_a', 'from_manager_b'],
         'owner_client_ids': [1, 2],
+        'owner_client_names': ['client_a', 'client_b'],
         'ret_code': 1,
       });
 
@@ -203,18 +204,47 @@ void main() {
       expect(collector.appListGeneration.value, 1);
       expect(collector.appList.map((e) => e['name']).toList(),
           ['from_manager_a', 'from_manager_b']);
-      expect(collector.appOwnerClientIds['from_manager_a'], 1);
-      expect(collector.appOwnerClientIds['from_manager_b'], 2);
+      // Owner now travels on each entry (not a name-keyed map).
+      expect(collector.appList.map((e) => e['ownerClientId']).toList(),
+          [1, 2]);
+      expect(collector.clientNamesById[1], 'client_a');
+      expect(collector.clientNamesById[2], 'client_b');
     });
 
-    test('preserves cached settings/state for apps that survive the swap',
+    test('same app name under two clients yields two distinct entries',
         () async {
       await initTopics();
+      // adsw_monitor installed on a ros2 board (client 0) and an agl board
+      // (client 1). Both must appear — the manager no longer dedupes by app
+      // name, and the collector must not collapse them either.
+      collector.onGetAppListResponse({
+        'app_names': ['adsw_monitor', 'adsw_monitor'],
+        'owner_client_ids': [0, 1],
+        'owner_client_names': ['ros2_ota_client', 'agl_ota_client'],
+        'ret_code': 1,
+      });
+
+      expect(collector.appList.length, 2);
+      expect(collector.appList.every((e) => e['name'] == 'adsw_monitor'),
+          isTrue);
+      expect(
+          collector.appList.map((e) => e['ownerClientId'] as int).toList()
+            ..sort(),
+          [0, 1]);
+      expect(collector.clientNamesById[0], 'ros2_ota_client');
+      expect(collector.clientNamesById[1], 'agl_ota_client');
+    });
+
+    test('preserves cached settings/state across refresh for same (owner, app)',
+        () async {
+      await initTopics();
+      // Represents an entry from a prior manager response (owner known).
       collector.appList.add({
         'name': 'shared',
         'settings': '{"v":"1"}',
         'state': 'idle',
         'status': 'Synced',
+        'ownerClientId': 42,
       });
 
       collector.onGetAppListResponse({
@@ -226,6 +256,7 @@ void main() {
       expect(collector.appList.length, 1);
       final entry = collector.appList[0];
       expect(entry['name'], 'shared');
+      expect(entry['ownerClientId'], 42);
       expect(entry['settings'], '{"v":"1"}');   // cached survived
       expect(entry['state'], 'idle');
       expect(entry['status'], 'Synced');

@@ -145,10 +145,9 @@ class _OtaViewPageState extends State<OtaViewPage> {
           Divider(color: p.divider, height: 1),
           Expanded(
             child: Obx(() {
-              // Touch the reactive maps so Obx rebuilds on owner / name
+              // Touch the reactive map so Obx rebuilds on client-name
               // changes too, not just on appList replacement.
-              final _ = _otaCollector.appOwnerClientIds.length +
-                  _otaCollector.clientNamesById.length;
+              final _ = _otaCollector.clientNamesById.length;
               if (_otaCollector.appList.isEmpty) {
                 return Center(
                   child: Padding(
@@ -171,9 +170,7 @@ class _OtaViewPageState extends State<OtaViewPage> {
               // seeded locally).
               final byOwner = <int, List<Map<String, dynamic>>>{};
               for (final app in _otaCollector.appList) {
-                final name = app['name'] as String;
-                final ownerId =
-                    _otaCollector.appOwnerClientIds[name] ?? -1;
+                final ownerId = (app['ownerClientId'] as int?) ?? -1;
                 byOwner.putIfAbsent(ownerId, () => []).add(app);
               }
               final ownerIds = byOwner.keys.toList()..sort();
