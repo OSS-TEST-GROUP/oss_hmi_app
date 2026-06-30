@@ -702,11 +702,11 @@ class _AppStage extends StatelessWidget {
     }
     switch (app.id) {
       case 'ota_monitor':
-        return OtaEmbeddedPanel(key: key);
+        return OtaEmbeddedPanel(key: key, rosUrl: rosUrl);
       case 'adsw_monitor':
         return AdswEmbeddedPanel(key: key);
       case 'lfc_monitor':
-        return LfcEmbeddedPanel(key: key);
+        return LfcEmbeddedPanel(key: key, rosUrl: rosUrl);
       default:
         return AppPlaceholderPanel(key: key, app: app);
     }

@@ -34,6 +34,9 @@ class AppConfig {
   final String theme;
 
   factory AppConfig.defaults() => AppConfig(
+        // 최후 fallback 전용. 임베디드 lfc 패널은 launcher 가 주입한 rosUrl
+        // (launcher config 파일 → 없으면 launcher 기본값) 을 먼저 사용하고,
+        // 주입이 없을 때만 이 localhost 기본값으로 떨어진다.
         rosUrl: Uri.parse('ws://127.0.0.1:9090'),
         statusTopic: '/app_status/lfc_monitor',
         pollIntervalSec: 5,
