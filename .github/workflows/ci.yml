@@ -24,8 +24,11 @@ on:
         default: false
 
 env:
-  # 다운스트림에서 팀의 Flutter 버전에 맞춰 조정. (빌더 이미지 기준 3.x)
+  # 보드(arm64/AGL) 배포 빌더(docker/Dockerfile.build.arm64)와 동일 버전으로 핀.
+  # channel: stable 만 두면 floating(최신 stable)이라 보드와 어긋나 CI 전용
+  # lint/deprecation 실패가 발생함 → 보드 배포 버전에 고정한다.
   FLUTTER_CHANNEL: stable
+  FLUTTER_VERSION: 3.41.8
 
 jobs:
   analyze:
@@ -40,6 +43,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       # hmi_launcher 는 ../ota_monitor 등 sibling 경로 의존 → 전체 체크아웃으로 해결됨.
       - name: pub get
@@ -61,6 +65,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - name: pub get
         working-directory: apps/${{ matrix.app }}
@@ -81,6 +86,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - name: Linux 데스크톱 빌드 의존성 + Xvfb/mesa
         run: |
@@ -124,6 +130,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: pub get
         working-directory: apps/${{ matrix.app }}
         run: flutter pub get
