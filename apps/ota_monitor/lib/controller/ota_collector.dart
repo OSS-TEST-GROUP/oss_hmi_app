@@ -135,10 +135,6 @@ class OtaCollector extends GetxController {
   /// 'local' until the first GetAppListResponse arrives, then 'manager'.
   final RxString appListSource = 'local'.obs;
 
-  /// Per-app owner client_id from the most recent GetAppListResponse.
-  /// Used by tooltips / debug overlays in the Apps tab.
-  final RxMap<String, int> appOwnerClientIds = <String, int>{}.obs;
-
   /// (client_id -> client_name) lookup populated from
   /// GetAppListResponse.owner_client_names. The tree view on the App
   /// List panel uses this to label each client node. Names are
@@ -427,32 +423,38 @@ class OtaCollector extends GetxController {
     appLog('[OTA] GetAppListResponse apps=${names.length}');
 
     // F023 ac3: replace appList wholesale, but preserve any per-app
-    // status/settings/state cached from prior responses (key = appName).
+    // status/settings/state cached from prior responses. The cache key is
+    // (ownerClientId, appName): app NAMES are NOT unique across hosts — the
+    // same name registered by two clients (e.g. a ros2 board and an agl
+    // board) is two distinct installations, so each must keep its own
+    // cached state and its own list entry.
+    String cacheKey(int owner, String name) => '$owner $name';
     final preserved = <String, Map<String, dynamic>>{};
     for (final entry in appList) {
-      preserved[entry['name'] as String] = Map<String, dynamic>.from(entry);
+      final owner = (entry['ownerClientId'] as int?) ?? -1;
+      preserved[cacheKey(owner, entry['name'] as String)] =
+          Map<String, dynamic>.from(entry);
     }
     appList.clear();
-    final newOwners = <String, int>{};
     final newClientNames = <int, String>{};
     for (var i = 0; i < names.length; i++) {
       final n = names[i];
-      final cached = preserved[n] ?? <String, dynamic>{
+      final owner = i < owners.length ? owners[i] : -1;
+      final cached = preserved[cacheKey(owner, n)] ?? <String, dynamic>{
         'name': n,
         'settings': '',
         'state': '',
         'status': 'Unknown',
       };
       cached['name'] = n;
+      // Owner travels on the entry so the App List can group by client even
+      // when the same app name appears under multiple owners.
+      cached['ownerClientId'] = owner;
       appList.add(cached);
-      if (i < owners.length) {
-        newOwners[n] = owners[i];
-        if (i < ownerNames.length && ownerNames[i].isNotEmpty) {
-          newClientNames[owners[i]] = ownerNames[i];
-        }
+      if (owner >= 0 && i < ownerNames.length && ownerNames[i].isNotEmpty) {
+        newClientNames[owner] = ownerNames[i];
       }
     }
-    appOwnerClientIds.assignAll(newOwners);
     clientNamesById.assignAll(newClientNames);
     appListSource.value = 'manager';
     appListGeneration.value = appListGeneration.value + 1;
