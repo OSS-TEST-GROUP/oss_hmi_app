@@ -110,6 +110,13 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   bool _usageSuggestionShown = false;
   bool _manageAppsOpen = false;
 
+  /// Ticks so the home greeting (Good morning/afternoon/evening) re-renders
+  /// when the wall clock crosses a boundary while the home surface is left
+  /// open. `now` is otherwise sampled once per build, so without this the
+  /// greeting would stay frozen (e.g. "Good afternoon" past 17:00).
+  Timer? _greetingTimer;
+  String? _lastGreeting;
+
   /// Apps that are both compatible with this launcher version and currently
   /// enabled in [AppVisibilityStore].  This is the list rendered in the
   /// sidebar and home grid.
@@ -169,6 +176,17 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     // Rebuild whenever visibility changes so sidebar + home react instantly.
     widget.visibilityStore.addListener(_onVisibilityChanged);
     widget.timezoneStore.addListener(_onTimezoneChanged);
+    // Re-render the greeting when it crosses a time-of-day boundary. Poll once
+    // a minute (cheap) but only setState when the greeting text actually
+    // changes, so the home surface isn't rebuilt needlessly every tick.
+    _lastGreeting = _HomeSurface._greeting(widget.timezoneStore.now());
+    _greetingTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      final greeting = _HomeSurface._greeting(widget.timezoneStore.now());
+      if (greeting != _lastGreeting) {
+        setState(() => _lastGreeting = greeting);
+      }
+    });
     _notifyRunningAppIdsChanged();
     _loadUsageAndSuggest();
   }
@@ -250,6 +268,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
   @override
   void dispose() {
+    _greetingTimer?.cancel();
     widget.visibilityStore.removeListener(_onVisibilityChanged);
     widget.timezoneStore.removeListener(_onTimezoneChanged);
     _flushUsageFocus();
