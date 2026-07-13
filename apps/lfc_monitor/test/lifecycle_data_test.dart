@@ -94,11 +94,11 @@ void main() {
     });
   });
 
-  group('OsType', () {
+  group('MwType', () {
     test('value mapping', () {
-      expect(OsType.ros2.value, 0);
-      expect(OsType.agl.value, 1);
-      expect(OsType.autosar.value, 2);
+      expect(MwType.ros2.value, 0);
+      expect(MwType.agl.value, 1);
+      expect(MwType.autosar.value, 2);
     });
   });
 }

@@ -122,16 +122,16 @@ enum ServiceMode {
       v == 1 ? ServiceMode.otaMode : ServiceMode.normal;
 }
 
-enum OsType {
+enum MwType {
   ros2,     // 0
   agl,      // 1
   autosar;  // 2
 
   int get value {
     switch (this) {
-      case OsType.ros2:    return 0;
-      case OsType.agl:     return 1;
-      case OsType.autosar: return 2;
+      case MwType.ros2:    return 0;
+      case MwType.agl:     return 1;
+      case MwType.autosar: return 2;
     }
   }
 }

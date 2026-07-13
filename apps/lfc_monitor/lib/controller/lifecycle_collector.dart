@@ -331,7 +331,7 @@ class LifecycleCollector extends GetxController {
     if (names.isEmpty) return;
     try {
       _getStateReqPub!.publish({
-        'os_type': OsType.ros2.value,
+        'mw_type': MwType.ros2.value,
         'service_list': names,
         'is_all_service': false,
       });
@@ -342,7 +342,7 @@ class LifecycleCollector extends GetxController {
 
   // F013: all mutation commands route through ctrl/* so lifecycle_mgr can
   // policy-gate (e.g. reject if a service is in OTA_MODE). The actuator
-  // topic shape (with os_type / is_group) is no longer used from here —
+  // topic shape (with mw_type / is_group) is no longer used from here —
   // lifecycle_mgr's StateManager re-derives those from its registry.
 
   void startService(String name) {
