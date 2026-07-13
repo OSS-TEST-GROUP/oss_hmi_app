@@ -6,9 +6,12 @@ import 'package:flutter/foundation.dart';
 
 /// Persists the set of app IDs that have been explicitly disabled by the user.
 ///
-/// Default policy: every discovered app is **enabled** unless the user has
-/// explicitly disabled it.  Only the "disabled" set is stored on disk, so
-/// newly installed apps appear automatically without any migration.
+/// Default policy: every discovered app is **enabled** unless it is listed in
+/// [kDefaultDisabled] (apps that ship hidden until the user opts in — currently
+/// OTA Monitor) or the user has explicitly disabled it.  Only the "disabled"
+/// set is stored on disk; once a state file exists it fully replaces the
+/// defaults, so a user enabling a default-disabled app sticks across restarts,
+/// and newly installed apps appear automatically without any migration.
 ///
 /// Storage: a JSON file at `<storageDir>/app_visibility.json`.
 ///
@@ -21,11 +24,22 @@ class AppVisibilityStore extends ChangeNotifier {
     Set<String>? initialDisabled,
   })  : _readRaw = readRaw,
         _writeRaw = writeRaw,
-        _disabled = initialDisabled ?? <String>{};
+        _disabled = initialDisabled ?? <String>{},
+        _initialDisabled = Set<String>.unmodifiable(initialDisabled ?? const <String>{});
+
+  /// Apps hidden by default on a fresh install (no state file yet).
+  /// Applied by the production [AppVisibilityStore.file] factory only, so
+  /// in-memory test stores keep the historical all-enabled default.
+  static const Set<String> kDefaultDisabled = {'ota_monitor'};
 
   final FutureOr<String?> Function()? _readRaw;
   final Future<void> Function(String)? _writeRaw;
   Set<String> _disabled;
+
+  /// Snapshot of the constructor-time disabled set — the fallback when the
+  /// persisted file is corrupt (resetting to `{}` would silently re-enable
+  /// default-disabled apps).
+  final Set<String> _initialDisabled;
 
   /// Returns true when the app identified by [id] is enabled (visible).
   bool isEnabled(String id) => !_disabled.contains(id);
@@ -73,8 +87,9 @@ class AppVisibilityStore extends ChangeNotifier {
         }
       }
     } catch (_) {
-      // Corrupt file → reset to all-enabled.
-      _disabled = {};
+      // Corrupt file → reset to the constructor-time defaults (NOT `{}`,
+      // which would re-enable default-disabled apps like OTA Monitor).
+      _disabled = Set<String>.from(_initialDisabled);
     }
     notifyListeners();
   }
@@ -95,7 +110,9 @@ class AppVisibilityStore extends ChangeNotifier {
 
   /// Creates a file-backed [AppVisibilityStore] writing to [storageDir].
   ///
-  /// The file is created on first write.  Missing file → all apps enabled.
+  /// The file is created on first write.  Missing file → [kDefaultDisabled]
+  /// apps hidden, everything else enabled.  An existing file fully replaces
+  /// the defaults (user choices win).
   factory AppVisibilityStore.file(String storageDir) {
     final path = '$storageDir/app_visibility.json';
     return AppVisibilityStore(
@@ -109,6 +126,7 @@ class AppVisibilityStore extends ChangeNotifier {
         await f.parent.create(recursive: true);
         await f.writeAsString(content);
       },
+      initialDisabled: Set<String>.from(kDefaultDisabled),
     );
   }
 

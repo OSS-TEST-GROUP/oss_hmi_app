@@ -169,6 +169,61 @@ void main() {
     });
   });
 
+  group('AppVisibilityStore — default-disabled apps (OTA Monitor)', () {
+    // The production file factory seeds kDefaultDisabled; these tests use the
+    // raw constructor with the same seed so no real filesystem is needed.
+
+    test('kDefaultDisabled ships ota_monitor hidden', () {
+      expect(AppVisibilityStore.kDefaultDisabled, contains('ota_monitor'));
+    });
+
+    test('fresh install (no state file) → ota_monitor disabled, rest enabled',
+        () async {
+      final store = AppVisibilityStore(
+        readRaw: () => null, // no file yet
+        writeRaw: (s) async {},
+        initialDisabled: Set.from(AppVisibilityStore.kDefaultDisabled),
+      );
+      await store.load();
+      expect(store.isEnabled('ota_monitor'), isFalse);
+      expect(store.isEnabled('adsw_monitor'), isTrue);
+      expect(store.isEnabled('lfc_monitor'), isTrue);
+    });
+
+    test('user enabling ota_monitor persists and survives reload', () async {
+      String? stored;
+      final store1 = AppVisibilityStore(
+        readRaw: () => stored,
+        writeRaw: (s) async => stored = s,
+        initialDisabled: Set.from(AppVisibilityStore.kDefaultDisabled),
+      );
+      await store1.load();
+      await store1.enable('ota_monitor');
+      expect(store1.isEnabled('ota_monitor'), isTrue);
+
+      // Second launch: the persisted (empty) disabled set wins over defaults.
+      final store2 = AppVisibilityStore(
+        readRaw: () => stored,
+        writeRaw: (s) async => stored = s,
+        initialDisabled: Set.from(AppVisibilityStore.kDefaultDisabled),
+      );
+      await store2.load();
+      expect(store2.isEnabled('ota_monitor'), isTrue);
+    });
+
+    test('corrupt state file falls back to defaults (ota_monitor stays hidden)',
+        () async {
+      final store = AppVisibilityStore(
+        readRaw: () => '{invalid json',
+        writeRaw: (s) async {},
+        initialDisabled: Set.from(AppVisibilityStore.kDefaultDisabled),
+      );
+      await store.load();
+      expect(store.isEnabled('ota_monitor'), isFalse);
+      expect(store.isEnabled('adsw_monitor'), isTrue);
+    });
+  });
+
   group('AppVisibilityStore — AC2 filter integration', () {
     test('visibleApps excludes disabled apps', () async {
       const allIds = ['ota_monitor', 'adsw_monitor', 'lfc_monitor'];
