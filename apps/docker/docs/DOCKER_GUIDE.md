@@ -437,3 +437,120 @@ docker buildx prune -f                                     # buildx 캐시 정�
 docker logout registry.obigo.com
 ```
 
+---
+
+## 7. 멀티아치(amd64 + arm64) 이미지 push / pull
+
+§6 은 아키별 단일 이미지 절차다. 여기서는 **하나의 태그(`:latest` 등)에 amd64·arm64
+두 이미지를 묶는 manifest list** 를 만들어, x86 dev 는 amd64 를, Orin 보드(aarch64)는
+arm64 를 **자동으로** 받도록 하는 절차를 설명한다. (2026-07 Orin AGX 보드 검증 완료 — 보드가
+`:latest` pull 시 arm64 자동 선택 → ext-agl 로 기동 확인.)
+
+> **왜 `--platform=linux/amd64,linux/arm64` 한 방이 안 되나**: 런타임 이미지는 소스 컴파일이
+> 아니라 아키별 **사전 빌드 번들**(`output/<APP>-x86_64-release.tar.gz` /
+> `-arm64-release.tar.gz`)을 ADD 하고, Dockerfile 도 아키별로 다르다(`Dockerfile` vs
+> `Dockerfile.arm64`). 단일 멀티플랫폼 빌드는 플랫폼별로 Dockerfile/번들을 바꿀 수 없으므로,
+> **아키별로 각각 빌드·push → manifest list 로 결합**한다. (MMF `docker/build_multiarch.sh` 와 동일 패턴)
+
+### 7-1. 스크립트 (권장)
+
+```bash
+cd apps
+# :latest 로 amd64+arm64 멀티아치 push
+TAG=latest ./docker/script/build_multiarch.sh
+# 검증용 태그(:latest 미변경)
+TAG=multiarch-verify ./docker/script/build_multiarch.sh
+# 다른 앱
+APP=adsw_monitor IMAGE=oss/oss-adsw-monitor ./docker/script/build_multiarch.sh
+```
+
+전제: 두 아키 번들이 `output/` 에 있어야 한다.
+
+```bash
+docker compose -f docker/compose/docker-compose.yml --profile build run --rm hmi_launcher_builder_x86    # → output/hmi_launcher-x86_64-release.tar.gz
+docker compose -f docker/compose/docker-compose.yml --profile build run --rm hmi_launcher_builder_arm64  # → output/hmi_launcher-arm64-release.tar.gz
+```
+
+> 스크립트는 arm64 번들이 없으면 `-arm64-native-release.tar.gz` 로 폴백하고, `APP_VERSION`
+> 은 번들 경로에서 자동 감지한다. 환경변수: `REGISTRY`/`APP`/`IMAGE`/`TAG`/`CONFIG_FILE`/`APP_VERSION`.
+
+### 7-2. 수동 (스크립트 내부 동작)
+
+```bash
+cd apps
+REG=registry.obigo.com/oss/oss-hmi-launcher
+
+# 1) 아키별로 각각 빌드·push
+docker buildx build --builder mmf-buildx --platform=linux/amd64 \
+  -f docker/dockerfile/Dockerfile \
+  --build-arg APP_NAME=hmi_launcher --build-arg CONFIG_FILE=launcher_config.json \
+  --push -t ${REG}:latest-amd64 .
+
+docker buildx build --builder mmf-buildx --platform=linux/arm64 \
+  -f docker/dockerfile/Dockerfile.arm64 \
+  --build-arg APP_NAME=hmi_launcher --build-arg APP_VERSION=3.32.5 --build-arg CONFIG_FILE=launcher_config.json \
+  --push -t ${REG}:latest-arm64 .
+
+# 2) manifest list 로 결합 (한 태그 = 두 아키)
+docker buildx imagetools create -t ${REG}:latest ${REG}:latest-amd64 ${REG}:latest-arm64
+```
+
+### 7-3. push 결과 검증 (pull 없이)
+
+```bash
+docker buildx imagetools inspect registry.obigo.com/oss/oss-hmi-launcher:latest
+# → Platform: linux/amd64 + linux/arm64 두 매니페스트 표시.
+#   Platform: unknown/unknown 항목은 buildx attestation(provenance/SBOM) — 무해.
+#   원치 않으면 buildx build 에 --provenance=false 추가.
+```
+
+### 7-4. pull
+
+```bash
+# ① 자동 — 호스트 아키에 맞게 (가장 흔함)
+docker pull registry.obigo.com/oss/oss-hmi-launcher:latest
+#   x86 dev  → amd64 이미지 자동 수신
+#   Orin 보드(aarch64) → arm64 이미지 자동 수신
+
+# ② 특정 아키 강제 (예: x86 에서 arm64 받기)
+docker pull --platform=linux/arm64 registry.obigo.com/oss/oss-hmi-launcher:latest
+
+# ③ 받은 이미지 아키 확인
+docker image inspect registry.obigo.com/oss/oss-hmi-launcher:latest --format '{{.Architecture}} {{.Os}}'
+```
+
+### 7-5. verify 태그 정리 (registry v2 API)
+
+`docker rmi` 는 로컬만 지운다. **레지스트리의 태그**를 지우려면 v2 API 로 digest 를 얻어 DELETE 한다
+(레지스트리에 delete 활성화 필요).
+
+```bash
+REG=registry.obigo.com; REPO=oss/oss-hmi-launcher
+AUTH=$(python3 -c "import json;print(json.load(open('$HOME/.docker/config.json'))['auths']['registry.obigo.com']['auth'])")
+ACCEPT="application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json"
+DIGEST=$(curl -sI -H "Authorization: Basic $AUTH" -H "Accept: $ACCEPT" \
+  "https://$REG/v2/$REPO/manifests/multiarch-verify" | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}')
+curl -s -o /dev/null -w "%{http_code}\n" -X DELETE -H "Authorization: Basic $AUTH" \
+  "https://$REG/v2/$REPO/manifests/$DIGEST"   # 202 = 삭제 성공
+```
+
+> ⚠️ digest 삭제는 그 digest 를 가리키는 **모든 태그**를 제거한다. 삭제 전 `:latest` 등
+> 실운영 태그와 digest 가 겹치지 않는지 확인할 것.
+
+### 7-6. 보드에서 실행 (ext-agl 경유)
+
+보드의 ext-agl(adsw_manager)이 `agl-service-list.yaml` 의 `image:` 를 `docker run` 한다.
+멀티아치 `:latest` 로 바꾸려면 (config 는 host 마운트: `/opt/adsw/config/agl-service-list.yaml`):
+
+```bash
+ssh root@<board> '
+  CFG=/opt/adsw/config/agl-service-list.yaml
+  cp "$CFG" "${CFG}.bak-$(date +%Y%m%d%H%M%S)"          # 원복용 백업
+  sed -i "s#^\( *image: \).*oss-hmi-launcher:.*#\1registry.obigo.com/oss/oss-hmi-launcher:latest#" "$CFG"
+  docker pull registry.obigo.com/oss/oss-hmi-launcher:latest
+  docker stop hmi_launcher && docker rm hmi_launcher     # 기존 컨테이너 제거(있어야 새 이미지로 재run)
+  docker restart oss-mmf-ext-agl'                        # adsw 가 새 config 로 hmi_launcher 재기동
+```
+
+> 보드 화면 캡처(AGL Wayland): `XDG_RUNTIME_DIR=/run/user/1001 WAYLAND_DISPLAY=wayland-0 weston-screenshooter`
+
