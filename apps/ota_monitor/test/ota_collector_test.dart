@@ -435,9 +435,12 @@ void main() {
         () async {
       Get.reset();
       Get.put<Ros>(mockRos);
-      // F023 — extra slots for GetAppList response + request mocks.
-      final respTopics2 = List.generate(6, (_) => MockTopic());
-      final reqTopics2 = List.generate(5, (_) => MockTopic());
+      // F023 — extra slots for GetAppList + DeleteClient response/request mocks.
+      // _start opens 7 response-side (5 ota + GetAppList + DeleteClient) and
+      // 6 request-side (4 ota + GetAppList + DeleteClient) channels; the slots
+      // and routing must cover all of them or the factory index overruns.
+      final respTopics2 = List.generate(7, (_) => MockTopic());
+      final reqTopics2 = List.generate(6, (_) => MockTopic());
       for (final t in [...respTopics2, ...reqTopics2]) {
         when(() => t.subscribe(any())).thenAnswer((_) async {});
         when(() => t.advertise()).thenAnswer((_) async {});
@@ -447,6 +450,7 @@ void main() {
       final c = OtaCollector(
         topicFactory: (ros, name, type) {
           if (name == otaGetAppListResTopic) return respTopics2[ri++];
+          if (name == otaDeleteClientResTopic) return respTopics2[ri++];
           if (otaResponseTopics.contains(name)) return respTopics2[ri++];
           return reqTopics2[qi++];
         },
@@ -575,29 +579,34 @@ void main() {
     test('sweepExpiredRequests removes entries older than requestTimeout',
         () async {
       Get.reset();
-      final shortCollector = OtaCollector(
-        topicFactory: (ros, name, type) => MockTopic(),
-        requestTimeout: const Duration(milliseconds: 50),
-        timeoutSweepInterval: const Duration(hours: 1), // manual sweep
-      );
       Get.put<Ros>(mockRos);
 
-      final mockRespTopics = List.generate(5, (_) => MockTopic());
-      final mockReqTopics = List.generate(4, (_) => MockTopic());
+      // Fully-stubbed topic mocks routed by the factory. A bare MockTopic()
+      // leaves subscribe()/advertise() unstubbed, so they return null where
+      // _start awaits a Future<void> — newer Dart rejects this as
+      // "type 'Null' is not a subtype of type 'Future<void>'". Cover all
+      // _start channels (5 response + GetAppList/DeleteClient resp = 7,
+      // 4 request + GetAppList/DeleteClient req = 6).
+      final mockRespTopics = List.generate(7, (_) => MockTopic());
+      final mockReqTopics = List.generate(6, (_) => MockTopic());
       for (final t in [...mockRespTopics, ...mockReqTopics]) {
         when(() => t.subscribe(any())).thenAnswer((_) async {});
         when(() => t.advertise()).thenAnswer((_) async {});
         when(() => t.publish(any())).thenAnswer((_) async {});
       }
-
       int ri = 0, qi = 0;
+      final shortCollector = OtaCollector(
+        topicFactory: (ros, name, type) {
+          if (name == otaGetAppListResTopic) return mockRespTopics[ri++];
+          if (name == otaDeleteClientResTopic) return mockRespTopics[ri++];
+          if (otaResponseTopics.contains(name)) return mockRespTopics[ri++];
+          return mockReqTopics[qi++];
+        },
+        requestTimeout: const Duration(milliseconds: 50),
+        timeoutSweepInterval: const Duration(hours: 1), // manual sweep
+      );
+
       await shortCollector.startTopics(mockRos);
-      // startTopics already called; attach pending via request methods —
-      // topicFactory placeholder is unused because we use the collector's
-      // own pre-wired publishers. But since we created shortCollector with a
-      // factory that returns fresh MockTopics, calling requestAppSettings
-      // will just call publish on already-registered internal topics.
-      // Use direct manipulation through public methods:
       shortCollector.requestAppSettings('StaleApp');
       expect(shortCollector.pendingRequestCount, 1);
 
@@ -605,11 +614,6 @@ void main() {
       final removed = shortCollector.sweepExpiredRequests();
       expect(removed, 1);
       expect(shortCollector.pendingRequestCount, 0);
-
-      // Silence the analyzer for unused local variables from the MockTopic
-      // lists (they are set up for parity with the main collector wiring).
-      expect(mockRespTopics.length + mockReqTopics.length, 9);
-      expect(ri + qi, 0);
     });
   });
 }
