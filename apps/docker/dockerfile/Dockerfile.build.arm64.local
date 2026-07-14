@@ -1,0 +1,18 @@
+# hmi_launcher AGL aarch64 빌드 (로컬 마운트 SDK 사용 — repo.obigo.com 다운로드 없음)
+# 로컬 SDK 를 host 와 동일 경로로 마운트하고 AGL_SDK_INSTALL_DIR 로 지정한다.
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash ca-certificates curl file git python3 python3-pip unzip wget xz-utils zip \
+    python3-yaml \
+    clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev \
+    && rm -rf /var/lib/apt/lists/*
+# 마운트된 SDK(다른 UID 소유) + flutter clone 의 git dubious-ownership 회피
+RUN git config --system --add safe.directory '*'
+# AOT 빌드 스크립트 + 엔트리포인트 (빌드 컨텍스트 = apps/)
+COPY tools/create_aot_with_yocto_sdk.py /usr/local/bin/create_aot_with_yocto_sdk.py
+COPY tools/common.py /usr/local/bin/common.py
+COPY docker/script/build-entrypoint-arm64.sh /usr/local/bin/build-entrypoint.sh
+RUN chmod +x /usr/local/bin/create_aot_with_yocto_sdk.py /usr/local/bin/build-entrypoint.sh
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/build-entrypoint.sh"]

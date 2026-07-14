@@ -3,9 +3,9 @@
 > 이 문서는 **adsw_monitor 를 예시로 한 단계별 상세 가이드**입니다 (다른 앱도 서비스명만
 > 바꿔 동일 패턴). **hmi_launcher 를 포함한 전체 앱의 빌드→설치→실행 요약과 launcher
 > 특이사항**(APP_VERSION=3.32.5 고정, `--window-type BG`, path-dep 마운트 등)은
-> [docs/build-install-run-guide.md](../../docs/build-install-run-guide.md) 를 먼저 보세요.
+> [docs/build-install-run-guide.md](../../../docs/build-install-run-guide.md) 를 먼저 보세요.
 > 보드 기본 런처 등록: [board-default-launcher-setup.md](board-default-launcher-setup.md),
-> 재부팅 자동시작: [docs/board-autostart-guide.md](../../docs/board-autostart-guide.md).
+> 재부팅 자동시작: [docs/board-autostart-guide.md](../../../docs/board-autostart-guide.md).
 
 ## 개요
 
@@ -16,7 +16,7 @@
 | `Dockerfile` | x86_64 런타임 이미지 (GTK 기반) |
 | `Dockerfile.arm64` | arm64 런타임 이미지 (flutter-auto, AGL 디바이스용) |
 | `Dockerfile.arm64.test` | arm64 테스트 이미지 (QEMU + Weston 헤드리스, x86_64 호스트 테스트용) |
-| `docker-compose.yml` | 전체 서비스 구성 |
+| `compose/docker-compose.yml` | 전체 서비스 구성 |
 
 모든 `docker` / `docker compose` 명령은 **`apps/` 디렉토리에서 실행**합니다.
 
@@ -31,19 +31,19 @@ cd apps/
 ### 1-1. 빌드 이미지 생성
 
 ```bash
-docker compose --profile build build adsw_monitor_builder_x86
+docker compose -f docker/compose/docker-compose.yml --profile build build adsw_monitor_builder_x86
 ```
 
 또는 직접:
 
 ```bash
-docker build -f docker/Dockerfile.build -t adsw_monitor_builder:x86_64 .
+docker build -f docker/dockerfile/Dockerfile.build -t adsw_monitor_builder:x86_64 .
 ```
 
 ### 1-2. 앱 빌드 (Flutter Linux GTK 번들 생성)
 
 ```bash
-docker compose --profile build run --rm adsw_monitor_builder_x86
+docker compose -f docker/compose/docker-compose.yml --profile build run --rm adsw_monitor_builder_x86
 ```
 
 또는 직접:
@@ -60,19 +60,19 @@ docker run --rm \
 ### 1-3. 런타임 이미지 생성
 
 ```bash
-docker compose build adsw_monitor
+docker compose -f docker/compose/docker-compose.yml build adsw_monitor
 ```
 
 또는 직접:
 
 ```bash
-docker build -f docker/Dockerfile -t adsw_monitor:x86_64 .
+docker build -f docker/dockerfile/Dockerfile -t adsw_monitor:x86_64 .
 ```
 
 ### 1-4. 실행
 
 ```bash
-docker compose up adsw_monitor
+docker compose -f docker/compose/docker-compose.yml up adsw_monitor
 ```
 
 또는 직접 (NVIDIA GPU 환경):
@@ -100,7 +100,7 @@ docker run --rm \
 AGL Yocto SDK를 내부 Nexus에서 다운로드하여 설치합니다 (약 10-15분 소요).
 
 ```bash
-docker compose --profile build build adsw_monitor_builder_arm64
+docker compose -f docker/compose/docker-compose.yml --profile build build adsw_monitor_builder_arm64
 ```
 
 또는 직접:
@@ -109,14 +109,14 @@ docker compose --profile build build adsw_monitor_builder_arm64
 docker build \
   --build-arg AGL_SDK_USER=ossdev \
   --build-arg AGL_SDK_PASSWORD=ossdev1234 \
-  -f docker/Dockerfile.build.arm64 \
+  -f docker/dockerfile/Dockerfile.build.arm64 \
   -t adsw_monitor_builder:arm64 .
 ```
 
 ### 2-2. 앱 빌드 (arm64 AOT 크로스컴파일)
 
 ```bash
-docker compose --profile build run --rm adsw_monitor_builder_arm64
+docker compose -f docker/compose/docker-compose.yml --profile build run --rm adsw_monitor_builder_arm64
 ```
 
 또는 직접:
@@ -152,7 +152,7 @@ arm64 런타임에는 두 가지 컨테이너가 제공됩니다.
 ```bash
 # x86_64 호스트에서 arm64 이미지 크로스빌드
 docker buildx build --platform linux/arm64 \
-  -f docker/Dockerfile.arm64 \
+  -f docker/dockerfile/Dockerfile.arm64 \
   -t adsw_monitor:arm64 .
 ```
 
@@ -212,7 +212,7 @@ flutter-auto와 AGL flutter 엔진이 이미지에 내장되며, Weston 헤드�
 
 ```bash
 # flutter-auto, libflutter_engine.so, icudtl.dat, libc++ 추출
-bash docker/extract-agl-binaries.sh
+bash docker/script/extract-agl-binaries.sh
 ```
 
 > `extract-agl-binaries.sh`가 없을 경우 아래 명령을 직접 실행:
@@ -247,14 +247,14 @@ chmod +x output/agl-binaries/bin/flutter-auto
 
 ```bash
 docker build --platform linux/arm64 \
-  -f docker/Dockerfile.arm64.test \
+  -f docker/dockerfile/Dockerfile.arm64.test \
   -t adsw_monitor:arm64-test .
 ```
 
 또는 docker compose:
 
 ```bash
-docker compose --profile test build adsw_monitor_arm64_test
+docker compose -f docker/compose/docker-compose.yml --profile test build adsw_monitor_arm64_test
 ```
 
 **실행 (헤드리스 — 로그만 확인):**
@@ -298,7 +298,7 @@ vncviewer localhost:5900
 또는 docker compose (헤드리스):
 
 ```bash
-docker compose --profile test run --rm adsw_monitor_arm64_test
+docker compose -f docker/compose/docker-compose.yml --profile test run --rm adsw_monitor_arm64_test
 ```
 
 docker compose로 VNC:
@@ -383,7 +383,7 @@ buildx `--push` 는 빌드와 레지스트리 업로드를 한 번에 처리합�
 ```bash
 cd apps
 docker buildx build --builder mmf-buildx --platform linux/arm64 \
-  -f docker/Dockerfile.arm64 \
+  -f docker/dockerfile/Dockerfile.arm64 \
   --build-arg APP_NAME=hmi_launcher \
   --build-arg APP_VERSION=3.32.5 \
   --build-arg CONFIG_FILE=launcher_config.json \

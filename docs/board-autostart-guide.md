@@ -30,7 +30,7 @@
 ## 2. 최초 설치 — hmi_launcher 컨테이너 생성
 
 이미지 로드 후(`docker load` 또는 registry pull) 아래처럼 생성한다.
-전체 레시피는 `apps/docker/board-default-launcher-setup.md`(기본 home 등록)와
+전체 레시피는 `apps/docker/docs/board-default-launcher-setup.md`(기본 home 등록)와
 보드의 `/opt/run-oss-hmi-launcher.sh` 참조.
 
 ```bash
@@ -105,5 +105,5 @@ journalctl -t agl-compositor | grep -i background    # "(background) position vi
 | oss-mmf-ext-agl | `/opt/adsw/run-ext-agl.sh` | 동일 |
 
 **"docker enabled + `--restart unless-stopped` + `--window-type BG`"** — 이 세 가지가
-핵심이다. 관련 문서: `apps/docker/board-default-launcher-setup.md`(기본 home 등록·컴포지터
-설정), `apps/docker/DOCKER_GUIDE.md`(이미지 빌드).
+핵심이다. 관련 문서: `apps/docker/docs/board-default-launcher-setup.md`(기본 home 등록·컴포지터
+설정), `apps/docker/docs/DOCKER_GUIDE.md`(이미지 빌드).

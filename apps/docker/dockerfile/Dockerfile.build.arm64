@@ -102,7 +102,7 @@ COPY tools/common.py /usr/local/bin/common.py
 RUN chmod +x /usr/local/bin/create_aot_with_yocto_sdk.py
 
 # 엔트리포인트 설치
-COPY docker/build-entrypoint-arm64.sh /usr/local/bin/build-entrypoint.sh
+COPY docker/script/build-entrypoint-arm64.sh /usr/local/bin/build-entrypoint.sh
 RUN chmod +x /usr/local/bin/build-entrypoint.sh
 
 WORKDIR /workspace

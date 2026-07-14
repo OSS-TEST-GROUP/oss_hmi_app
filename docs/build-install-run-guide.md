@@ -3,8 +3,8 @@
 > hmi_launcher · adsw_monitor · lfc_monitor · ota_monitor 를 소스에서 빌드해
 > PC(x86_64) 또는 AGL 보드(arm64, 예: Orin AGX)에 설치·실행하는 전 과정.
 > 2026-07 실보드(172.16.10.162) 검증 절차 기준.
-> 단계별 세부·QEMU 테스트는 [apps/docker/DOCKER_GUIDE.md](../apps/docker/DOCKER_GUIDE.md),
-> 보드 기본 런처 등록은 [apps/docker/board-default-launcher-setup.md](../apps/docker/board-default-launcher-setup.md),
+> 단계별 세부·QEMU 테스트는 [apps/docker/docs/DOCKER_GUIDE.md](../apps/docker/docs/DOCKER_GUIDE.md),
+> 보드 기본 런처 등록은 [apps/docker/docs/board-default-launcher-setup.md](../apps/docker/docs/board-default-launcher-setup.md),
 > 재부팅 자동시작은 [board-autostart-guide.md](board-autostart-guide.md) 참조.
 
 ---
@@ -25,7 +25,7 @@
 ## 1. x86_64 (PC 개발/테스트)
 
 ```bash
-cd apps/docker
+cd apps/docker/compose
 
 # 1) 빌드 (Flutter Linux GTK 번들) — 앱별 빌더 서비스
 docker compose --profile build run --rm hmi_launcher_builder_x86
@@ -42,7 +42,7 @@ docker compose up -d hmi_launcher            # image: hmi_launcher:x86_64
 
 ### 2-1. AOT 크로스컴파일 (AGL Yocto SDK 빌더)
 ```bash
-cd apps/docker
+cd apps/docker/compose
 docker compose --profile build run --rm hmi_launcher_builder_arm64
 # → apps/output/hmi_launcher-arm64-release.tar.gz
 ```
@@ -55,7 +55,7 @@ docker compose --profile build run --rm hmi_launcher_builder_arm64
 ```bash
 cd apps
 VER=3.32.21           # 이미지 태그 (배포 버전 — 자유롭게 증가)
-docker buildx build --platform=linux/arm64 -f docker/Dockerfile.arm64 \
+docker buildx build --platform=linux/arm64 -f docker/dockerfile/Dockerfile.arm64 \
   --build-arg APP_NAME=hmi_launcher \
   --build-arg APP_VERSION=3.32.5 \
   --build-arg CONFIG_FILE=launcher_config.json \

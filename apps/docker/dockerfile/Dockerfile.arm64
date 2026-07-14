@@ -90,7 +90,7 @@ COPY lfc_monitor/manifest.json /apps/lfc_monitor/manifest.json
 # flutter-auto entrypoint script.
 # The flutter-auto binary is expected to be mounted from the host, or it
 # can be COPYed at image build time.
-COPY docker/agl-run.sh /usr/local/bin/agl-run.sh
+COPY docker/script/agl-run.sh /usr/local/bin/agl-run.sh
 RUN chmod +x /usr/local/bin/agl-run.sh
 
 ENTRYPOINT ["/usr/local/bin/agl-run.sh"]
