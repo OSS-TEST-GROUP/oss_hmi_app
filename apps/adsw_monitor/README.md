@@ -118,7 +118,7 @@ Build the Docker image:
 docker build \
   --build-arg AGL_SDK_USER=<username> \
   --build-arg AGL_SDK_PASSWORD=<password> \
-  -f docker/Dockerfile.build.arm64 \
+  -f docker/dockerfile/Dockerfile.build.arm64 \
   -t adsw_monitor_builder:arm64 .
 ```
 Run the build (mounts app source and writes output to `./output/`):
@@ -135,7 +135,7 @@ The artifact `adsw_monitor-arm64-release.tar.gz` will be created in `./output/`.
 
 Or with docker compose:
 ```
-docker compose --profile build run --rm adsw_monitor_builder_arm64 \
+docker compose -f docker/compose/docker-compose.yml --profile build run --rm adsw_monitor_builder_arm64 \
   --app-path=/workspace/app --output-dir=/workspace/output
 ```
 
@@ -145,7 +145,7 @@ Uses `Dockerfile.build` — no AGL SDK required.
 Build the Docker image:
 ```
 docker build \
-  -f docker/Dockerfile.build \
+  -f docker/dockerfile/Dockerfile.build \
   -t adsw_monitor_builder:x86_64 .
 ```
 Run the build:
@@ -162,7 +162,7 @@ The artifact `adsw_monitor-x86_64-release.tar.gz` will be created in `./output/`
 
 Or with docker compose:
 ```
-docker compose --profile build run --rm adsw_monitor_builder_x86 \
+docker compose -f docker/compose/docker-compose.yml --profile build run --rm adsw_monitor_builder_x86 \
   --app-path=/workspace/app --output-dir=/workspace/output
 ```
 
@@ -172,7 +172,7 @@ After the AOT build is complete, run the following commands from the `apps/` dir
 **On arm64 host (AGL target directly):**
 ```
 docker build \
-  -f docker/Dockerfile.arm64 \
+  -f docker/dockerfile/Dockerfile.arm64 \
   -t adsw_monitor:arm64 .
 ```
 
@@ -180,7 +180,7 @@ docker build \
 ```
 docker buildx create --use
 docker buildx build --platform linux/arm64 \
-  -f docker/Dockerfile.arm64 \
+  -f docker/dockerfile/Dockerfile.arm64 \
   -t adsw_monitor:arm64 \
   --load .
 ```
@@ -199,7 +199,7 @@ docker run --rm \
 
 Or with docker compose (from `apps/docker/` directory):
 ```
-docker compose up adsw_monitor_arm64
+docker compose -f docker/compose/docker-compose.yml up adsw_monitor_arm64
 ```
 
 ### How to run in agl

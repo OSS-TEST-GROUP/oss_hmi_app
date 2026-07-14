@@ -7,8 +7,8 @@ services:
   # Run: docker compose run --rm adsw_monitor_builder_x86
   adsw_monitor_builder_x86:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build
     image: adsw_monitor_builder:x86_64
     # Run as the host user so artifacts written into bind-mounted source
     # directories (./adsw_monitor/.dart_tool, build/, etc.) are owned by
@@ -20,16 +20,16 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../adsw_monitor:/workspace/app
-      - ../output:/workspace/output
+      - ../../adsw_monitor:/workspace/app
+      - ../../output:/workspace/output
     profiles: [build]
 
   # arm64 AOT build (AGL Yocto SDK)
   # Run: docker compose run --rm adsw_monitor_builder_arm64
   adsw_monitor_builder_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build.arm64
       args:
         AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
         AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
@@ -40,8 +40,8 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../adsw_monitor:/workspace/app
-      - ../output:/workspace/output
+      - ../../adsw_monitor:/workspace/app
+      - ../../output:/workspace/output
     profiles: [build]
 
   # ─────────────────────────────────────────────
@@ -51,8 +51,8 @@ services:
   # x86_64 runtime image (GTK-based, for development/testing)
   adsw_monitor:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile
       args:
         APP_NAME: adsw_monitor
     image: adsw_monitor:x86_64
@@ -62,7 +62,7 @@ services:
     volumes:
       - /run/user/1000:/run/user/1000          # Wayland socket
       - /tmp/.X11-unix:/tmp/.X11-unix          # X11 fallback
-      - ../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge config override
+      - ../../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge config override
       - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
@@ -90,15 +90,15 @@ services:
   # Run: docker compose run --rm adsw_monitor_arm64_test
   adsw_monitor_arm64_test:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64.test
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64.test
       platforms:
         - linux/arm64
     image: adsw_monitor:arm64-test
     container_name: adsw_monitor_arm64_test
 
     volumes:
-      - ../adsw_monitor/config/config.json:/etc/adsw_monitor/config.json
+      - ../../adsw_monitor/config/config.json:/etc/adsw_monitor/config.json
 
     environment:
       - APP_NAME=adsw_monitor
@@ -121,8 +121,8 @@ services:
   #   Or on an x86_64 host: docker buildx bake adsw_monitor_arm64
   adsw_monitor_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64
       platforms:
         - linux/arm64
     image: adsw_monitor:arm64
@@ -136,7 +136,7 @@ services:
       # Wayland socket mount (AGL default user UID=1001)
       - /run/user/1001:/run/user/1001
       # rosbridge URL override
-      - ../adsw_monitor/config/config.json:/usr/share/flutter/adsw_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+      - ../../adsw_monitor/config/config.json:/usr/share/flutter/adsw_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
 
     environment:
       - WAYLAND_DISPLAY=wayland-0
@@ -160,8 +160,8 @@ services:
   # Run: docker compose --profile build run --rm ota_monitor_builder_x86
   ota_monitor_builder_x86:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build
     image: ota_monitor_builder:x86_64
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
@@ -169,16 +169,16 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../ota_monitor:/workspace/app
-      - ../output:/workspace/output
+      - ../../ota_monitor:/workspace/app
+      - ../../output:/workspace/output
     profiles: [build]
 
   # arm64 AOT build (AGL Yocto SDK)
   # Run: docker compose --profile build run --rm ota_monitor_builder_arm64
   ota_monitor_builder_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build.arm64
       args:
         AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
         AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
@@ -189,8 +189,8 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../ota_monitor:/workspace/app
-      - ../output:/workspace/output
+      - ../../ota_monitor:/workspace/app
+      - ../../output:/workspace/output
     profiles: [build]
 
   # ── Runtime services ────────────────────────────────────────────────────
@@ -198,8 +198,8 @@ services:
   # x86_64 runtime image (GTK-based, for development/testing)
   ota_monitor:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile
       args:
         APP_NAME: ota_monitor
     image: ota_monitor:x86_64
@@ -209,7 +209,7 @@ services:
     volumes:
       - /run/user/1000:/run/user/1000
       - /tmp/.X11-unix:/tmp/.X11-unix
-      - ../ota_monitor/config/config.json:/app/config/config.json
+      - ../../ota_monitor/config/config.json:/app/config/config.json
       - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
@@ -233,8 +233,8 @@ services:
   # Prereq: output/ota_monitor-arm64-release.tar.gz + output/agl-binaries/
   ota_monitor_arm64_test:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64.test
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64.test
       args:
         APP_NAME: ota_monitor
         APP_VERSION: 3.32.2
@@ -244,7 +244,7 @@ services:
     container_name: ota_monitor_arm64_test
 
     volumes:
-      - ../ota_monitor/config/config.json:/etc/ota_monitor/config.json
+      - ../../ota_monitor/config/config.json:/etc/ota_monitor/config.json
 
     environment:
       - APP_NAME=ota_monitor
@@ -263,8 +263,8 @@ services:
   # arm64 runtime image (flutter-auto based, for AGL targets)
   ota_monitor_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64
       args:
         APP_NAME: ota_monitor
         APP_VERSION: 3.32.2
@@ -277,7 +277,7 @@ services:
       - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
       - /dev/dri:/dev/dri
       - /run/user/1001:/run/user/1001
-      - ../ota_monitor/config/config.json:/usr/share/flutter/ota_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+      - ../../ota_monitor/config/config.json:/usr/share/flutter/ota_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
 
     environment:
       - WAYLAND_DISPLAY=wayland-0
@@ -302,8 +302,8 @@ services:
   # Run: docker compose --profile build run --rm lfc_monitor_builder_x86
   lfc_monitor_builder_x86:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build
     image: lfc_monitor_builder:x86_64
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
@@ -311,16 +311,16 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../lfc_monitor:/workspace/app
-      - ../output:/workspace/output
+      - ../../lfc_monitor:/workspace/app
+      - ../../output:/workspace/output
     profiles: [build]
 
   # arm64 AOT build (AGL Yocto SDK)
   # Run: docker compose --profile build run --rm lfc_monitor_builder_arm64
   lfc_monitor_builder_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build.arm64
       args:
         AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
         AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
@@ -331,8 +331,8 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../lfc_monitor:/workspace/app
-      - ../output:/workspace/output
+      - ../../lfc_monitor:/workspace/app
+      - ../../output:/workspace/output
     profiles: [build]
 
   # ── Runtime services ────────────────────────────────────────────────────
@@ -340,8 +340,8 @@ services:
   # x86_64 runtime image (GTK-based, for development/testing)
   lfc_monitor:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile
       args:
         APP_NAME: lfc_monitor
     image: lfc_monitor:x86_64
@@ -351,7 +351,7 @@ services:
     volumes:
       - /run/user/1000:/run/user/1000
       - /tmp/.X11-unix:/tmp/.X11-unix
-      - ../lfc_monitor/config/config.json:/app/config/config.json
+      - ../../lfc_monitor/config/config.json:/app/config/config.json
       - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
@@ -375,8 +375,8 @@ services:
   # Prereq: output/lfc_monitor-arm64-release.tar.gz + output/agl-binaries/
   lfc_monitor_arm64_test:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64.test
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64.test
       args:
         APP_NAME: lfc_monitor
         APP_VERSION: 3.32.2
@@ -386,7 +386,7 @@ services:
     container_name: lfc_monitor_arm64_test
 
     volumes:
-      - ../lfc_monitor/config/config.json:/etc/lfc_monitor/config.json
+      - ../../lfc_monitor/config/config.json:/etc/lfc_monitor/config.json
 
     environment:
       - APP_NAME=lfc_monitor
@@ -405,8 +405,8 @@ services:
   # arm64 runtime image (flutter-auto based, for AGL targets)
   lfc_monitor_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64
       args:
         APP_NAME: lfc_monitor
         APP_VERSION: 3.32.2
@@ -419,7 +419,7 @@ services:
       - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
       - /dev/dri:/dev/dri
       - /run/user/1001:/run/user/1001
-      - ../lfc_monitor/config/config.json:/usr/share/flutter/lfc_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+      - ../../lfc_monitor/config/config.json:/usr/share/flutter/lfc_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
 
     environment:
       - WAYLAND_DISPLAY=wayland-0
@@ -446,8 +446,8 @@ services:
   # Run: docker compose --profile build run --rm hmi_launcher_builder_x86
   hmi_launcher_builder_x86:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build
     image: hmi_launcher_builder:x86_64
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
@@ -455,13 +455,13 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../hmi_launcher:/workspace/apps/hmi_launcher
-      - ../ota_monitor:/workspace/apps/ota_monitor
-      - ../adsw_monitor:/workspace/apps/adsw_monitor
+      - ../../hmi_launcher:/workspace/apps/hmi_launcher
+      - ../../ota_monitor:/workspace/apps/ota_monitor
+      - ../../adsw_monitor:/workspace/apps/adsw_monitor
       # pubspec path dep since the embedded lfc panel (b8034e6) — without this
       # mount `flutter pub get` fails resolving ../lfc_monitor in-container.
-      - ../lfc_monitor:/workspace/apps/lfc_monitor
-      - ../output:/workspace/output
+      - ../../lfc_monitor:/workspace/apps/lfc_monitor
+      - ../../output:/workspace/output
     command:
       - "--app-path=/workspace/apps/hmi_launcher"
       - "--output-dir=/workspace/output"
@@ -471,8 +471,8 @@ services:
   # Run: docker compose --profile build run --rm hmi_launcher_builder_arm64
   hmi_launcher_builder_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.build.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build.arm64
       args:
         AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
         AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
@@ -483,12 +483,12 @@ services:
       PUB_CACHE: /tmp/.pub-cache
       XDG_CACHE_HOME: /tmp/.cache
     volumes:
-      - ../hmi_launcher:/workspace/apps/hmi_launcher
-      - ../ota_monitor:/workspace/apps/ota_monitor
-      - ../adsw_monitor:/workspace/apps/adsw_monitor
+      - ../../hmi_launcher:/workspace/apps/hmi_launcher
+      - ../../ota_monitor:/workspace/apps/ota_monitor
+      - ../../adsw_monitor:/workspace/apps/adsw_monitor
       # pubspec path dep since the embedded lfc panel (b8034e6) — see x86 note.
-      - ../lfc_monitor:/workspace/apps/lfc_monitor
-      - ../output:/workspace/output
+      - ../../lfc_monitor:/workspace/apps/lfc_monitor
+      - ../../output:/workspace/output
     command:
       - "--app-path=/workspace/apps/hmi_launcher"
       - "--output-dir=/workspace/output"
@@ -499,8 +499,8 @@ services:
   # x86_64 runtime image (GTK-based, for development/testing)
   hmi_launcher:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile
       args:
         APP_NAME: hmi_launcher
         CONFIG_FILE: launcher_config.json
@@ -510,7 +510,7 @@ services:
     volumes:
       - /run/user/1000:/run/user/1000
       - /tmp/.X11-unix:/tmp/.X11-unix
-      - ../hmi_launcher/config/launcher_config.json:/app/config/launcher_config.json
+      - ../../hmi_launcher/config/launcher_config.json:/app/config/launcher_config.json
       # NVIDIA NV-GLX requires Xauthority for DRI authentication.
       # DISPLAY is read from the calling shell (default :2 for GDM sessions).
       - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
@@ -536,8 +536,8 @@ services:
   # Prereq: output/hmi_launcher-arm64-release.tar.gz + output/agl-binaries/
   hmi_launcher_arm64_test:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64.test
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64.test
       args:
         APP_NAME: hmi_launcher
         APP_VERSION: 3.32.2
@@ -548,7 +548,7 @@ services:
     container_name: hmi_launcher_arm64_test
 
     volumes:
-      - ../hmi_launcher/config/launcher_config.json:/etc/hmi_launcher/launcher_config.json
+      - ../../hmi_launcher/config/launcher_config.json:/etc/hmi_launcher/launcher_config.json
 
     environment:
       - APP_NAME=hmi_launcher
@@ -567,8 +567,8 @@ services:
   # arm64 runtime image (flutter-auto based, for AGL targets)
   hmi_launcher_arm64:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.arm64
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64
       args:
         APP_NAME: hmi_launcher
         APP_VERSION: 3.32.2
@@ -582,7 +582,7 @@ services:
       - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
       - /dev/dri:/dev/dri
       - /run/user/1001:/run/user/1001
-      - ../hmi_launcher/config/launcher_config.json:/usr/share/flutter/hmi_launcher/3.32.2/release/data/flutter_assets/assets/config/launcher_config.json
+      - ../../hmi_launcher/config/launcher_config.json:/usr/share/flutter/hmi_launcher/3.32.2/release/data/flutter_assets/assets/config/launcher_config.json
 
     environment:
       - WAYLAND_DISPLAY=wayland-0
@@ -634,7 +634,7 @@ services:
     image: ros:humble-ros-base
     network_mode: host
     volumes:
-      - ../ota_monitor/integration_test:/mock:ro
+      - ../../ota_monitor/integration_test:/mock:ro
       # Placeholder path when MMF_WS is not set — ota_manager_mock.py will
       # exit with a helpful import error.
       - ${MMF_WS:-./.placeholder-mmf-ws}/install:/mmf_install:ro

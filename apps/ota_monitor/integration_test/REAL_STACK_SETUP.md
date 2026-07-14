@@ -109,7 +109,7 @@ Update History 3개, 기본 연결·초기화 등).
 
 ## 4. Docker Compose 로 묶어 실행 (✅ 구현 완료)
 
-`apps/docker/docker-compose.yml` 에 **`ota-real-stack`** 프로필로 두 서비스가
+`apps/docker/compose/docker-compose.yml` 에 **`ota-real-stack`** 프로필로 두 서비스가
 추가되어 있다. `build`/`test` 프로필과 분리되어 실수로 함께 뜨지 않는다.
 
 ### 4.1 서비스 구성
@@ -166,7 +166,7 @@ docker compose --profile ota-real-stack down
 - [x] 본 문서 (`REAL_STACK_SETUP.md`) — 실행 절차 최종판
 - [x] `ota_integration_test.dart` 에 dart-define `OTA_ROS_URL` 스위치 추가
       (2026-04-18, mock 모드 17/17 PASS 회귀 확인)
-- [x] `apps/docker/docker-compose.yml` 에 `rosbridge` + `ota_manager_mock`
+- [x] `apps/docker/compose/docker-compose.yml` 에 `rosbridge` + `ota_manager_mock`
       서비스 추가 (`ota-real-stack` 프로필, 2026-04-18)
 - [ ] `ota_manager_mock.py` 의 메시지 필드명이 실제 `mmf_interfaces/msg/*.msg`
       정의와 일치하는지 검증 — **ROS2 환경 준비 후 수행** (ros2 interface show
@@ -174,7 +174,7 @@ docker compose --profile ota-real-stack down
 - [ ] `ros2 run rosbridge_server rosbridge_websocket` + mock 기동 후 실제로
       `flutter test --dart-define=OTA_ROS_URL=...` 를 돌려 12+ 어서션 통과
       확인 — **ROS2 환경 준비 후 수행**
-- [ ] (optional) `docker/Dockerfile.rosbridge` 를 별도로 만들어 매 기동 시의
+- [ ] (optional) `docker/dockerfile/Dockerfile.rosbridge` 를 별도로 만들어 매 기동 시의
       apt-get install 40초 제거
 
 ---

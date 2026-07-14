@@ -61,7 +61,7 @@ RUN git clone --depth 1 \
     chmod -R go+rwX ${FLUTTER_ROOT}
 
 # 엔트리포인트 설치
-COPY docker/build-entrypoint.sh /usr/local/bin/build-entrypoint.sh
+COPY docker/script/build-entrypoint.sh /usr/local/bin/build-entrypoint.sh
 RUN chmod +x /usr/local/bin/build-entrypoint.sh
 
 WORKDIR /workspace

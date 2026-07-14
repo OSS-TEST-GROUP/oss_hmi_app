@@ -133,7 +133,7 @@ COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
 COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
 
 # Weston headless + flutter-auto launcher script.
-COPY docker/agl-run-test.sh /usr/local/bin/agl-run-test.sh
+COPY docker/script/agl-run-test.sh /usr/local/bin/agl-run-test.sh
 RUN chmod +x /usr/local/bin/agl-run-test.sh
 
 ENTRYPOINT ["/usr/local/bin/agl-run-test.sh"]

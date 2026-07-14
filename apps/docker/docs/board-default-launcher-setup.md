@@ -28,12 +28,12 @@ agl-compositor 는 출력(DP-1)에 **단 하나의 "background" 앱**을 둔다.
 ## 1. 사전 조건
 
 - `oss-hmi-launcher:3.32.5` 이미지가 보드에 `docker load` 되어 있을 것
-  (빌드/전송은 [oss-hmi-launcher 보드 배포 가이드](#) / `docker/run-on-board-arm64.sh` 참고)
+  (빌드/전송은 [oss-hmi-launcher 보드 배포 가이드](#) / `docker/script/run-on-board-arm64.sh` 참고)
 - 보드에 NVIDIA Tegra GL 스택 + flutter-auto + Flutter 엔진/ICU 가 존재(AGL rootfs 기본 포함)
 - 실행 스크립트가 보드에 배포되어 있을 것:
 
 ```bash
-scp apps/docker/run-on-board-arm64.sh root@172.16.10.52:/opt/run-oss-hmi-launcher.sh
+scp apps/docker/script/run-on-board-arm64.sh root@172.16.10.52:/opt/run-oss-hmi-launcher.sh
 ```
 
 ---
@@ -59,7 +59,7 @@ systemctl is-active  flutter-ics-homescreen.service   # -> inactive
 ## 3. 우리 앱을 기본 home 으로 등록 (전체 화면)
 
 핵심은 컨테이너의 flutter-auto 에 **`--window-type BG`** 를 전달하는 것이다.
-`docker/run-on-board-arm64.sh` 가 이미 이 인자로 컨테이너를 실행한다(아래 발췌).
+`docker/script/run-on-board-arm64.sh` 가 이미 이 인자로 컨테이너를 실행한다(아래 발췌).
 
 ```sh
 docker run -d --name oss-hmi-launcher --restart unless-stopped --privileged --network host \
@@ -93,10 +93,10 @@ CPID=$(pgrep -x agl-compositor); journalctl _PID=$CPID --no-pager | grep -iE "cu
 
 ## 4. 부팅 자동 실행 (systemd 서비스)
 
-서비스 유닛(`apps/docker/oss-hmi-launcher.service`)을 보드에 설치한다:
+서비스 유닛(`apps/docker/script/oss-hmi-launcher.service`)을 보드에 설치한다:
 
 ```bash
-scp apps/docker/oss-hmi-launcher.service root@172.16.10.52:/etc/systemd/system/
+scp apps/docker/script/oss-hmi-launcher.service root@172.16.10.52:/etc/systemd/system/
 ssh root@172.16.10.52 'systemctl daemon-reload && systemctl enable oss-hmi-launcher.service'
 ```
 
@@ -161,6 +161,6 @@ systemctl enable --now flutter-ics-homescreen.service
 
 ## 참고: 관련 파일
 
-- 실행 스크립트: `apps/docker/run-on-board-arm64.sh` (소켓 자동 감지 + GL 스택 마운트 + `--window-type BG`)
-- systemd 유닛: `apps/docker/oss-hmi-launcher.service`
+- 실행 스크립트: `apps/docker/script/run-on-board-arm64.sh` (소켓 자동 감지 + GL 스택 마운트 + `--window-type BG`)
+- systemd 유닛: `apps/docker/script/oss-hmi-launcher.service`
 - 런타임 이미지: `apps/docker/Dockerfile.arm64` (ubuntu:24.04 = 보드 glibc 2.39 정합)
