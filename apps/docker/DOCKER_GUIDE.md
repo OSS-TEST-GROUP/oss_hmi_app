@@ -1,5 +1,12 @@
 # adsw_monitor Docker 빌드 & 실행 가이드
 
+> 이 문서는 **adsw_monitor 를 예시로 한 단계별 상세 가이드**입니다 (다른 앱도 서비스명만
+> 바꿔 동일 패턴). **hmi_launcher 를 포함한 전체 앱의 빌드→설치→실행 요약과 launcher
+> 특이사항**(APP_VERSION=3.32.5 고정, `--window-type BG`, path-dep 마운트 등)은
+> [docs/build-install-run-guide.md](../../docs/build-install-run-guide.md) 를 먼저 보세요.
+> 보드 기본 런처 등록: [board-default-launcher-setup.md](board-default-launcher-setup.md),
+> 재부팅 자동시작: [docs/board-autostart-guide.md](../../docs/board-autostart-guide.md).
+
 ## 개요
 
 | 파일 | 역할 |
