@@ -1,6 +1,14 @@
-# adsw_monitor
+# adsw_monitor — AD SW
 
-A new Flutter project for AD SW monitoring.
+자율주행(Autoware 기반) 소프트웨어 스택의 실시간 상태를 보여주는 **읽기 전용 대시보드**
+(AD SW, 📡). rosbridge 로 차량 ROS2 그래프에 접속해 차량/센서/인지/계획/측위/맵 텔레메트리와
+diagnosticmgr 진단을 표시한다. 단독 실행 또는 hmi_launcher 에 임베드.
+
+- **사용법**: [USAGE.md](USAGE.md)
+- **빌드/배포 상세(전 앱 공통, 멀티아치·registry 포함)**: [../docker/docs/DOCKER_GUIDE.md](../docker/docs/DOCKER_GUIDE.md) · 보드 배포: [../../docs/build-install-run-guide.md](../../docs/build-install-run-guide.md)
+- **설정(config.json)**: `rosbridge.url`(기본 번들 `ws://172.16.10.48:9090`), `statusTopic`(`/app_status/adsw_monitor`). 읽기 경로: `ADSW_CONFIG` → `~/.config/adsw_monitor/` → `/etc/adsw_monitor/` → 번들 `config/config.json`.
+
+> 아래는 이 앱의 **standalone 빌드·실행·테스트 상세**(dev 환경 셋업, 정적분석, 테스트, arm 빌드, custom ROS 메시지). 요약만 필요하면 위 DOCKER_GUIDE 를 보라.
 
 <img width="500" height="819" alt="Screenshot from 2025-10-27 10-20-22" src="https://github.com/user-attachments/assets/524a9f69-132c-4b01-8c2d-2539ef586cb8" />
 <img width="500" height="819" alt="Screenshot from 2025-10-27 10-22-14" src="https://github.com/user-attachments/assets/811d299c-98fd-438c-8b47-f05131d440fb" />
