@@ -111,12 +111,17 @@ class OtaMonitorHomePage extends StatefulWidget {
     this.truncateLength = 100,
     this.configWarning,
     required this.keeperHolder,
+    this.embedded = false,
   });
 
   final String title;
   final int truncateLength;
   final String? configWarning;
   final RosKeeperHolder keeperHolder;
+
+  /// True when hosted inside hmi_launcher — the rosbridge URL is owned by the
+  /// launcher, so Settings shows a read-only notice instead of the editor.
+  final bool embedded;
 
   @override
   State<OtaMonitorHomePage> createState() => _OtaMonitorHomePageState();
@@ -346,6 +351,7 @@ class _OtaMonitorHomePageState extends State<OtaMonitorHomePage> {
                   controller: _settingsController,
                   currentUrlProvider: () =>
                       widget.keeperHolder.current.cfg.rosUrl.toString(),
+                  embedded: widget.embedded,
                 ),
               ),
             ],

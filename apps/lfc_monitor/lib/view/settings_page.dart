@@ -13,9 +13,14 @@ class SettingsPage extends StatefulWidget {
     required this.controller,
     required this.currentUrlProvider,
     this.onApplyServiceMode,
+    this.embedded = false,
   });
 
   final SettingsController controller;
+
+  /// When true (launcher-embedded), the rosbridge URL is owned by the
+  /// launcher, so this page shows a read-only notice instead of the editor.
+  final bool embedded;
 
   /// Live URL — called on every build so the page reflects the post-apply
   /// keeper state.
@@ -121,13 +126,72 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildUrlCard(p),
+          widget.embedded ? _buildUrlNoticeCard(p) : _buildUrlCard(p),
           const SizedBox(height: 16),
           _buildThemeCard(p),
           if (widget.onApplyServiceMode != null) ...[
             const SizedBox(height: 16),
             _buildServiceModeCard(p),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Launcher-embedded: the rosbridge connection is owned by the launcher,
+  /// so show the current URL read-only and point the operator at launcher
+  /// Settings instead of an editor that the launcher would clobber.
+  Widget _buildUrlNoticeCard(LfcPalette p) {
+    return Container(
+      key: const Key('card_settings_ws_url_notice'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: p.panel,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: p.panelBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cable, color: p.accent, size: 20),
+              const SizedBox(width: 10),
+              Text(
+                'rosbridge WebSocket URL',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: p.text,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Current: ${widget.currentUrlProvider()}',
+            key: const Key('text_settings_current_url'),
+            style: TextStyle(
+              fontSize: 12,
+              color: p.subtext,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, color: p.subtext, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '런처에 임베드된 상태에서는 연결 주소를 런처가 관리합니다. '
+                  '변경하려면 런처의 Settings 에서 rosbridge URL 을 수정하세요.',
+                  style: TextStyle(fontSize: 12, color: p.subtext, height: 1.4),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

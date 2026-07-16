@@ -27,6 +27,7 @@ class LfcViewPage extends StatefulWidget {
     required this.cfg,
     this.palette = LfcPalette.light,
     this.keeperHolder,
+    this.embedded = false,
   });
 
   final AppConfig cfg;
@@ -35,6 +36,15 @@ class LfcViewPage extends StatefulWidget {
   /// When null, falls back to the global rosKeeperHolder so launcher-embed
   /// and main() callers both work without forcing an explicit hand-off.
   final RosKeeperHolder? keeperHolder;
+
+  /// True when hosted inside hmi_launcher. In that mode the rosbridge
+  /// connection is owned by the launcher (a global GetX-registered Ros that
+  /// its LauncherRosKeeper re-registers on every heartbeat), so editing the
+  /// URL here has no lasting effect — the launcher clobbers it. The Settings
+  /// page therefore shows a read-only notice instead of the URL editor and
+  /// points the operator at launcher Settings. Standalone (main()) keeps the
+  /// full editable field.
+  final bool embedded;
 
   @override
   State<LfcViewPage> createState() => _LfcViewPageState();
@@ -201,6 +211,7 @@ class _LfcViewPageState extends State<LfcViewPage> {
                   currentUrlProvider: () =>
                       _keeperHolder.current.cfg.rosUrl.toString(),
                   onApplyServiceMode: _collector.setAllServicesMode,
+                  embedded: widget.embedded,
                 ),
               ),
             ],

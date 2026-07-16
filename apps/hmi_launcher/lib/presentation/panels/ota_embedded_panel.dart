@@ -68,6 +68,7 @@ class _OtaEmbeddedPanelState extends State<OtaEmbeddedPanel> {
             title: 'OTA Monitor',
             truncateLength: 100,
             keeperHolder: _keeperHolder,
+            embedded: true,
           ),
         ),
       ),
