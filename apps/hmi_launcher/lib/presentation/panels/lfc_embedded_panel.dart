@@ -37,6 +37,7 @@ class _LfcEmbeddedPanelState extends State<LfcEmbeddedPanel> {
             cfg: _config,
             palette: palette,
             keeperHolder: _keeperHolder,
+            embedded: true,
           ),
         ),
       ),
