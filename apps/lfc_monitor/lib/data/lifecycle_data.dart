@@ -20,6 +20,11 @@ class LifecycleTopics {
   // F013: container state change notifications (adsw_manager → monitor)
   static const String notifyContainerState = '/mmf/lifecyclemgr/NotifyContainerState';
 
+  /// dds_bridge multi-source safety net: bridge publishes a std_msgs/String
+  /// JSON here when a bridged lifecycle topic sees >1 distinct publisher
+  /// (duplicate core/adsw on the DDS domain). Surfaced as a warning banner.
+  static const String bridgeSourceDiag     = '/mmf/lifecyclemgr/bridge_source_diag';
+
   // Publish (monitor → lifecycle_mgr): control commands.
   // GetServiceStateRequest is the only one still published directly — it is
   // a stateless poll request used to refresh the per-service snapshot, not
@@ -64,6 +69,7 @@ class LifecycleTypes {
   static const String diagReport           = 'lifecyclemgr/LifecycleDiagReport';
   // F013
   static const String notifyContainerState = 'lifecyclemgr/NotifyContainerState';
+  static const String stdString             = 'std_msgs/String';
   static const String ctrlStartServiceReq      = 'lifecyclemgr/CtrlStartServiceRequest';
   static const String ctrlStopServiceReq       = 'lifecyclemgr/CtrlStopServiceRequest';
   static const String ctrlSetServiceModeReq    = 'lifecyclemgr/CtrlSetServiceModeRequest';

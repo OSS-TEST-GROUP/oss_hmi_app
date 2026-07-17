@@ -122,7 +122,11 @@ class _LfcViewPageState extends State<LfcViewPage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: LayoutBuilder(
+      body: Column(
+        children: [
+          _buildMultiSourceBanner(p),
+          Expanded(
+            child: LayoutBuilder(
         builder: (context, c) {
           final wide = c.maxWidth >= 900;
 
@@ -157,8 +161,39 @@ class _LfcViewPageState extends State<LfcViewPage> {
             ),
           );
         },
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  /// Warning banner shown when dds_bridge reports duplicate publishers on the
+  /// DDS domain (multiple core/adsw). Hidden when there is a single source.
+  Widget _buildMultiSourceBanner(LfcPalette p) {
+    return Obx(() {
+      final w = _collector.multiSourceWarning.value;
+      if (w == null) return const SizedBox.shrink();
+      return Container(
+        width: double.infinity,
+        color: p.errorBg,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: p.error, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                w,
+                key: const Key('banner_multi_source'),
+                style: TextStyle(
+                    color: p.error, fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   void _showSettingsDialog(BuildContext context, LfcPalette p) {
