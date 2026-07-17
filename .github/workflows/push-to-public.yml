@@ -118,11 +118,13 @@ jobs:
         run: |
           SRC="${{ steps.src.outputs.src }}"
           DST="${{ steps.src.outputs.dst }}"
-          # 토큰을 URL 에 끼워 인증 (로그에 노출되지 않도록 origin 별칭 사용)
-          git remote add public "https://x-access-token:${PUBLIC_BOT_TOKEN}@github.com/${PUBLIC_OWNER}/${PUBLIC_REPO}.git"
           git checkout "$SRC"
           # 공개 저장소의 feature/* 로만 push (develop 직접 push 금지)
-          git push public "HEAD:${DST}"
+          # actions/checkout 이 심어둔 extraheader(사내 GITHUB_TOKEN)를 무력화하고
+          # 봇 토큰이 담긴 URL 로만 인증한다.
+          git -c http.https://github.com/.extraheader= \
+              push "https://oauth2:${PUBLIC_BOT_TOKEN}@github.com/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" \
+              "HEAD:${DST}"
 
       - name: Create PR on public repo
         env:
