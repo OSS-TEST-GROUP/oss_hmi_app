@@ -91,6 +91,38 @@ docker run --rm \
 > **NVIDIA GPU 필수**: X 서버가 NVIDIA 전용 GLX(NV-GLX)를 사용하므로 `--runtime=nvidia --gpus all` 없이는
 > GLX 오류(`BadValue, request_code 152`)로 크래시가 발생합니다.
 
+### 1-5. 다른 PC 에서 hmi_launcher amd64 실행 (run-hmi-x86.sh)
+
+임의의 x86_64 리눅스 PC 에서 `oss-hmi-launcher` amd64 이미지를 실행할 때는
+[docker/script/run-hmi-x86.sh](../script/run-hmi-x86.sh) 를 쓴다. 코드 변경 없이
+**런타임 설정만** 흡수한다 — rosbridge URL / DISPLAY / uid / GPU / 런처봇.
+
+```bash
+# 로컬에 MMF(rosbridge :9090)가 있는 PC — 그대로
+bash docker/script/run-hmi-x86.sh
+
+# 보드의 rosbridge 로 연결
+ROSBRIDGE_URL=ws://172.16.10.151:9090 bash docker/script/run-hmi-x86.sh
+
+# 비-NVIDIA PC (소프트웨어 GL) / NVIDIA 강제
+GPU=none   bash docker/script/run-hmi-x86.sh
+GPU=nvidia bash docker/script/run-hmi-x86.sh   # nvidia-container-toolkit 필요
+```
+
+다른 PC 로 옮길 때 실제로 달라지는 지점:
+
+| 항목 | 기본(전제) | 다른 PC |
+|---|---|---|
+| rosbridge URL | `ws://localhost:9090` | `ROSBRIDGE_URL` 로 대상 지정 (로컬 MMF 있으면 그대로) |
+| DISPLAY | `$DISPLAY`(없으면 `:0`) | 그 PC 의 실제 디스플레이. 스크립트가 `xhost +local:` 자동 실행 |
+| uid / XDG_RUNTIME_DIR | `id -u` 자동 | 로그인 사용자 uid 자동 반영 (`/run/user/<uid>`) |
+| Xauthority | 불필요 | `xhost +local:` 로 대체(GDM 전용 경로 마운트 제거) |
+| GPU | `auto`(nvidia 감지) | 비-NVIDIA 는 mesa 소프트웨어 GL 폴백 |
+| 런처봇(AI) | `LAUNCHER_BOT_ENABLED=0` | 데몬 있으면 `LAUNCHER_BOT=1 AGENT_HOST=.. AGENT_PORT=..` |
+
+> compose(`docker-compose.yml`)의 x86 서비스는 NVIDIA + GDM 세션(uid 1000)을 전제로
+> 하드코딩돼 있어 다른 PC 에 그대로 쓰기 어렵다. 이식은 이 스크립트를 사용한다.
+
 ---
 
 ## 2. arm64 빌드
