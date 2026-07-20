@@ -56,7 +56,21 @@ agent repo `deploy/rviz2-container/`:
 
 ## 4. 절차
 
-### 4-1. 자산 복사 + 컨테이너 빌드 (최초 1회, 약 5~10분)
+### 4-1. 컨테이너 이미지 준비 (최초 1회)
+
+**옵션 A — 사내 레지스트리에서 pull (권장, 수 분)**
+
+빌드 완료본이 Harbor 에 올라가 있다 (digest `sha256:1e04c5e8...`, 압축 0.35GB):
+
+```bash
+# 보드에서 (registry 계정으로 docker login 선행)
+docker login registry.obigo.com
+docker pull registry.obigo.com/oss/rviz2-agl:latest      # 또는 :20260720 (고정 버전)
+docker tag registry.obigo.com/oss/rviz2-agl:latest rviz2-agl:latest
+# run-on-board.sh 만 복사하면 실행 준비 끝
+```
+
+**옵션 B — 소스에서 빌드 (약 5~10분)**
 
 ```bash
 # 개발 PC 에서
