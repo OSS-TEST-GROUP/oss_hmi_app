@@ -25,6 +25,13 @@
 #   AGENT_PORT     런처봇 데몬 포트 (기본 50051)
 #   CONFIG_FILE    직접 마운트할 launcher_config.json 경로 (지정 시 ROSBRIDGE_URL 무시)
 #   PULL           1|0  (기본 1 — 최신 이미지 pull, 미인증/오프라인이면 스킵)
+#   RESTART        docker restart 정책 (기본 unless-stopped)
+#                  런처의 "Restart Launcher"(닫기) 버튼은 exit(0) 로 프로세스를
+#                  종료하고 supervisor 가 되살리는 것을 전제로 한다. unless-stopped
+#                  면 컨테이너가 자동 재시작돼 런처가 다시 뜬다(=보드 동작). 개발 PC
+#                  에서 닫기=진짜 종료로 쓰려면 RESTART=no 로 실행한다.
+#                  (실행 중인 것을 멈추려면 docker stop hmi_launcher — unless-stopped
+#                   는 명시적 stop 은 존중해 재시작하지 않는다.)
 # =============================================================================
 set -e
 
@@ -35,11 +42,12 @@ HMI_UID="${HMI_UID:-$(id -u)}"
 GPU="${GPU:-auto}"
 LAUNCHER_BOT="${LAUNCHER_BOT:-0}"
 AGENT_PORT="${AGENT_PORT:-50051}"
+RESTART="${RESTART:-unless-stopped}"
 NAME="hmi_launcher"
 RUNTIME_DIR="/run/user/${HMI_UID}"
 
 echo "[run-hmi-x86] image=$IMAGE"
-echo "[run-hmi-x86] rosbridge=$ROSBRIDGE_URL  display=$DISPLAY_ID  uid=$HMI_UID  gpu=$GPU  bot=$LAUNCHER_BOT"
+echo "[run-hmi-x86] rosbridge=$ROSBRIDGE_URL  display=$DISPLAY_ID  uid=$HMI_UID  gpu=$GPU  bot=$LAUNCHER_BOT  restart=$RESTART"
 
 # ── 최신 이미지 pull (graceful) ──────────────────────────────────────────────
 if [ "${PULL:-1}" = "1" ]; then
@@ -110,7 +118,7 @@ docker stop "$NAME" 2>/dev/null || true
 docker rm "$NAME" 2>/dev/null || true
 
 # ── 실행 ─────────────────────────────────────────────────────────────────────
-docker run -d --name "$NAME" --restart unless-stopped \
+docker run -d --name "$NAME" --restart "$RESTART" \
   --network host \
   "${GPU_ARGS[@]}" \
   -e DISPLAY="$DISPLAY_ID" \
@@ -124,3 +132,7 @@ docker run -d --name "$NAME" --restart unless-stopped \
 echo "[run-hmi-x86] done."
 docker ps --format "  {{.Names}}\t{{.Image}}\t{{.Status}}" | grep -E "$NAME" || true
 echo "[run-hmi-x86] 로그: docker logs -f $NAME"
+if [ "$RESTART" != "no" ]; then
+  echo "[run-hmi-x86] ⓘ 런처의 '닫기(Restart Launcher)' 버튼은 exit(0) → restart=$RESTART 정책이"
+  echo "              다시 띄웁니다. 완전히 종료하려면: docker stop $NAME  (또는 RESTART=no 로 재실행)"
+fi

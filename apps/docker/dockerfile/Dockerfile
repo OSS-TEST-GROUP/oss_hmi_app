@@ -50,6 +50,17 @@ ADD output/${APP_NAME}-x86_64-release.tar.gz /app/
 # launcher_config.json.
 COPY ${APP_NAME}/config/${CONFIG_FILE} /app/config/${CONFIG_FILE}
 
+# Plugin manifests: hmi_launcher scans HMI_APPS_ROOT for <app>/manifest.json
+# to populate its app grid (adsw / lfc / ota). Without these the launcher
+# finds no plugins and shows an empty grid. Mirrors Dockerfile.arm64
+# (lines 41,84-88). OTA Monitor ships default-disabled via the launcher's
+# AppVisibilityStore.kDefaultDisabled, so no manifest change is needed for that.
+ENV HMI_APPS_ROOT=/apps
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor
+COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
+COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
+COPY lfc_monitor/manifest.json /apps/lfc_monitor/manifest.json
+
 # Set executable bit + stable entrypoint name (the exec-form ENTRYPOINT
 # does not expand variables, so use a symlink).
 RUN chmod +x /app/${APP_NAME} && ln -sf /app/${APP_NAME} /app/entrypoint
