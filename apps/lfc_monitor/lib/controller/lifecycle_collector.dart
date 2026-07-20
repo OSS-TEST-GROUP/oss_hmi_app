@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:get/get.dart';
 import 'package:roslibdart/roslibdart.dart';
@@ -54,6 +55,13 @@ class LifecycleCollector extends GetxController {
   final RxnString lastError = RxnString();
   final RxBool connected = false.obs;
 
+  /// Non-null when dds_bridge reports a bridged lifecycle topic has >1 distinct
+  /// publisher — i.e. a duplicate core/adsw is on this DDS domain (the exact
+  /// condition behind the autoware RUNNING↔NOT_RUNNING flapping). The view
+  /// shows this as a warning banner. Cleared when the bridge reports it resolved.
+  final RxnString multiSourceWarning = RxnString();
+  final RxSet<String> _multiSourceTopics = <String>{}.obs;
+
   static const int _eventCapacity = 100;
 
   // ─── Internal subscriptions / publishers ────────────────────────────────
@@ -62,6 +70,7 @@ class LifecycleCollector extends GetxController {
   Topic? _getStateRespSub;
   Topic? _updateListRespSub;
   Topic? _diagReportSub;
+  Topic? _bridgeSourceDiagSub;
   // F013: ctrl/* response subscriptions (one per command shape).
   Topic? _ctrlStartServiceRespSub;
   Topic? _ctrlStopServiceRespSub;
@@ -120,6 +129,7 @@ class LifecycleCollector extends GetxController {
     _getStateRespSub         = topicFactory(r, LifecycleTopics.getStateResponse,      LifecycleTypes.getStateResponse);
     _updateListRespSub       = topicFactory(r, LifecycleTopics.updateListResponse,    LifecycleTypes.updateListResponse);
     _diagReportSub           = topicFactory(r, LifecycleTopics.diagReport,            LifecycleTypes.diagReport);
+    _bridgeSourceDiagSub     = topicFactory(r, LifecycleTopics.bridgeSourceDiag,      LifecycleTypes.stdString);
 
     // F013: ctrl/* response acks. All five payloads share CtrlResponse, so
     // the dart-side handler is just a `kind → label` switch.
@@ -135,6 +145,7 @@ class LifecycleCollector extends GetxController {
     await _getStateRespSub!.subscribe(_onGetStateResponse);
     await _updateListRespSub!.subscribe(_onUpdateListResponse);
     await _diagReportSub!.subscribe(_onDiagReport);
+    await _bridgeSourceDiagSub!.subscribe(_onBridgeSourceDiag);
     await _ctrlStartServiceRespSub!.subscribe(
         (m) async => _onCommandResponse(LifecycleEventKind.ctrlStartServiceResponse, m));
     await _ctrlStopServiceRespSub!.subscribe(
@@ -278,6 +289,39 @@ class LifecycleCollector extends GetxController {
       detail: ret == 0 ? 'SUCCESS' : 'FAILED (ret=$ret)',
     ));
     if (ret != 0) lastError.value = '${kind.name}: ret=$ret';
+  }
+
+  /// dds_bridge multi-source diagnostic (std_msgs/String).
+  /// msg = {data: '{"topic":"...","publishers":N,"multi":true|false}'}.
+  /// Tracks which bridged topics currently have duplicate publishers and
+  /// composes a single warning banner string (or null when all clear).
+  Future<void> _onBridgeSourceDiag(Map<String, dynamic> msg) async {
+    final raw = msg['data'];
+    if (raw is! String || raw.isEmpty) return;
+    Map<String, dynamic> d;
+    try {
+      d = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return; // malformed — ignore
+    }
+    final topic = (d['topic'] as String?) ?? 'lifecycle';
+    final multi = d['multi'] == true;
+    final publishers = d['publishers'];
+
+    if (multi) {
+      _multiSourceTopics.add(topic);
+    } else {
+      _multiSourceTopics.remove(topic);
+    }
+
+    if (_multiSourceTopics.isEmpty) {
+      multiSourceWarning.value = null;
+    } else {
+      final n = (publishers is int) ? publishers : _multiSourceTopics.length + 1;
+      multiSourceWarning.value =
+          '⚠ 같은 DDS domain 에 발행자 $n개 감지 — core/adsw 가 중복 실행 중일 수 있습니다 '
+          '(${_multiSourceTopics.join(", ")}). 서비스 상태가 실제와 다르게 보일 수 있음.';
+    }
   }
 
   Future<void> _onDiagReport(Map<String, dynamic> msg) async {
