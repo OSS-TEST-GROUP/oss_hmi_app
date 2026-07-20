@@ -4,6 +4,8 @@ import 'package:roslibdart/roslibdart.dart';
 
 import 'config/app_config.dart';
 import 'config/config_loader.dart';
+import 'controller/lifecycle_collector.dart';
+import 'data/lifecycle_data.dart';
 import 'ros_keeper.dart';
 import 'theme/lfc_palette.dart';
 import 'view/lfc_view_page.dart';
@@ -12,6 +14,19 @@ import 'view/lfc_view_page.dart';
 export 'view/lfc_view_page.dart' show LfcViewPage;
 export 'config/app_config.dart' show AppConfig;
 export 'theme/lfc_palette.dart' show LfcPalette, paletteNotifier, palette;
+
+/// Launcher hook: apply a global service mode (0 = NORMAL, 1 = OTA) to the
+/// live [LifecycleCollector]. When lfc_monitor is embedded its own Settings
+/// gear is hidden, so the launcher's Settings screen drives the NORMAL/OTA
+/// toggle through this entry point instead. Returns false when lfc isn't
+/// active yet (its panel has never been opened, so no collector exists) —
+/// the caller can surface a "open Lifecycle Monitor first" hint.
+bool applyGlobalServiceMode(int modeValue) {
+  if (!Get.isRegistered<LifecycleCollector>()) return false;
+  Get.find<LifecycleCollector>()
+      .setAllServicesMode(ServiceMode.fromInt(modeValue));
+  return true;
+}
 
 late AppConfig appConfig;
 late RosKeeperHolder rosKeeperHolder;

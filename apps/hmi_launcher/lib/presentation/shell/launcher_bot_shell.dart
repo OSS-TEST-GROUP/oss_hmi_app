@@ -43,6 +43,7 @@ class LauncherBotShell extends StatefulWidget {
     required this.lfcTheme,
     required this.onAppThemeChanged,
     required this.timezoneStore,
+    this.onServiceModeChanged,
     this.onRunningAppIdsChanged,
     this.initialAppId,
     this.panelBuilder,
@@ -66,6 +67,12 @@ class LauncherBotShell extends StatefulWidget {
   final String adswTheme;
   final String lfcTheme;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
+
+  /// Apply a global lifecycle service mode (0 = NORMAL, 1 = OTA) from the
+  /// launcher Settings screen. Returns false when Lifecycle Monitor isn't
+  /// active yet. Optional so tests can omit it.
+  final Future<bool> Function(int modeValue)? onServiceModeChanged;
+
   final ValueChanged<Set<String>>? onRunningAppIdsChanged;
   final String? initialAppId;
   final AppPanelBuilder? panelBuilder;
@@ -618,6 +625,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       aiSdkAvailable: _aiSdkAvailable,
                       timezoneStore: widget.timezoneStore,
                       onAppThemeChanged: widget.onAppThemeChanged,
+                      onServiceModeChanged: widget.onServiceModeChanged,
                     ),
                   ),
                 ],
@@ -646,6 +654,7 @@ class _AppStage extends StatelessWidget {
     required this.aiSdkAvailable,
     required this.timezoneStore,
     required this.onAppThemeChanged,
+    this.onServiceModeChanged,
     this.panelBuilder,
   });
 
@@ -663,6 +672,7 @@ class _AppStage extends StatelessWidget {
   final String lfcTheme;
   final bool aiSdkAvailable;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
+  final Future<bool> Function(int modeValue)? onServiceModeChanged;
   final AppPanelBuilder? panelBuilder;
 
   @override
@@ -711,6 +721,7 @@ class _AppStage extends StatelessWidget {
         aiSdkAvailable: aiSdkAvailable,
         timezoneStore: timezoneStore,
         onAppThemeChanged: onAppThemeChanged,
+        onServiceModeChanged: onServiceModeChanged,
       );
     }
 
@@ -843,6 +854,7 @@ class _SettingsPage extends StatefulWidget {
     required this.aiSdkAvailable,
     required this.timezoneStore,
     required this.onAppThemeChanged,
+    this.onServiceModeChanged,
   });
 
   static const appId = LauncherAppIcons.settingsAppId;
@@ -856,6 +868,7 @@ class _SettingsPage extends StatefulWidget {
   final bool aiSdkAvailable;
   final TimezoneStore timezoneStore;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
+  final Future<bool> Function(int modeValue)? onServiceModeChanged;
 
   @override
   State<_SettingsPage> createState() => _SettingsPageState();
@@ -867,6 +880,72 @@ class _SettingsPageState extends State<_SettingsPage> {
   late final TextEditingController _vehicleProfileController;
   String? _errorText;
   bool _applying = false;
+
+  // Lifecycle service mode (0 = NORMAL, 1 = OTA). Replaces lfc_monitor's own
+  // (embedded-hidden) Settings gear so the whole vehicle can be flipped from
+  // the launcher Settings screen. Applied via widget.onServiceModeChanged,
+  // which drives the live LifecycleCollector.
+  int _serviceModeValue = 0;
+  bool _applyingMode = false;
+
+  Future<void> _applyServiceMode() async {
+    final cb = widget.onServiceModeChanged;
+    if (cb == null) return;
+    setState(() => _applyingMode = true);
+    bool ok = false;
+    try {
+      ok = await cb(_serviceModeValue);
+    } finally {
+      if (mounted) setState(() => _applyingMode = false);
+    }
+    if (!mounted) return;
+    final label = _serviceModeValue == 1 ? 'OTA_MODE' : 'NORMAL';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? 'Service Mode $label 적용 요청'
+          : 'Lifecycle Monitor를 먼저 열어 연결하세요'),
+    ));
+  }
+
+  Widget _buildServiceModeControl() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '모든 등록된 lifecycle 서비스에 NORMAL/OTA 를 일괄 적용합니다.',
+          style: TextStyle(fontSize: 12, color: _BotColors.muted),
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<int>(
+          key: const Key('seg_launcher_service_mode'),
+          segments: const [
+            ButtonSegment(value: 0, label: Text('NORMAL')),
+            ButtonSegment(value: 1, label: Text('OTA_MODE')),
+          ],
+          selected: {_serviceModeValue},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) =>
+              setState(() => _serviceModeValue = s.first),
+        ),
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            key: const Key('btn_launcher_apply_service_mode'),
+            onPressed: _applyingMode ? null : _applyServiceMode,
+            icon: _applyingMode
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.system_update_alt),
+            label: Text(_applyingMode ? 'Applying' : 'Apply'),
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   void initState() {
@@ -1006,6 +1085,13 @@ class _SettingsPageState extends State<_SettingsPage> {
                       ),
                     ],
                   ),
+                  if (widget.onServiceModeChanged != null) ...[
+                    const SizedBox(height: 16),
+                    _SettingsPanel(
+                      title: 'Service Mode',
+                      children: [_buildServiceModeControl()],
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   _SettingsPanel(
                     title: 'Localization',
