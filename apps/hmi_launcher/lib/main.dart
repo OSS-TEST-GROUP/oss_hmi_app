@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:adsw_monitor/theme/adsw_palette.dart' as adsw_theme;
+import 'package:lfc_monitor/main.dart' as lfc;
 import 'package:lfc_monitor/theme/lfc_palette.dart' as lfc_theme;
 import 'package:ota_monitor/theme/app_palette.dart' as ota_theme;
 import 'package:roslibdart/roslibdart.dart';
@@ -365,6 +366,8 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       adswTheme: _launcherConfig.adswTheme,
       lfcTheme: _launcherConfig.lfcTheme,
       onAppThemeChanged: _applyAppTheme,
+      onServiceModeChanged: (modeValue) async =>
+          lfc.applyGlobalServiceMode(modeValue),
       onRunningAppIdsChanged: _handleRunningAppIdsChanged,
     );
   }

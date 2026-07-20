@@ -123,12 +123,16 @@ class _LfcViewPageState extends State<LfcViewPage> {
           ],
         ),
         actions: [
-          TextButton.icon(
-            key: const Key('btn_settings'),
-            icon: Icon(Icons.settings, size: 18, color: p.subtext),
-            label: Text('Settings', style: TextStyle(color: p.subtext)),
-            onPressed: () => _showSettingsDialog(context, p),
-          ),
+          // Embedded in hmi_launcher: the launcher's own Settings screen owns
+          // rosbridge URL / theme / service mode, so hide lfc_monitor's gear to
+          // avoid a second, conflicting settings surface. Standalone keeps it.
+          if (!widget.embedded)
+            TextButton.icon(
+              key: const Key('btn_settings'),
+              icon: Icon(Icons.settings, size: 18, color: p.subtext),
+              label: Text('Settings', style: TextStyle(color: p.subtext)),
+              onPressed: () => _showSettingsDialog(context, p),
+            ),
           const SizedBox(width: 8),
         ],
       ),
