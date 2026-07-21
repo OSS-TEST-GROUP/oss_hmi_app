@@ -395,6 +395,37 @@ class LifecycleCollector extends GetxController {
     // re-render path is re-invoking us.  Stack trace cut short so the
     // operator-visible logs stay readable.
     _logCall('startService', name);
+
+    // Client-side guard: a service can't run without its hosting container.
+    // If the service is mapped to a container that is NOT running, refuse the
+    // Start here (return early) and tell the operator to start the container
+    // first — instead of firing ctrl/StartService + optimistically flipping to
+    // INITIALIZING only for the server (adsw) to gate it. The server still
+    // gates as a backstop; this is immediate UX feedback + avoids a bogus
+    // optimistic state flip. Unknown container (not yet in the map) → allow,
+    // so we never over-block on a stale/absent state.
+    final containerName = services[name]?.containerName ?? '';
+    if (containerName.isNotEmpty) {
+      final ci = containers[containerName];
+      if (ci != null && ci.state != ContainerState.running) {
+        final msg = "'$name' 시작 불가 — 컨테이너 '$containerName' 가 실행 중이 "
+            "아닙니다. 컨테이너를 먼저 Start 하세요.";
+        lastError.value = msg;
+        _logCall('startService.blocked',
+            "$name: container '$containerName' not running (${ci.state.label})");
+        _pushEvent(LifecycleEvent(
+          timestamp: DateTime.now(),
+          serviceName: name,
+          from: ServiceState.unknown,
+          to: ServiceState.unknown,
+          kind: LifecycleEventKind.ctrlStartServiceResponse,
+          detail: "BLOCKED — container '$containerName' not running; "
+              "start the container first",
+        ));
+        return;
+      }
+    }
+
     // Optimistic UI update — paint INITIALIZING immediately, push an
     // Events row so the operator sees their click landed, then the real
     // NotifyServiceState / next DiagReport overwrites with the confirmed
