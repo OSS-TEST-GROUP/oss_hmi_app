@@ -415,6 +415,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.0.1-dev+4"
+  rviz2_monitor:
+    dependency: "direct main"
+    description:
+      path: "../rviz2_monitor"
+      relative: true
+    source: path
+    version: "1.0.0+1"
   sky_engine:
     dependency: transitive
     description: flutter

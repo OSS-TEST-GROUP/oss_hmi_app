@@ -6,6 +6,7 @@ import '../panels/app_placeholder_panel.dart';
 import '../panels/launcher_home_panel.dart';
 import '../panels/lfc_embedded_panel.dart';
 import '../panels/ota_embedded_panel.dart';
+import '../panels/rviz2_embedded_panel.dart';
 import '../theme/launcher_tokens.dart';
 
 /// App area that hosts either the home panel or an embedded plugin panel,
@@ -85,6 +86,8 @@ class LauncherAppArea extends StatelessWidget {
         return AdswEmbeddedPanel(key: key);
       case 'lfc_monitor':
         return LfcEmbeddedPanel(key: key);
+      case 'rviz2_monitor':
+        return Rviz2EmbeddedPanel(key: key);
       default:
         return AppPlaceholderPanel(key: key, app: app);
     }

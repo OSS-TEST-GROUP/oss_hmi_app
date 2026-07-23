@@ -1,0 +1,8 @@
+{
+  "rosbridge": {
+    "url": "ws://127.0.0.1:9090"
+  },
+  "containerName": "rviz2",
+  "rosoutTopic": "/rosout",
+  "pollIntervalSec": 5
+}
