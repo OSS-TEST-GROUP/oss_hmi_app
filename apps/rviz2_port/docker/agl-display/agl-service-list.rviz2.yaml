@@ -1,0 +1,46 @@
+# rviz2 서비스 등재 스니펫 — ext-agl(adsw_manager) 용
+#
+# 보드의 /opt/adsw/config/agl-service-list.yaml 의 `services:` 리스트에 아래 항목을
+# 추가하면 adsw_manager 가 rviz2-agl 컨테이너를 host docker 로 start/stop/recovery 관리한다.
+# (hmi_launcher 항목과 동일 스키마 — extra_args = docker run 인자)
+#
+# ⚠️ 중요: ext-agl 은 `docker run` 만 한다 — **agl-shell 활성화는 하지 않는다**.
+#   따라서 rviz2 는 여기서 기동되면 cage surface(app_id=wlroots)를 만들지만 화면엔
+#   바로 안 뜬다(AGL activate-by-default=false). 표출/전환은 F006 스위처가
+#   agl-shell-activator(ActivateApp wlroots)로 수행한다 — "상시기동 + activate-swap" 모델.
+#   즉 이 등재 = rviz2 **라이프사이클(부팅기동/복구)** 관리, 표출은 스위처 담당.
+#
+# 소켓: /run/wayland-0 (world-writable, root 소유) → uid 1001 로도 연결 가능
+#   (hmi_launcher 와 동일. /run/user/1001/wayland-0 는 agl-driver 전용이라 미사용)
+# 렌더: LIBGL_ALWAYS_SOFTWARE=1 (llvmpipe, Phase1). GPU 가속(F008)은 /opt/nv-gl 마운트로 대체.
+
+- name: rviz2
+  service_type: NORMAL
+  recovery_policy: ALWAYS
+  is_enabled: true
+  os_type: AGL
+  init_state: NOT_RUNNING
+  image: registry.obigo.com/oss/rviz2-agl:latest
+  extra_args:
+  - --network
+  - host
+  - --ipc
+  - host
+  - --user
+  - 1001:1001
+  - --group-add
+  - "44"
+  - "-v"
+  - /run/wayland-0:/run/wayland-0
+  - "-e"
+  - HOME=/tmp
+  - "-e"
+  - XDG_RUNTIME_DIR=/run
+  - "-e"
+  - WAYLAND_DISPLAY=wayland-0
+  - "-e"
+  - LIBGL_ALWAYS_SOFTWARE=1
+  # command_args: (rviz2 기본 실행. rviz 설정파일 지정 시 아래 주석 해제)
+  # command_args:
+  # - -d
+  # - /path/in/container/config.rviz
