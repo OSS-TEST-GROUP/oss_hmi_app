@@ -1,0 +1,90 @@
+# rviz2-agl (touch-enabled) — cage/wlroots 소스 빌드로 터치 전달 활성화
+#
+# 문제: jammy 패키지 cage 0.1.4 + wlroots 0.15.1 은 중첩(nested) wayland 백엔드에서
+#       터치 이벤트를 클라이언트로 전달하지 못한다 (포인터/키보드만). 그래서
+#       agl-compositor → cage → XWayland → rviz2 경로에서 터치가 유실된다.
+# 해결: wlroots 0.16+ (wayland 백엔드 터치 전달 추가) + 호환 cage 를 소스 빌드.
+#       cage 는 app_id="wlroots" 를 계속 설정하므로 agl-shell 활성화 정합 유지.
+#
+# jammy libwayland 는 1.20 이라 wlroots 0.16(>=1.21 요구)용으로 wayland 1.22 도 함께 빌드.
+# 네이티브 arm64(Orin) 빌드 권장 (QEMU 는 매우 느림):
+#   docker build -f Dockerfile.touch -t rviz2-agl:touch .
+FROM registry.obigo.com/oss/rviz2-agl:latest AS build
+
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 빌드 도구 + wlroots/cage 의존성 (jammy 제공분은 그대로 사용)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential meson ninja-build pkg-config git ca-certificates wget xz-utils \
+        libffi-dev libexpat1-dev libxml2-dev \
+        libdrm-dev libinput-dev libxkbcommon-dev libpixman-1-dev libseat-dev \
+        libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libgl1-mesa-dev \
+        hwdata libcap-dev libpng-dev libavutil-dev libavcodec-dev libavformat-dev \
+        libxcb1-dev libxcb-composite0-dev libxcb-render0-dev libxcb-res0-dev \
+        libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xfixes0-dev \
+        libxcb-dri3-dev libxcb-present-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG WAYLAND_VER=1.22.0
+ARG WLPROTO_VER=1.31
+ARG WLROOTS_VER=0.16.2
+ARG CAGE_VER=v0.1.5
+ARG SEATD_VER=0.8.0
+
+# /usr/local 을 앞에 둬 wayland 1.22 가 jammy 1.20 보다 우선하되, 시스템 pkgconfig
+# (libseat/libdrm/libinput/xkbcommon/pixman/xcb …) 도 검색되도록 뒤에 append.
+ENV PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+ENV PATH=/usr/local/bin:$PATH
+
+WORKDIR /build
+
+# 1) wayland 1.22 (jammy 1.20 → wlroots 0.16 은 >=1.21 요구)
+RUN wget -q "https://gitlab.freedesktop.org/wayland/wayland/-/releases/${WAYLAND_VER}/downloads/wayland-${WAYLAND_VER}.tar.xz" \
+    && tar xf "wayland-${WAYLAND_VER}.tar.xz" && cd "wayland-${WAYLAND_VER}" \
+    && meson setup build --prefix=/usr/local -Ddocumentation=false -Dtests=false -Ddtd_validation=false \
+    && ninja -C build && ninja -C build install
+
+# 2) wayland-protocols
+RUN wget -q "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/${WLPROTO_VER}/downloads/wayland-protocols-${WLPROTO_VER}.tar.xz" \
+    && tar xf "wayland-protocols-${WLPROTO_VER}.tar.xz" && cd "wayland-protocols-${WLPROTO_VER}" \
+    && meson setup build --prefix=/usr/local \
+    && ninja -C build install
+
+# 2.5) libseat (seatd) — wlroots 0.16 은 session/libseat 을 무조건 필수로 링크한다
+#      (backends 옵션으로 제거 불가). jammy libseat-dev(0.6.4) 의 pkg-config 인식이
+#      불안정해, /usr/local 에 소스 빌드해 확실히 공급한다(런타임엔 nested wayland
+#      백엔드가 session 을 쓰지 않으므로 링크만 되면 됨). logind/서버는 불필요→비활성.
+RUN wget -q "https://git.sr.ht/~kennylevinsen/seatd/archive/${SEATD_VER}.tar.gz" -O seatd.tar.gz \
+    && tar xf seatd.tar.gz && cd "seatd-${SEATD_VER}" \
+    && meson setup build --prefix=/usr/local \
+         -Dserver=disabled -Dman-pages=disabled -Dexamples=disabled \
+         -Dlibseat-logind=disabled -Dlibseat-seatd=enabled -Dlibseat-builtin=enabled \
+    && ninja -C build && ninja -C build install
+
+# 3) wlroots 0.16.2 (wayland 백엔드 터치 전달 포함).
+#    backends=auto: 의존성 없는 백엔드(drm→hwdata, x11→xcb-renderutil)는 자동 비활성,
+#    항상 빌드되는 wayland/headless 백엔드로 충분. XWayland(rviz2 용) 명시 enable.
+RUN git clone --depth 1 -b "${WLROOTS_VER}" https://gitlab.freedesktop.org/wlroots/wlroots.git \
+    && cd wlroots \
+    && meson setup build --prefix=/usr/local -Dexamples=false -Dwerror=false \
+         -Dxwayland=enabled \
+    && ninja -C build && ninja -C build install
+
+# 4) cage 0.1.5 (wlroots 0.16 호환, app_id="wlroots" 유지, XWayland 지원)
+RUN git clone --depth 1 -b "${CAGE_VER}" https://github.com/cage-kiosk/cage.git \
+    && cd cage \
+    && meson setup build --prefix=/usr/local -Dxwayland=true -Dwerror=false \
+    && ninja -C build && ninja -C build install
+
+# 새 cage/wlroots 를 우선 사용하도록 ldconfig + 옛 apt cage 제거(경로 충돌 방지)
+RUN echo "/usr/local/lib/aarch64-linux-gnu" > /etc/ld.so.conf.d/zz-local.conf \
+    && echo "/usr/local/lib" >> /etc/ld.so.conf.d/zz-local.conf \
+    && ldconfig \
+    && (dpkg -r --force-depends cage || true)
+
+USER agl
+ENV PATH=/usr/local/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+ENTRYPOINT ["/entrypoint.sh"]
