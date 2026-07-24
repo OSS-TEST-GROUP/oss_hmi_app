@@ -26,8 +26,8 @@
 #include <wayland-client.h>
 #include "xdg-shell-client-protocol.h"
 
-#define BTN_W 240
-#define BTN_H 72
+#define BTN_W 100
+#define BTN_H 100
 #define HOME_APP_ID "hmi_launcher"
 
 static struct wl_display    *display;
@@ -45,42 +45,47 @@ static uint32_t last_home_ms = 0;
 
 // ---- ARGB8888 drawing -------------------------------------------------------
 
+// Premultiplied ARGB8888 (wl_shm expects premultiplied alpha).
+static uint32_t argb(int a, int r, int g, int b)
+{
+    r = r * a / 255; g = g * a / 255; b = b * a / 255;
+    return ((uint32_t)a << 24) | (r << 16) | (g << 8) | b;
+}
+
+// A circular, semi-transparent "home" button with a white house glyph.
+// Outside the circle is fully transparent (only the disc shows); the disc
+// itself is translucent so rviz2 shows through behind it.
 static void draw_button(uint32_t *px, int w, int h)
 {
-    const uint32_t clear  = 0x00000000;  // transparent (outside the button)
-    const uint32_t accent = 0xFFF97316;  // orange
-    const uint32_t white  = 0xFFFFFFFF;
-    const uint32_t border = 0xFFC2410C;
+    const uint32_t clear = 0x00000000;                    // transparent
+    const uint32_t fill  = argb(0xB3, 0xF9, 0x73, 0x16);  // ~70% orange disc
+    const uint32_t ring  = argb(0xE6, 0xC2, 0x41, 0x0C);  // ring edge
+    const uint32_t white = 0xFFFFFFFF;                    // opaque house
+
+    int cx = w / 2, cy = h / 2;
+    int R = (w < h ? w : h) / 2 - 2;
 
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++) {
+            int dx = x - cx, dy = y - cy, d2 = dx*dx + dy*dy;
             uint32_t c = clear;
-            if (x < BTN_W && y < BTN_H) {                // the button rectangle
-                c = accent;
-                if (x < 3 || x >= BTN_W - 3 || y < 3 || y >= BTN_H - 3) c = border;
-            }
+            if (d2 <= R*R) c = (d2 >= (R-4)*(R-4)) ? ring : fill;
             px[y * w + x] = c;
         }
 
-    int cx = 56, cy = BTN_H / 2;
-    for (int y = cy - 2; y < cy + 13; y++)               // house body
-        for (int x = cx - 16; x < cx + 16; x++)
+    // House glyph, centred in the disc.
+    int bx = cx, by = cy + 2;
+    for (int y = by - 2; y < by + 13; y++)               // body
+        for (int x = bx - 15; x < bx + 15; x++)
             if (x >= 0 && x < w && y >= 0 && y < h) px[y*w+x] = white;
-    for (int y = cy - 18; y < cy - 2; y++) {             // roof
-        int half = ((y - (cy - 18)) * 22) / 16;
-        for (int x = cx - half; x <= cx + half; x++)
+    for (int y = by - 18; y < by - 2; y++) {             // roof
+        int half = ((y - (by - 18)) * 20) / 16;
+        for (int x = bx - half; x <= bx + half; x++)
             if (x >= 0 && x < w && y >= 0 && y < h) px[y*w+x] = white;
     }
-    for (int y = cy + 3; y < cy + 13; y++)               // door
-        for (int x = cx - 4; x < cx + 4; x++)
-            if (x >= 0 && x < w && y >= 0 && y < h) px[y*w+x] = accent;
-    for (int k = 0; k < 18; k++) {                       // chevron hint
-        int xx = 150 + k;
-        if (xx < BTN_W) {
-            if (cy - k >= 0) { px[(cy-k)*w+xx] = white; }
-            if (cy + k < h)  { px[(cy+k)*w+xx] = white; }
-        }
-    }
+    for (int y = by + 3; y < by + 13; y++)               // door (see-through)
+        for (int x = bx - 4; x < bx + 4; x++)
+            if (x >= 0 && x < w && y >= 0 && y < h) px[y*w+x] = fill;
 }
 
 static struct wl_buffer *make_buffer(int w, int h)
