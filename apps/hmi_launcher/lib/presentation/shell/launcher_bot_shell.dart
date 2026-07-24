@@ -21,6 +21,7 @@ import '../panels/app_placeholder_panel.dart';
 import '../panels/lfc_embedded_panel.dart';
 import '../panels/manage_apps_panel.dart';
 import '../panels/ota_embedded_panel.dart';
+import '../panels/rviz2_embedded_panel.dart';
 import 'launcher_app_area.dart';
 
 /// Probes whether the v_agentos daemon is reachable, deciding launcher-bot
@@ -726,6 +727,9 @@ class _AppStage extends StatelessWidget {
         return AdswEmbeddedPanel(key: key);
       case 'lfc_monitor':
         return LfcEmbeddedPanel(key: key, rosUrl: rosUrl);
+      case 'rviz2_monitor':
+        // Direct-docker control (no rosUrl) — see Rviz2EmbeddedPanel.
+        return Rviz2EmbeddedPanel(key: key);
       default:
         return AppPlaceholderPanel(key: key, app: app);
     }
