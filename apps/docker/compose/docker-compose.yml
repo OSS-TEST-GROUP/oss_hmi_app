@@ -461,6 +461,8 @@ services:
       # pubspec path dep since the embedded lfc panel (b8034e6) — without this
       # mount `flutter pub get` fails resolving ../lfc_monitor in-container.
       - ../../lfc_monitor:/workspace/apps/lfc_monitor
+      # pubspec path dep since the embedded rviz2_monitor panel (F010)
+      - ../../rviz2_monitor:/workspace/apps/rviz2_monitor
       - ../../output:/workspace/output
     command:
       - "--app-path=/workspace/apps/hmi_launcher"
@@ -488,6 +490,8 @@ services:
       - ../../adsw_monitor:/workspace/apps/adsw_monitor
       # pubspec path dep since the embedded lfc panel (b8034e6) — see x86 note.
       - ../../lfc_monitor:/workspace/apps/lfc_monitor
+      # pubspec path dep since the embedded rviz2_monitor panel (F010)
+      - ../../rviz2_monitor:/workspace/apps/rviz2_monitor
       - ../../output:/workspace/output
     command:
       - "--app-path=/workspace/apps/hmi_launcher"
