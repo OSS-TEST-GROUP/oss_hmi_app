@@ -1,103 +1,72 @@
-// IDL ↔ wire constants for the rviz2_monitor subset of lifecycle_mgr topics.
+// Data models for rviz2_monitor — direct docker control variant.
 //
-// Topic strings are the DDS topic names, exposed by dds_bridge as
-// ROS-canonical topics (rt/<topic>) on the rosbridge_server side. Type strings
-// are ROS msg names from the `lifecyclemgr` ament package.
-//
-// rviz2_monitor only uses the container-control subset of the full
-// LifecycleTopics/LifecycleTypes surface (see lfc_monitor/data/lifecycle_data.dart
-// for the complete reference). Update here if the IDL changes.
+// All rosbridge / lifecycle_mgr IDL constants have been removed.
+// Container state is now polled directly via `docker inspect`.
 
-/// Topic name constants for the rviz2_monitor subset.
-class Rviz2Topics {
-  // Subscribe (adsw_manager/lifecycle_mgr → monitor)
-  static const String notifyContainerState =
-      '/mmf/lifecyclemgr/NotifyContainerState';
-  static const String diagReport = '/mmf/lifecyclemgr/LifecycleDiagReport';
-  static const String ctrlStartContainerResp =
-      '/mmf/lifecyclemgr/ctrl/StartContainerResponse';
-  static const String ctrlStopContainerResp =
-      '/mmf/lifecyclemgr/ctrl/StopContainerResponse';
-
-  // Publish (monitor → lifecycle_mgr ctrl gate)
-  static const String ctrlStartContainerReq =
-      '/mmf/lifecyclemgr/ctrl/StartContainer';
-  static const String ctrlStopContainerReq =
-      '/mmf/lifecyclemgr/ctrl/StopContainer';
-}
-
-/// ROS message type strings for the rviz2_monitor subset.
-class Rviz2Types {
-  static const String notifyContainerState = 'lifecyclemgr/NotifyContainerState';
-  static const String diagReport = 'lifecyclemgr/LifecycleDiagReport';
-  static const String ctrlStartContainerReq =
-      'lifecyclemgr/CtrlStartContainerRequest';
-  static const String ctrlStopContainerReq =
-      'lifecyclemgr/CtrlStopContainerRequest';
-  // Both StartContainerResponse and StopContainerResponse share the
-  // CtrlResponse IDL struct.
-  static const String ctrlResponse = 'lifecyclemgr/CtrlResponse';
-  // /rosout
-  static const String rosoutLog = 'rcl_interfaces/msg/Log';
-}
-
-// Container state enum — declaration-order matches IDL (LifecycleCommon.idl).
-// Keep in lockstep with lfc_monitor's ContainerState; a mismatch results in
-// mis-labeled badge text only (no crash).
+/// Docker container state as reported by `docker inspect -f '{{.State.Status}}'`.
+/// "notInstalled" is a synthetic state when `docker inspect` itself fails
+/// (image not pulled or container never created).
 enum ContainerState {
-  unknownState, // 0 (CS_UNKNOWN)
-  stopped,      // 1 (CONTAINER_STOPPED)
-  running,      // 2 (CONTAINER_RUNNING)
-  paused;       // 3 (CONTAINER_PAUSED)
+  notInstalled, // docker inspect returned non-zero / container unknown
+  created,      // container exists but was never started
+  running,      // container is up
+  exited;       // container stopped (may have non-zero ExitCode)
 
-  static ContainerState fromInt(int? v) {
-    switch (v) {
-      case 1:
-        return ContainerState.stopped;
-      case 2:
+  /// Map the raw docker inspect Status string to the enum.
+  static ContainerState fromDockerStatus(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'running':
         return ContainerState.running;
-      case 3:
-        return ContainerState.paused;
+      case 'created':
+        return ContainerState.created;
+      case 'exited':
+      case 'dead':
+      case 'removing':
+        return ContainerState.exited;
       default:
-        return ContainerState.unknownState;
+        return ContainerState.notInstalled;
     }
   }
 
+  /// Badge label shown in the UI.
   String get label {
     switch (this) {
-      case ContainerState.unknownState:
-        return 'UNKNOWN';
-      case ContainerState.stopped:
-        return 'STOPPED';
+      case ContainerState.notInstalled:
+        return 'NOT INSTALLED';
+      case ContainerState.created:
+        return 'CREATED';
       case ContainerState.running:
         return 'RUNNING';
-      case ContainerState.paused:
-        return 'PAUSED';
+      case ContainerState.exited:
+        return 'STOPPED';
     }
   }
 }
 
 /// Lightweight snapshot of the rviz2 container observed via
-/// NotifyContainerState and LifecycleDiagReport.
+/// `docker inspect` polling.
 class ContainerInfo {
   ContainerInfo({
     required this.name,
-    this.state = ContainerState.unknownState,
+    this.state = ContainerState.notInstalled,
     this.exitCode,
     this.lastChangedAt,
   });
 
   final String name;
   ContainerState state;
+
+  /// Last known exit code from docker inspect `{{.State.ExitCode}}`.
+  /// Null when not yet inspected or container is running.
   int? exitCode;
+
   DateTime? lastChangedAt;
 }
 
-/// A single /rosout log line filtered from the rviz2 node.
+/// A single log line from `docker logs` (stdout or stderr).
 ///
-/// [level] maps to rcl_interfaces/msg/Log constants:
-///   DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50.
-/// [name] is the fully-qualified ROS node name (e.g. "/rviz2").
+/// [level] is synthetic: 40 = stderr, 20 = stdout.
+/// [name] is always the container name.
 class LogLine {
   LogLine({
     required this.level,
@@ -113,10 +82,7 @@ class LogLine {
 
   /// Human-readable level abbreviation for the log badge.
   String get levelLabel {
-    if (level >= 50) return 'FATAL';
-    if (level >= 40) return 'ERROR';
-    if (level >= 30) return 'WARN';
-    if (level >= 20) return 'INFO';
-    return 'DEBUG';
+    if (level >= 40) return 'ERR';
+    return 'OUT';
   }
 }

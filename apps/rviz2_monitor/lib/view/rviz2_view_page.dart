@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:roslibdart/roslibdart.dart';
 
 import '../config/app_config.dart';
 import '../controller/rviz2_controller.dart';
 import '../data/rviz2_data.dart';
-import '../main.dart' show RosKeeperHolder, rosKeeperHolder;
 
-/// Single-screen view for rviz2_monitor.
+/// Single-screen view for rviz2_monitor (direct-docker variant).
 ///
 /// Layout (wide ≥900px):
 ///   ┌─────────────────────────────┬─────────────────────────┐
-///   │ Status card + Options form  │   /rosout Log view      │
+///   │ Status card + Options form  │   docker logs view      │
 ///   └─────────────────────────────┴─────────────────────────┘
 /// Narrow: panels stack vertically.
 ///
@@ -21,15 +19,10 @@ class Rviz2ViewPage extends StatefulWidget {
   const Rviz2ViewPage({
     super.key,
     required this.cfg,
-    this.keeperHolder,
     this.embedded = false,
   });
 
   final AppConfig cfg;
-
-  /// When null, falls back to the global rosKeeperHolder so launcher-embed
-  /// and standalone main() both work without an explicit hand-off.
-  final RosKeeperHolder? keeperHolder;
 
   /// True when hosted inside hmi_launcher. Controls minor layout tweaks
   /// (e.g. no window-level title bar in standalone mode).
@@ -41,12 +34,11 @@ class Rviz2ViewPage extends StatefulWidget {
 
 class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   late final Rviz2Controller _ctrl;
-  late final RosKeeperHolder _keeperHolder;
 
-  // Options form — local state only in v1 (persisted to prefs in follow-up).
+  // Options form — local state (v1).
   final TextEditingController _rvizConfigCtrl = TextEditingController();
-  final TextEditingController _domainIdCtrl = TextEditingController(text: '0');
-  String _gpuMode = 'SW';
+  final TextEditingController _domainIdCtrl =
+      TextEditingController(text: '');
 
   // Log auto-scroll.
   final ScrollController _logScrollCtrl = ScrollController();
@@ -54,24 +46,20 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   @override
   void initState() {
     super.initState();
-    _keeperHolder = widget.keeperHolder ?? rosKeeperHolder;
 
     _ctrl = Get.isRegistered<Rviz2Controller>()
         ? Get.find<Rviz2Controller>()
         : Get.put(
-            Rviz2Controller(
-              cfg: widget.cfg,
-              topicFactory: (r, n, t) => Topic(ros: r, name: n, type: t),
-            ),
+            Rviz2Controller(cfg: widget.cfg),
             permanent: true,
           );
 
-    // Auto-scroll log list when new lines arrive.
+    // Auto-scroll log list to newest line on each update.
     _ctrl.logs.listen((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_logScrollCtrl.hasClients) {
           _logScrollCtrl.animateTo(
-            0,
+            _logScrollCtrl.position.maxScrollExtent,
             duration: const Duration(milliseconds: 120),
             curve: Curves.easeOut,
           );
@@ -88,6 +76,8 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
     super.dispose();
   }
 
+  // ─── Build ───────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,8 +86,6 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
           : AppBar(
               title: const Row(
                 children: [
-                  Text('🤖', style: TextStyle(fontSize: 20)),
-                  SizedBox(width: 8),
                   Text('RViz2 Monitor',
                       style: TextStyle(fontWeight: FontWeight.w600)),
                 ],
@@ -138,7 +126,7 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
     );
   }
 
-  // ─── Left panel: status + control + options ──────────────────────────────
+  // ─── Left panel: status + control + options ───────────────────────────────
 
   Widget _buildLeftPanel(BuildContext context) {
     return Column(
@@ -159,49 +147,37 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row: title + connection indicator
-            Row(
+            // Header
+            const Row(
               children: [
-                const Icon(Icons.monitor_heart_outlined, size: 20),
-                const SizedBox(width: 8),
-                const Text(
+                Icon(Icons.monitor_heart_outlined, size: 20),
+                SizedBox(width: 8),
+                Text(
                   'rviz2 Container',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
-                Obx(() => _ConnectionBadge(connected: _ctrl.connected.value)),
-                const SizedBox(width: 8),
-                // Live rosbridge URL
-                AnimatedBuilder(
-                  animation: _keeperHolder,
-                  builder: (_, __) => Text(
-                    _keeperHolder.current.cfg.rosUrl.toString(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Theme.of(context).colorScheme.outline,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            // State badge + exit code + lastChanged
+            // State badge + exit code + last changed
             Obx(() {
               final info = _ctrl.container.value;
               return _ContainerStateRow(info: info);
             }),
             const SizedBox(height: 16),
-            // Start / Stop buttons
+            // Control buttons row 1: Start / Stop
             Obx(() {
               final state = _ctrl.container.value.state;
-              final isRunning = state == ContainerState.running;
-              final isStopped = state == ContainerState.stopped ||
-                  state == ContainerState.unknownState;
-              return Row(
+              final canStart = state == ContainerState.notInstalled ||
+                  state == ContainerState.exited ||
+                  state == ContainerState.created;
+              final canStop = state == ContainerState.running;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: isStopped ? _ctrl.startRviz2 : null,
+                    onPressed: canStart ? _onStart : null,
                     icon: const Icon(Icons.play_arrow, size: 18),
                     label: const Text('Start'),
                     style: ElevatedButton.styleFrom(
@@ -210,15 +186,41 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                       disabledBackgroundColor: Colors.grey.shade300,
                     ),
                   ),
-                  const SizedBox(width: 12),
                   OutlinedButton.icon(
-                    onPressed: isRunning ? _ctrl.stopRviz2 : null,
+                    onPressed: canStop ? _ctrl.stop : null,
                     icon: const Icon(Icons.stop, size: 18),
                     label: const Text('Stop'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red.shade700,
                       side: BorderSide(color: Colors.red.shade300),
                     ),
+                  ),
+                ],
+              );
+            }),
+            const SizedBox(height: 8),
+            // Control buttons row 2: surface switcher
+            Obx(() {
+              final state = _ctrl.container.value.state;
+              final isRunning = state == ContainerState.running;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: isRunning ? _ctrl.showRviz2 : null,
+                    icon: const Icon(Icons.view_in_ar, size: 18),
+                    label: const Text('rviz2 화면 보기'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _ctrl.showHome,
+                    icon: const Icon(Icons.home_outlined, size: 18),
+                    label: const Text('홈으로'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 20),
+                    tooltip: '새로고침',
+                    onPressed: _ctrl.refreshStatus,
                   ),
                 ],
               );
@@ -241,6 +243,12 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                             fontSize: 12, color: Colors.redAccent),
                       ),
                     ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 14),
+                      onPressed: () => _ctrl.lastError.value = null,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
                   ],
                 ),
               );
@@ -251,8 +259,11 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
     );
   }
 
-  /// Options form (v1): local state only. Values will feed future start args
-  /// passed via adsw_manager extra_args or ROS param topics (see design doc §3).
+  /// Options form (v1): local state.
+  ///
+  /// [_domainIdCtrl] feeds `-e ROS_DOMAIN_ID=<val>` when non-empty.
+  /// [_rvizConfigCtrl] is reserved for future `-v <path>:/tmp/default.rviz`
+  /// mount injection.
   Widget _buildOptionsCard(BuildContext context) {
     return Card(
       elevation: 1,
@@ -273,17 +284,17 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Options are saved locally; will feed future container start args.',
+              'Options are injected as docker run -e / -v flags on next Start.',
               style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).colorScheme.outline),
             ),
             const SizedBox(height: 14),
-            // .rviz config file path
+            // .rviz config file path (future -v mount)
             TextField(
               controller: _rvizConfigCtrl,
               decoration: const InputDecoration(
-                labelText: '.rviz config path',
+                labelText: '.rviz config path (optional)',
                 hintText: '/etc/rviz2/default.rviz',
                 prefixIcon: Icon(Icons.folder_open, size: 18),
                 isDense: true,
@@ -291,45 +302,21 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
               style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
             ),
             const SizedBox(height: 12),
-            // ROS_DOMAIN_ID
+            // ROS_DOMAIN_ID — appended as -e ROS_DOMAIN_ID=<val>
             TextField(
               controller: _domainIdCtrl,
               decoration: const InputDecoration(
-                labelText: 'ROS_DOMAIN_ID',
-                hintText: '0',
+                labelText: 'ROS_DOMAIN_ID (optional)',
+                hintText: 'leave blank to use container default',
                 prefixIcon: Icon(Icons.lan_outlined, size: 18),
                 isDense: true,
               ),
               keyboardType: TextInputType.number,
               style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
             ),
-            const SizedBox(height: 12),
-            // GPU mode toggle
-            Row(
-              children: [
-                const Icon(Icons.videogame_asset_outlined, size: 18),
-                const SizedBox(width: 8),
-                const Text('GPU Mode:', style: TextStyle(fontSize: 13)),
-                const SizedBox(width: 12),
-                StatefulBuilder(
-                  builder: (_, setS) => SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'SW', label: Text('SW (llvmpipe)')),
-                      ButtonSegment(value: 'HW', label: Text('HW (NVIDIA)')),
-                    ],
-                    selected: {_gpuMode},
-                    onSelectionChanged: (sel) =>
-                        setS(() => _gpuMode = sel.first),
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
-              'Note: GPU mode change takes effect on next Start.',
+              'Changes take effect on next Start.',
               style: TextStyle(
                   fontSize: 10,
                   color: Theme.of(context).colorScheme.outline),
@@ -340,7 +327,7 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
     );
   }
 
-  // ─── Right panel: /rosout log view ──────────────────────────────────────
+  // ─── Right panel: docker logs ─────────────────────────────────────────────
 
   Widget _buildLogPanel(BuildContext context) {
     return Card(
@@ -348,7 +335,6 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Log header
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
             child: Row(
@@ -356,7 +342,7 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                 const Icon(Icons.article_outlined, size: 20),
                 const SizedBox(width: 8),
                 const Text(
-                  '/rosout Log',
+                  'docker logs',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
                 const Spacer(),
@@ -368,6 +354,11 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                       ),
                     )),
                 IconButton(
+                  icon: const Icon(Icons.refresh_outlined, size: 20),
+                  tooltip: 'Reload logs',
+                  onPressed: _ctrl.tailLogs,
+                ),
+                IconButton(
                   icon: const Icon(Icons.clear_all, size: 20),
                   tooltip: 'Clear log',
                   onPressed: () => _ctrl.logs.clear(),
@@ -376,13 +367,12 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             ),
           ),
           const Divider(height: 1),
-          // Log list
           Expanded(
             child: Obx(() {
               if (_ctrl.logs.isEmpty) {
                 return Center(
                   child: Text(
-                    'No /rosout messages yet.\nMessages filtered to node name containing "${widget.cfg.containerName}".',
+                    'No log lines yet.\nPress Start or reload.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 12,
@@ -392,7 +382,6 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
               }
               return ListView.builder(
                 controller: _logScrollCtrl,
-                reverse: false,
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 itemCount: _ctrl.logs.length,
                 itemBuilder: (ctx, i) {
@@ -406,38 +395,21 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
       ),
     );
   }
-}
 
-// ─── Helper widgets ──────────────────────────────────────────────────────────
+  // ─── Private action helpers ───────────────────────────────────────────────
 
-class _ConnectionBadge extends StatelessWidget {
-  const _ConnectionBadge({required this.connected});
-  final bool connected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: connected
-            ? Colors.green.shade100
-            : Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: connected ? Colors.green.shade400 : Colors.grey.shade400,
-        ),
-      ),
-      child: Text(
-        connected ? '● connected' : '○ disconnected',
-        style: TextStyle(
-          fontSize: 11,
-          color: connected ? Colors.green.shade800 : Colors.grey.shade600,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
+  /// Collect option form values then call [Rviz2Controller.start].
+  void _onStart() {
+    final extraEnv = <String, String>{};
+    final domainId = _domainIdCtrl.text.trim();
+    if (domainId.isNotEmpty) {
+      extraEnv['ROS_DOMAIN_ID'] = domainId;
+    }
+    _ctrl.start(extraEnv: extraEnv);
   }
 }
+
+// ─── Helper widgets ───────────────────────────────────────────────────────────
 
 class _ContainerStateRow extends StatelessWidget {
   const _ContainerStateRow({required this.info});
@@ -450,13 +422,13 @@ class _ContainerStateRow extends StatelessWidget {
       case ContainerState.running:
         badgeColor = Colors.green.shade600;
         break;
-      case ContainerState.stopped:
+      case ContainerState.exited:
         badgeColor = Colors.grey.shade600;
         break;
-      case ContainerState.paused:
+      case ContainerState.created:
         badgeColor = Colors.orange.shade600;
         break;
-      case ContainerState.unknownState:
+      case ContainerState.notInstalled:
         badgeColor = Colors.blueGrey.shade400;
         break;
     }
@@ -483,7 +455,9 @@ class _ContainerStateRow extends StatelessWidget {
                 ),
               ),
             ),
-            if (info.exitCode != null && info.exitCode != 0) ...[
+            if (info.state == ContainerState.exited &&
+                info.exitCode != null &&
+                info.exitCode != 0) ...[
               const SizedBox(width: 8),
               Text(
                 'exit=${info.exitCode}',
@@ -523,21 +497,9 @@ class _LogLineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color levelColor;
-    switch (line.levelLabel) {
-      case 'FATAL':
-      case 'ERROR':
-        levelColor = Colors.red.shade700;
-        break;
-      case 'WARN':
-        levelColor = Colors.orange.shade700;
-        break;
-      case 'DEBUG':
-        levelColor = Colors.blueGrey.shade400;
-        break;
-      default: // INFO
-        levelColor = Colors.blue.shade700;
-    }
+    final isErr = line.level >= 40;
+    final levelColor =
+        isErr ? Colors.red.shade700 : Colors.blue.shade700;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -546,7 +508,7 @@ class _LogLineRow extends StatelessWidget {
         children: [
           // Level badge
           SizedBox(
-            width: 44,
+            width: 36,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
               decoration: BoxDecoration(

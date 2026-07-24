@@ -1,5 +1,5 @@
 name: rviz2_monitor
-description: "RViz2 control & logs HMI — container start/stop, state monitoring, and /rosout log viewer backed by rosbridge."
+description: "RViz2 control & logs HMI — direct docker CLI control + agl-shell gRPC screen switching."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -11,10 +11,10 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-  # Same versions as lfc_monitor / adsw_monitor / ota_monitor so the embedded
-  # launcher ends up with a single resolved Ros class across plugins.
-  roslibdart: ^0.0.1-dev+4
   get: ^4.7.2
+  # gRPC for agl-shell screen switching (ActivateApp @ 127.0.0.1:14005).
+  grpc: ^4.0.1
+  protobuf: ^3.1.0
 
 dev_dependencies:
   flutter_test:

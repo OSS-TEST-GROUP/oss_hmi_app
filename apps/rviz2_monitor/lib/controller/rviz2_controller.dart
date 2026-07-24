@@ -1,275 +1,341 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:get/get.dart';
-import 'package:roslibdart/roslibdart.dart';
+import 'package:grpc/grpc.dart';
 
 import '../config/app_config.dart';
 import '../data/rviz2_data.dart';
+import '../generated/agl_shell.pbgrpc.dart';
 
-typedef TopicFactory = Topic Function(Ros ros, String name, String type);
-
-/// Wires the rviz2_monitor UI to lifecycle_mgr via rosbridge.
+/// Controls the local rviz2 Docker container directly via the `docker` CLI.
+/// Screen switching (showRviz2 / showHome) uses the AGL shell gRPC service
+/// running at 127.0.0.1:14005 (plaintext / insecure).
 ///
-/// Subscribes to:
-///   - NotifyContainerState (F013: container start/stop transitions)
-///   - LifecycleDiagReport  (periodic richer status snapshot)
-///   - ctrl/StartContainerResponse / ctrl/StopContainerResponse (ctrl gate acks)
-///   - /rosout (rcl_interfaces/msg/Log — node log lines; filtered by node name)
+/// ## Why gRPC instead of agl-shell-activator binary?
+/// The `agl-shell-activator` binary depends on AGL-only shared libraries
+/// (libgrpc, libprotobuf, ~20 libabsl_*.so) that are not present inside the
+/// hmi_launcher Ubuntu 24.04 container.  The gRPC endpoint itself is reachable
+/// because the container runs with --net=host.
 ///
-/// Publishes:
-///   - ctrl/StartContainer {container_list: [cfg.containerName]}
-///   - ctrl/StopContainer  {container_list: [cfg.containerName]}
+/// ## docker control
+/// All subprocess calls go through [_run], which wraps Process.run with a
+/// try/catch guard so failures surface as [lastError] instead of exceptions.
 ///
-/// Mirrors lfc_monitor's LifecycleCollector _bind/watchdog pattern:
-///   - A 500ms watchdog detects a new GetX-registered Ros and re-binds.
-///   - Optimistic UI state is applied immediately; authoritative
-///     NotifyContainerState / DiagReport overwrites on arrival.
+/// ## State machine
+/// [refreshStatus] polls `docker inspect` every [AppConfig.pollIntervalSec]
+/// and updates [container].  Optimistic state mutations are applied immediately
+/// on [start]/[stop] so the UI responds instantly.
+///
+/// ## Log streaming
+/// [tailLogs] runs `docker logs --tail 300 <name>` once and stores the
+/// output into [logs].  A follow-up `docker logs -f` stream is started and
+/// kept alive while the container is running; lines are appended to [logs]
+/// (ring-buffered at [_logCapacity]).
 class Rviz2Controller extends GetxController {
-  Rviz2Controller({
-    required this.cfg,
-    required this.topicFactory,
-  });
+  Rviz2Controller({required this.cfg});
 
   final AppConfig cfg;
-  final TopicFactory topicFactory;
 
   // ─── Public observable state ────────────────────────────────────────────
 
-  /// rviz2 container state (state/exitCode/lastChangedAt).
-  final Rx<ContainerInfo> container = ContainerInfo(name: 'rviz2').obs;
+  /// Current docker container state + exit code.
+  final Rx<ContainerInfo> container =
+      ContainerInfo(name: 'rviz2').obs;
 
-  /// True once GetX has a live Ros and _bind() has run.
-  final RxBool connected = false.obs;
-
-  /// Recent /rosout lines, newest at index 0 (ring buffer).
+  /// docker logs ring buffer — newest line at the end (auto-scroll to bottom).
   final RxList<LogLine> logs = <LogLine>[].obs;
 
-  /// Last ctrl/* error message, or null.
+  /// Last subprocess or gRPC error message, or null.
   final RxnString lastError = RxnString();
 
   static const int _logCapacity = 300;
 
-  // ─── Internal subscriptions / publishers ────────────────────────────────
-  Topic? _notifyContainerStateSub;
-  Topic? _diagReportSub;
-  Topic? _ctrlStartContainerRespSub;
-  Topic? _ctrlStopContainerRespSub;
-  Topic? _rosoutSub;
+  // ─── AGL gRPC client ─────────────────────────────────────────────────────
 
-  Topic? _ctrlStartContainerReqPub;
-  Topic? _ctrlStopContainerReqPub;
+  /// gRPC channel to the AGL shell manager service.
+  /// Created lazily; closed in [onClose].
+  ClientChannel? _grpcChannel;
+  AglShellManagerServiceClient? _aglClient;
 
-  Timer? _rosWatchdog;
-  Ros? _boundRos;
+  /// Obtain (or create) the gRPC client connected to 127.0.0.1:14005.
+  AglShellManagerServiceClient _getAglClient() {
+    if (_aglClient != null) return _aglClient!;
+    _grpcChannel = ClientChannel(
+      '127.0.0.1',
+      port: 14005,
+      options: const ChannelOptions(
+        credentials: ChannelCredentials.insecure(),
+      ),
+    );
+    _aglClient = AglShellManagerServiceClient(_grpcChannel!);
+    return _aglClient!;
+  }
+
+  // ─── Internal ────────────────────────────────────────────────────────────
+
+  Timer? _pollTimer;
+  Process? _logsProcess;
+  bool _logFollowActive = false; // ignore: unused_field
+
+  // ─── Lifecycle ───────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
-    // Poll every 500ms for a newly registered Ros (same as lfc's watchdog).
-    _rosWatchdog = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (!Get.isRegistered<Ros>()) return;
-      final r = Get.find<Ros>();
-      if (identical(r, _boundRos) && _boundRos != null) return;
-      _bind(r);
-    });
+    // Initial poll then periodic.
+    refreshStatus();
+    _pollTimer = Timer.periodic(
+      Duration(seconds: cfg.pollIntervalSec),
+      (_) => refreshStatus(),
+    );
   }
 
   @override
   void onClose() {
-    _rosWatchdog?.cancel();
+    _pollTimer?.cancel();
+    _stopLogFollow();
+    _grpcChannel?.shutdown();
     super.onClose();
   }
 
-  Future<void> _bind(Ros r) async {
-    _boundRos = r;
-    connected.value = true;
+  // ─── Public API ──────────────────────────────────────────────────────────
 
-    // ── Subscribe ────────────────────────────────────────────────────────
-    _notifyContainerStateSub = topicFactory(
-      r,
-      Rviz2Topics.notifyContainerState,
-      Rviz2Types.notifyContainerState,
-    );
-    _diagReportSub = topicFactory(
-      r,
-      Rviz2Topics.diagReport,
-      Rviz2Types.diagReport,
-    );
-    _ctrlStartContainerRespSub = topicFactory(
-      r,
-      Rviz2Topics.ctrlStartContainerResp,
-      Rviz2Types.ctrlResponse,
-    );
-    _ctrlStopContainerRespSub = topicFactory(
-      r,
-      Rviz2Topics.ctrlStopContainerResp,
-      Rviz2Types.ctrlResponse,
-    );
-    _rosoutSub = topicFactory(
-      r,
-      cfg.rosoutTopic,
-      Rviz2Types.rosoutLog,
-    );
-
-    await _notifyContainerStateSub!.subscribe(_onNotifyContainerState);
-    await _diagReportSub!.subscribe(_onDiagReport);
-    await _ctrlStartContainerRespSub!.subscribe(
-        (m) async => _onCtrlResponse('ctrlStartContainer', m));
-    await _ctrlStopContainerRespSub!.subscribe(
-        (m) async => _onCtrlResponse('ctrlStopContainer', m));
-    await _rosoutSub!.subscribe(_onRosout);
-
-    // ── Publish ──────────────────────────────────────────────────────────
-    _ctrlStartContainerReqPub = topicFactory(
-      r,
-      Rviz2Topics.ctrlStartContainerReq,
-      Rviz2Types.ctrlStartContainerReq,
-    );
-    _ctrlStopContainerReqPub = topicFactory(
-      r,
-      Rviz2Topics.ctrlStopContainerReq,
-      Rviz2Types.ctrlStopContainerReq,
-    );
-    try {
-      await _ctrlStartContainerReqPub?.advertise();
-    } catch (_) {}
-    try {
-      await _ctrlStopContainerReqPub?.advertise();
-    } catch (_) {}
-  }
-
-  // ─── Subscribers ────────────────────────────────────────────────────────
-
-  /// NotifyContainerState arrives whenever ContainerHealthMonitor detects a
-  /// container transition. Payload: parallel arrays
-  /// {container_list, container_state_list, exit_code_list}.
-  /// Filters to cfg.containerName only.
-  Future<void> _onNotifyContainerState(Map<String, dynamic> msg) async {
-    final list = (msg['container_list'] as List?)?.cast<dynamic>() ?? const [];
-    final states =
-        (msg['container_state_list'] as List?)?.cast<dynamic>() ?? const [];
-    final exits =
-        (msg['exit_code_list'] as List?)?.cast<dynamic>() ?? const [];
-
-    final n = list.length < states.length ? list.length : states.length;
-    for (int i = 0; i < n; i++) {
-      final name = list[i].toString();
-      if (name != cfg.containerName) continue;
-      final newState =
-          ContainerState.fromInt((states[i] as num?)?.toInt());
-      final info = container.value;
-      info.state = newState;
-      info.exitCode =
-          (i < exits.length) ? (exits[i] as num?)?.toInt() : info.exitCode;
-      info.lastChangedAt = DateTime.now();
-      container.refresh();
-    }
-  }
-
-  /// LifecycleDiagReport: periodic snapshot from lifecycle_mgr. Searches the
-  /// container_list field for cfg.containerName and refreshes state.
-  Future<void> _onDiagReport(Map<String, dynamic> msg) async {
-    // DiagReport carries container_list alongside service_list.
-    // Shape: {container_list: [{name, container_state, exit_code, ...}]}.
-    final list = (msg['container_list'] as List?) ?? const [];
-    for (final entry in list) {
-      if (entry is! Map) continue;
-      final name = (entry['name'] ?? '').toString();
-      if (name != cfg.containerName) continue;
-      final stateInt = (entry['container_state'] as num?)?.toInt() ??
-          (entry['state'] as num?)?.toInt();
-      final info = container.value;
-      if (stateInt != null) info.state = ContainerState.fromInt(stateInt);
-      final ec = entry['exit_code'];
-      if (ec is num) info.exitCode = ec.toInt();
-      info.lastChangedAt = DateTime.now();
-      container.refresh();
-      break;
-    }
-  }
-
-  /// Handles ctrl/StartContainer and ctrl/StopContainer response acks.
-  Future<void> _onCtrlResponse(String label, Map<String, dynamic> msg) async {
-    final ret = (msg['ret_code'] as num?)?.toInt() ?? -1;
-    if (ret != 0) {
-      lastError.value = '$label failed: ret=$ret';
-      _appendLog(LogLine(
-        level: 40, // ERROR
-        name: 'rviz2_monitor',
-        msg: '$label rejected by lifecycle_mgr (ret=$ret)',
-        ts: DateTime.now(),
-      ));
-    } else {
-      lastError.value = null;
-    }
-  }
-
-  /// /rosout subscription — filters to log lines whose node name contains
-  /// cfg.containerName so only rviz2-originating logs appear.
+  /// Poll `docker inspect` and update [container].
   ///
-  /// rcl_interfaces/msg/Log wire shape:
-  ///   {stamp: {sec, nanosec}, level: int, name: str, msg: str, ...}
-  Future<void> _onRosout(Map<String, dynamic> msg) async {
-    final name = (msg['name'] ?? '').toString();
-    if (!name.contains(cfg.containerName)) return;
-    final level = (msg['level'] as num?)?.toInt() ?? 20;
-    final text = (msg['msg'] ?? '').toString();
-    _appendLog(LogLine(
-      level: level,
-      name: name,
-      msg: text,
-      ts: DateTime.now(),
-    ));
+  /// Exit code is also captured so the UI can show `exit=<n>` when stopped.
+  Future<void> refreshStatus() async {
+    final res = await _run('docker', [
+      'inspect',
+      '-f',
+      '{{.State.Status}}|||{{.State.ExitCode}}',
+      cfg.containerName,
+    ]);
+
+    if (res == null || res.exitCode != 0) {
+      // Container not found / docker unavailable → synthetic notInstalled.
+      _updateContainer(ContainerState.notInstalled, null);
+      return;
+    }
+
+    final parts = res.stdout.toString().trim().split('|||');
+    final status = parts.isNotEmpty ? parts[0].trim() : '';
+    final exitCodeRaw =
+        parts.length > 1 ? int.tryParse(parts[1].trim()) : null;
+
+    final newState = ContainerState.fromDockerStatus(status);
+    _updateContainer(newState, exitCodeRaw);
   }
 
-  void _appendLog(LogLine line) {
-    logs.insert(0, line);
-    if (logs.length > _logCapacity) {
-      logs.removeRange(_logCapacity, logs.length);
+  /// Remove any existing container then run rviz2, then bring it to front.
+  ///
+  /// Sequence:
+  ///   1. `docker rm -f rviz2`   (ignore error — may not exist)
+  ///   2. `docker run -d --name rviz2 <cfg.dockerRunArgs> [extraEnv] <cfg.image>`
+  ///   3. [showRviz2]
+  ///
+  /// [extraEnv] is a map of additional `-e KEY=VALUE` tokens to append before
+  /// the image name (e.g. `{'ROS_DOMAIN_ID': '42'}`).
+  Future<void> start({Map<String, String> extraEnv = const {}}) async {
+    _setOptimisticState(ContainerState.running);
+    lastError.value = null;
+
+    // 1. Clean up any stopped container with the same name.
+    await _run('docker', ['rm', '-f', cfg.containerName]);
+
+    // 2. Build the full arg list.
+    //
+    // Full docker run command that will be executed:
+    //   docker run -d --name rviz2
+    //     --net=host --ipc=host
+    //     --user 1001:1001 --group-add 44
+    //     -v /run/user/1001:/host-xdg
+    //     -e XDG_RUNTIME_DIR=/host-xdg
+    //     -e WAYLAND_DISPLAY=wayland-0
+    //     -e HOME=/tmp
+    //     -e LIBGL_ALWAYS_SOFTWARE=1
+    //     [-e ROS_DOMAIN_ID=<val>  ...]
+    //     registry.obigo.com/oss/rviz2-agl:latest
+    final runArgs = <String>[
+      'run',
+      '-d',
+      '--name', cfg.containerName,
+      ...cfg.dockerRunArgs,
+      // Caller-supplied env vars (e.g. ROS_DOMAIN_ID).
+      ...extraEnv.entries.expand((e) => ['-e', '${e.key}=${e.value}']),
+      cfg.image,
+    ];
+
+    final res = await _run('docker', runArgs);
+    if (res == null || res.exitCode != 0) {
+      // Roll back optimistic state and surface error.
+      await refreshStatus();
+      return;
+    }
+
+    // 3. Activate the rviz2 surface.
+    await showRviz2();
+
+    // 4. Start log follow.
+    await tailLogs();
+  }
+
+  /// Stop the rviz2 container, then activate the home screen.
+  Future<void> stop() async {
+    _setOptimisticState(ContainerState.exited);
+    lastError.value = null;
+
+    _stopLogFollow();
+
+    final res = await _run('docker', ['stop', cfg.containerName]);
+    if (res == null || res.exitCode != 0) {
+      await refreshStatus();
+      return;
+    }
+
+    await showHome();
+    await refreshStatus();
+  }
+
+  /// Activate the rviz2 cage surface via the AGL shell gRPC service.
+  ///
+  /// Sends ActivateApp(app_id=cfg.rvizAppId, output_name=cfg.aglOutput)
+  /// to 127.0.0.1:14005.  Failures are surfaced in [lastError] only (never
+  /// thrown to the UI layer).
+  ///
+  /// ⚠ Field numbers (app_id=1, output_name=2) are reconstructed from the
+  ///   compiled .pb — verify on hardware before production use.
+  Future<void> showRviz2() async {
+    await _activateAglSurface(cfg.rvizAppId);
+  }
+
+  /// Activate the home launcher surface via the AGL shell gRPC service.
+  Future<void> showHome() async {
+    await _activateAglSurface(cfg.homeAppId);
+  }
+
+  /// Fetch the last 300 lines of container logs (stdout + stderr combined)
+  /// and start a follow stream to append new lines in real time.
+  ///
+  /// Safe to call while [_logFollowActive] is true — it stops the previous
+  /// stream first.
+  Future<void> tailLogs() async {
+    _stopLogFollow();
+    logs.clear();
+
+    // Initial tail — 300 lines from history.
+    final tail = await _run(
+      'docker',
+      ['logs', '--tail', '300', cfg.containerName],
+    );
+    if (tail != null) {
+      _appendRawLines(tail.stdout.toString(), isErr: false);
+      _appendRawLines(tail.stderr.toString(), isErr: true);
+    }
+
+    // Follow stream.
+    try {
+      _logsProcess = await Process.start(
+        'docker',
+        ['logs', '-f', '--tail', '0', cfg.containerName],
+      );
+      _logFollowActive = true;
+
+      _logsProcess!.stdout
+          .transform(const SystemEncoding().decoder)
+          .listen(_onLogChunkOut, onDone: _onFollowDone, cancelOnError: true);
+      _logsProcess!.stderr
+          .transform(const SystemEncoding().decoder)
+          .listen(_onLogChunkErr, onDone: _onFollowDone, cancelOnError: true);
+    } catch (e) {
+      _logFollowActive = false;
+      // Not fatal — historic logs are already shown.
     }
   }
 
-  // ─── Public command API ─────────────────────────────────────────────────
+  // ─── AGL gRPC helper ─────────────────────────────────────────────────────
 
-  /// Start the rviz2 container via ctrl/StartContainer.
-  /// Applies an optimistic RUNNING state immediately so the badge updates
-  /// before the authoritative NotifyContainerState arrives.
-  void startRviz2() {
-    _optimisticState(ContainerState.running);
-    _publish(_ctrlStartContainerReqPub, 'ctrlStartContainer', {
-      'container_list': [cfg.containerName],
-    });
+  /// Send ActivateApp([appId], [cfg.aglOutput]) to the AGL gRPC endpoint.
+  Future<void> _activateAglSurface(String appId) async {
+    try {
+      final client = _getAglClient();
+      final req = ActivateRequest()
+        ..appId = appId
+        ..outputName = cfg.aglOutput;
+      await client.activateApp(req);
+    } catch (e) {
+      // AGL gRPC errors (e.g. surface not ready) are non-fatal — the
+      // container state change itself succeeded.
+      lastError.value = 'agl-shell activate "$appId": $e';
+    }
   }
 
-  /// Stop the rviz2 container via ctrl/StopContainer.
-  /// Applies an optimistic STOPPED state immediately.
-  void stopRviz2() {
-    _optimisticState(ContainerState.stopped);
-    _publish(_ctrlStopContainerReqPub, 'ctrlStopContainer', {
-      'container_list': [cfg.containerName],
-    });
+  // ─── docker Process helper ────────────────────────────────────────────────
+
+  /// Run [exe] with [args].  Returns the [ProcessResult] or null on OS-level
+  /// errors.  docker non-zero exits are NOT surfaced in [lastError] here
+  /// because callers interpret exit codes themselves (e.g. `docker rm -f` on a
+  /// non-existent container returns 1 and is expected).
+  Future<ProcessResult?> _run(String exe, List<String> args) async {
+    try {
+      return await Process.run(exe, args);
+    } catch (e) {
+      lastError.value = 'Failed to run $exe: $e';
+      return null;
+    }
   }
 
-  /// Paint a tentative state onto the local ContainerInfo so the UI reflects
-  /// the user's action immediately. The next authoritative source
-  /// (NotifyContainerState or DiagReport) will correct any divergence.
-  void _optimisticState(ContainerState newState) {
+  // ─── State helpers ────────────────────────────────────────────────────────
+
+  void _updateContainer(ContainerState state, int? exitCode) {
     final info = container.value;
-    if (info.state == newState) return;
-    info.state = newState;
+    final changed = info.state != state ||
+        (state == ContainerState.exited && info.exitCode != exitCode);
+    if (!changed) return;
+    info.state = state;
+    info.exitCode = (state == ContainerState.exited) ? exitCode : null;
     info.lastChangedAt = DateTime.now();
     container.refresh();
   }
 
-  void _publish(Topic? t, String label, Map<String, dynamic> payload) {
-    if (t == null) {
-      lastError.value = 'ROS not connected — $label skipped';
-      return;
+  void _setOptimisticState(ContainerState state) {
+    final info = container.value;
+    info.state = state;
+    info.exitCode = null;
+    info.lastChangedAt = DateTime.now();
+    container.refresh();
+  }
+
+  // ─── Log helpers ──────────────────────────────────────────────────────────
+
+  void _appendLine(String text, {required bool isErr}) {
+    if (text.isEmpty) return;
+    logs.add(LogLine(
+      level: isErr ? 40 : 20,
+      name: cfg.containerName,
+      msg: text,
+      ts: DateTime.now(),
+    ));
+    if (logs.length > _logCapacity) {
+      logs.removeRange(0, logs.length - _logCapacity);
     }
+  }
+
+  void _appendRawLines(String chunk, {required bool isErr}) {
+    for (final line in chunk.split('\n')) {
+      _appendLine(line, isErr: isErr);
+    }
+  }
+
+  void _onLogChunkOut(String chunk) => _appendRawLines(chunk, isErr: false);
+  void _onLogChunkErr(String chunk) => _appendRawLines(chunk, isErr: true);
+  void _onFollowDone() => _logFollowActive = false;
+
+  void _stopLogFollow() {
     try {
-      t.publish(payload);
-    } catch (e) {
-      lastError.value = '$label failed: $e';
-    }
+      _logsProcess?.kill();
+    } catch (_) {}
+    _logsProcess = null;
+    _logFollowActive = false;
   }
 }

@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package agl_shell_ipc;
+
+// Minimal proto for the AGL shell gRPC surface at 127.0.0.1:14005.
+//
+// Field numbers are reconstructed from the compiled .pb in the AGL
+// distro (app_id=1, output_name=2 is the standard agl_shell.proto layout).
+// ⚠ Verify field numbers on hardware before production use.
+
+message ActivateRequest {
+  string app_id = 1;
+  string output_name = 2;
+}
+
+message ActivateResponse {}
+
+service AglShellManagerService {
+  rpc ActivateApp (ActivateRequest) returns (ActivateResponse) {}
+}
