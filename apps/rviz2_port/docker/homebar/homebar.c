@@ -185,7 +185,27 @@ static void xsurf_configure(void *d, struct xdg_surface *xs, uint32_t serial)
 static const struct xdg_surface_listener xsurf_listener = { xsurf_configure };
 
 static void top_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *st)
-{ (void)d;(void)t;(void)st; cfg_w = w; cfg_h = h; fprintf(stderr, "[homebar] configure %dx%d\n", w, h); }
+{
+    static int tried_unmax = 0;
+    (void)d;
+    cfg_w = w; cfg_h = h;
+    int maxed = 0, fs = 0;
+    uint32_t *s;
+    wl_array_for_each(s, st) {
+        if (*s == XDG_TOPLEVEL_STATE_MAXIMIZED)  maxed = 1;
+        if (*s == XDG_TOPLEVEL_STATE_FULLSCREEN) fs = 1;
+    }
+    fprintf(stderr, "[homebar] configure %dx%d max=%d fs=%d\n", w, h, maxed, fs);
+    // The compositor maximizes new toplevels by default; a maximized surface
+    // must match the maximized geometry, which fights the tiny floating button
+    // and makes the initial float racy. Ask once to un-maximize so we become a
+    // small window from the start.
+    if (!tried_unmax && (maxed || fs)) {
+        tried_unmax = 1;
+        if (maxed) xdg_toplevel_unset_maximized(t);
+        if (fs)    xdg_toplevel_unset_fullscreen(t);
+    }
+}
 static void top_close(void *d, struct xdg_toplevel *t){ (void)d;(void)t; }
 static const struct xdg_toplevel_listener top_listener = { top_configure, top_close };
 

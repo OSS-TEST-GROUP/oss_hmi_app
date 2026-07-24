@@ -33,6 +33,8 @@ RUN wget -qO /tmp/g.tgz \
 WORKDIR /src
 COPY homebar.c ./
 COPY agl_shell.proto /opt/agl_shell.proto
+COPY entrypoint.sh /usr/local/bin/homebar-entrypoint.sh
+RUN chmod +x /usr/local/bin/homebar-entrypoint.sh
 
 # Generate xdg-shell client stubs, compile, drop build artifacts.
 RUN XDG=/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml \
@@ -44,4 +46,5 @@ RUN XDG=/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml \
 
 RUN useradd -m -u 1001 -U agl
 USER agl
-ENTRYPOINT ["/usr/local/bin/homebar"]
+# entrypoint runs the client + self-floats it via grpc (self-contained for adsw).
+ENTRYPOINT ["/usr/local/bin/homebar-entrypoint.sh"]
