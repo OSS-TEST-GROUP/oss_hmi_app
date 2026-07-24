@@ -26,8 +26,8 @@
 #include <wayland-client.h>
 #include "xdg-shell-client-protocol.h"
 
-#define BTN_W 100
-#define BTN_H 100
+#define BTN_W 50
+#define BTN_H 50
 #define HOME_APP_ID "hmi_launcher"
 
 static struct wl_display    *display;
@@ -58,8 +58,8 @@ static uint32_t argb(int a, int r, int g, int b)
 static void draw_button(uint32_t *px, int w, int h)
 {
     const uint32_t clear = 0x00000000;                    // transparent
-    const uint32_t fill  = argb(0xB3, 0xF9, 0x73, 0x16);  // ~70% orange disc
-    const uint32_t ring  = argb(0xE6, 0xC2, 0x41, 0x0C);  // ring edge
+    const uint32_t fill  = argb(0x4D, 0xF9, 0x73, 0x16);  // 70% transparent orange
+    const uint32_t ring  = argb(0x99, 0xC2, 0x41, 0x0C);  // more opaque edge
     const uint32_t white = 0xFFFFFFFF;                    // opaque house
 
     int cx = w / 2, cy = h / 2;
@@ -69,22 +69,24 @@ static void draw_button(uint32_t *px, int w, int h)
         for (int x = 0; x < w; x++) {
             int dx = x - cx, dy = y - cy, d2 = dx*dx + dy*dy;
             uint32_t c = clear;
-            if (d2 <= R*R) c = (d2 >= (R-4)*(R-4)) ? ring : fill;
+            if (d2 <= R*R) c = (d2 >= (R-3)*(R-3)) ? ring : fill;
             px[y * w + x] = c;
         }
 
-    // House glyph, centred in the disc.
-    int bx = cx, by = cy + 2;
-    for (int y = by - 2; y < by + 13; y++)               // body
-        for (int x = bx - 15; x < bx + 15; x++)
+    // House glyph, sized relative to the radius so it scales with the disc.
+    int hw = R * 5 / 9;                                   // body half-width
+    int bodyTop = cy - R / 8, bodyBot = cy + R / 2;
+    int roofTop = cy - R * 3 / 5;
+    for (int y = bodyTop; y < bodyBot; y++)               // body
+        for (int x = cx - hw; x < cx + hw; x++)
             if (x >= 0 && x < w && y >= 0 && y < h) px[y*w+x] = white;
-    for (int y = by - 18; y < by - 2; y++) {             // roof
-        int half = ((y - (by - 18)) * 20) / 16;
-        for (int x = bx - half; x <= bx + half; x++)
+    for (int y = roofTop; y < bodyTop; y++) {             // roof
+        int half = ((y - roofTop) * (hw + 3)) / (bodyTop - roofTop);
+        for (int x = cx - half; x <= cx + half; x++)
             if (x >= 0 && x < w && y >= 0 && y < h) px[y*w+x] = white;
     }
-    for (int y = by + 3; y < by + 13; y++)               // door (see-through)
-        for (int x = bx - 4; x < bx + 4; x++)
+    for (int y = bodyBot - R / 3; y < bodyBot; y++)       // door (see-through)
+        for (int x = cx - R / 6; x < cx + R / 6; x++)
             if (x >= 0 && x < w && y >= 0 && y < h) px[y*w+x] = fill;
 }
 
