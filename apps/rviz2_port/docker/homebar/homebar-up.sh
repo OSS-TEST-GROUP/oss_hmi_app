@@ -38,8 +38,8 @@ for i in 1 2 3 4 5 6; do
   agl-shell-activator -a float    -p homebar -o "$OUTPUT" >/dev/null 2>&1 || true
   sleep 1
 done
-# bottom-right corner (1920x1080 output, 50x50 circular button)
+# top-right corner (1920x1080 output, 50x50 circular button)
 docker exec homebar grpcurl -plaintext \
-  -d '{"app_id":"homebar","x":1846,"y":1006}' \
+  -d '{"app_id":"homebar","x":1846,"y":24}' \
   127.0.0.1:14005 agl_shell_ipc.AglShellManagerService/SetAppPosition >/dev/null 2>&1 || true
 echo "[homebar-up] homebar floated + positioned on $OUTPUT"

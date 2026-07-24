@@ -13,7 +13,7 @@ S=127.0.0.1:14005
 A=agl_shell_ipc.AglShellManagerService
 OUT="${AGL_OUTPUT:-DP-1}"
 X="${HOMEBAR_X:-1846}"
-Y="${HOMEBAR_Y:-1006}"
+Y="${HOMEBAR_Y:-24}"
 
 float_once() {
   grpcurl -plaintext -d "{\"app_id\":\"homebar\",\"x_pos\":$X,\"y_pos\":$Y}" \
