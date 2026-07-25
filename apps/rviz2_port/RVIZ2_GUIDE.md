@@ -323,6 +323,68 @@ ssh $BOARD 'docker ps --format "{{.Names}} | {{.Status}}"'
 
 ---
 
+## 부록 A. 터치 수정 상세 (개발 핵심)
+
+> "우리가 개발한 rviz2"의 핵심 중 하나. arm64 실기에서 **터치가 되게** 만든 작업 + 그 부수
+> 효과(cage 종료 크래시)까지 정리. 소스: `apps/rviz2_port/docker/agl-display/Dockerfile.touch`.
+
+### A-1. 문제
+
+Orin/AGL 실기에서 rviz2를 띄우면 **마우스는 되는데 터치가 안 됨**.
+
+### A-2. 근본 원인
+
+렌더링 경로가 `agl-compositor → cage(중첩 wlroots) → XWayland → rviz2` 인데, jammy 패키지
+**cage 0.1.4 / wlroots 0.15.1** 의 wayland 백엔드가 부모 컴포지터로부터 받은 **`wl_touch`(터치)
+이벤트를 자식으로 전달하지 못합니다** (포인터/키보드만 전달). 즉 터치가 rviz2에 닿기 전에
+cage에서 유실됩니다. wlroots는 **0.16 부터** wayland 백엔드에 터치 전달이 추가됐습니다.
+
+### A-3. 수정 — 소스 빌드 스택 (Dockerfile.touch)
+
+표준 이미지(`ros:humble` + apt cage/xwayland) 위에 아래를 **소스 빌드**해 `/usr/local`에 설치:
+
+| 구성 | 버전 | 이유 |
+|---|---|---|
+| wayland | **1.22.0** | wlroots 0.16 이 wayland ≥1.21 요구 (jammy는 1.20) |
+| wayland-protocols | 1.31 | wlroots 0.16 의존 |
+| seatd / libseat | 0.8.0 | wlroots 0.16 **필수** 의존. jammy libseat-dev 의 pkg-config 인식이 불안정 → 소스 공급 |
+| **wlroots** | **0.16.2** | **wayland 백엔드 터치 전달** (핵심). `-Dxwayland=enabled`, `backends=auto`(hwdata/xcb-renderutil 없는 백엔드 자동 비활성) |
+| cage | 0.1.5 | wlroots 0.16 호환. `app_id="wlroots"` 유지(agl-shell 활성화 정합) |
+
+- `PKG_CONFIG_PATH`: `/usr/local/...` 을 앞에 둬 wayland 1.22 가 jammy 1.20 보다 우선하되,
+  시스템 pkgconfig(libinput/pixman/xcb 등)도 검색되도록 뒤에 append.
+- **빌드는 Orin 보드 네이티브 권장**(QEMU 에뮬레이션은 매우 느림). §3-2 참조.
+
+### A-4. 부수 수정 — cage 종료 크래시 (wayland 1.22 assertion)
+
+wayland **1.21+** 의 `wl_display_terminate()` 는 종료용 eventfd write 결과를 assert 합니다.
+중첩 cage 종료(SIGTERM) 시 이 write 가 실패해 **abort (exit 133)** 가 발생했습니다
+(jammy 1.20 엔 이 로직/assertion 자체가 없어 조용히 넘어갔음 = 터치 수정의 부작용).
+
+2단계로 해결:
+1. wayland 를 **`-Db_ndebug=true`**(assert 컴파일 제거)로 빌드 → abort 제거. 단 이것만으론
+   cage 가 SIGTERM 에 종료를 못 해 `docker stop` 이 grace(10s) 후 SIGKILL → 느림.
+2. 이미지에 **`STOPSIGNAL SIGKILL`** 추가 → `docker stop` 이 즉시 SIGKILL(cage 핸들러 우회)
+   → **~200ms 즉시 정지 + assertion 없음**.
+
+> 결과: `docker stop rviz2` 가 10,253ms → **192ms**, assertion 로그 사라짐. 종료 exit code 는
+> **137(SIGKILL)** — 크래시가 아니라 정상 정지 코드. (완전한 clean exit 0 은 cage graceful
+> shutdown 자체 수정 필요 = deep, 보류. §7 참조.)
+
+### A-5. 검증 (Orin 실기)
+
+- **터치 동작 확인** (사용자 실탭 + 에이전트 가상 터치 주입 both).
+- 유휴(25s+) / 터치 / 활성전환 churn 모두 안정 — 크래시는 **종료 시에만** 이었고 A-4로 해소.
+- `docker stop` 192ms + assertion 없음, rviz2 렌더/터치 정상 유지.
+
+### A-6. 배포 & 아키
+
+- 레지스트리 `oss/rviz2-agl:latest` 의 **arm64 = 터치 수정본**, `oss/rviz2-agl:touch`(arm64) 도 존재 (§4-4).
+- **amd64 는 터치 수정본 불필요** — x86 개발은 host X11로 rviz2 직접 실행(cage 우회, §5-4)이라
+  중첩 wayland 터치 이슈가 발생하지 않음. 따라서 `:latest` 의 amd64 는 표준(base) 유지.
+
+---
+
 ## 참고 문서
 
 - `apps/rviz2_port/docker/agl-display/README.md` — 컨테이너 격리 방식 상세(원본)
