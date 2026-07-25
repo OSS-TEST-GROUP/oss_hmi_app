@@ -1,0 +1,16 @@
+// Minimal proto for grpcurl to call the AGL shell gRPC service (127.0.0.1:14005)
+// ActivateApp — same contract rviz2_monitor uses (verified working on-board).
+syntax = "proto3";
+
+package agl_shell_ipc;
+
+service AglShellManagerService {
+  rpc ActivateApp(ActivateRequest) returns (ActivateResponse);
+}
+
+message ActivateRequest {
+  string app_id = 1;
+  string output_name = 2;
+}
+
+message ActivateResponse {}

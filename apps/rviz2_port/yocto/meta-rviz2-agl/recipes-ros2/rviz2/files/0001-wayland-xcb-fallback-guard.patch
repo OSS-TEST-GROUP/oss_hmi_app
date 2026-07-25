@@ -1,0 +1,59 @@
+From f1ae146dbd259e77271329e108f32c57638cdceb Mon Sep 17 00:00:00 2001
+From: William Woo <william@obigo.com>
+Date: Sat, 9 May 2026 09:51:30 +0900
+Subject: [PATCH] R007: Add defensive guard against XCB fallback on Wayland
+
+This patch adds a defensive guard to prevent QT_QPA_PLATFORM=xcb
+fallback when WAYLAND_DISPLAY is set. This ensures RViz2 uses native
+Wayland rendering on AGL Wayland compositor environments.
+
+Background:
+- AGL Wayland environments require QT_QPA_PLATFORM=wayland for proper
+  QtWayland plugin initialization
+- Accidental xcb fallback causes "Could not connect to display" errors
+- This guard provides compile-time protection against future upstream
+  changes that might introduce XCB fallback logic
+
+Upstream-Status: Pending [ros2/rviz#847 Wayland support tracking]
+Signed-off-by: William Woo <william.woo@obigo.com>
+---
+ rviz2/src/main.cpp | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/rviz2/src/main.cpp b/rviz2/src/main.cpp
+index a743271c..491af685 100644
+--- a/rviz2/src/main.cpp
++++ b/rviz2/src/main.cpp
+@@ -28,6 +28,9 @@
+  * POSSIBILITY OF SUCH DAMAGE.
+  */
+ 
++#include <cstdlib>
++#include <cstring>
++#include <iostream>
+ #include <memory>
+ #include <string>
+ #include <vector>
+@@ -41,6 +44,19 @@
+ 
+ int main(int argc, char ** argv)
+ {
++  // [R007] Defensive guard: prevent XCB fallback when Wayland display is available
++  // This ensures QT_QPA_PLATFORM=wayland is enforced for AGL Wayland environments
++  const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
++  const char* qpa_platform = std::getenv("QT_QPA_PLATFORM");
++  if (wayland_display && wayland_display[0] != '\0') {
++    if (!qpa_platform || std::strcmp(qpa_platform, "xcb") == 0) {
++      setenv("QT_QPA_PLATFORM", "wayland", 1);
++      std::cerr << "[R007 Guard] Forced QT_QPA_PLATFORM=wayland "
++                << "(WAYLAND_DISPLAY=" << wayland_display << ")\n";
++    }
++  }
++  // End R007 guard
++
+   // remove ROS arguments before passing to QApplication
+   std::vector<std::string> non_ros_args = rclcpp::remove_ros_arguments(argc, argv);
+   std::vector<char *> non_ros_args_c_strings;
+-- 
+2.34.1
+

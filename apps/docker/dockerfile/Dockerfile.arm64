@@ -26,6 +26,25 @@
 #     --device /dev/dri \
 #     adsw_monitor:arm64
 
+# ── docker CLI (static binary, aarch64) ────────────────────────────────────
+# rviz2_monitor (running inside this image) directly controls the host rviz2
+# container via the docker CLI.  We download only the static `docker` binary
+# from the official download site; no daemon, no docker-compose.
+# The docker.sock is bind-mounted at runtime by adsw_manager/agl-service-list.
+#
+# To update: change DOCKER_CLI_VERSION and rebuild.
+FROM --platform=linux/arm64 ubuntu:24.04 AS docker-cli-fetch
+ARG DOCKER_CLI_VERSION=27.5.1
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL \
+      "https://download.docker.com/linux/static/stable/aarch64/docker-${DOCKER_CLI_VERSION}.tgz" \
+      -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz --strip-components=1 -C /usr/local/bin docker/docker \
+    && rm /tmp/docker.tgz \
+    && chmod +x /usr/local/bin/docker
+# ── end docker CLI stage ────────────────────────────────────────────────────
+
 FROM --platform=linux/arm64 ubuntu:24.04
 
 ARG APP_NAME=adsw_monitor
@@ -82,15 +101,21 @@ ADD output/${APP_NAME}-arm64-release.tar.gz /
 COPY ${APP_NAME}/config/${CONFIG_FILE} ${BUNDLE_PATH}/data/flutter_assets/assets/config/${CONFIG_FILE}
 
 # Plugin manifests: hmi_launcher scans HMI_APPS_ROOT for <app>/manifest.json.
-RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor /apps/rviz2_monitor
 COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
 COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
 COPY lfc_monitor/manifest.json /apps/lfc_monitor/manifest.json
+COPY rviz2_monitor/manifest.json /apps/rviz2_monitor/manifest.json
 
 # flutter-auto entrypoint script.
 # The flutter-auto binary is expected to be mounted from the host, or it
 # can be COPYed at image build time.
 COPY docker/script/agl-run.sh /usr/local/bin/agl-run.sh
 RUN chmod +x /usr/local/bin/agl-run.sh
+
+# Copy the static docker CLI from the fetch stage.
+# The binary is used by rviz2_monitor to control the host rviz2 container.
+# docker.sock must be bind-mounted at runtime: -v /var/run/docker.sock:/var/run/docker.sock
+COPY --from=docker-cli-fetch /usr/local/bin/docker /usr/local/bin/docker
 
 ENTRYPOINT ["/usr/local/bin/agl-run.sh"]

@@ -1,0 +1,176 @@
+# AGL Trout 20.0.3 + RViz2 Wayland local.conf sample
+#
+# Usage:
+#   1. Copy this file to your build directory:
+#      cp <PROJECT_ROOT>/yocto/local.conf.sample build/conf/local.conf
+#   2. Adjust MACHINE, DL_DIR, SSTATE_DIR according to your environment
+#   3. Review and enable/disable features as needed
+#
+# Reference: hmi/rviz_agl/planning/rviz_agl_wayland_porting_analysis.md Section 4.6
+
+# ===================================================================
+# Machine and Build Configuration
+# ===================================================================
+
+# Target machine (adjust for your hardware)
+# Examples: qemux86-64, raspberrypi4-64, intel-corei7-64, generic-x86-64
+MACHINE ?= "qemux86-64"
+
+# Target distribution
+DISTRO ?= "poky-agl"
+
+# Parallel build configuration (adjust for your CPU cores)
+BB_NUMBER_THREADS ?= "8"
+PARALLEL_MAKE ?= "-j 8"
+
+# Download and shared state cache directories (adjust paths)
+DL_DIR ?= "${TOPDIR}/../downloads"
+SSTATE_DIR ?= "${TOPDIR}/../sstate-cache"
+
+# Package management
+PACKAGE_CLASSES ?= "package_rpm"
+
+# ===================================================================
+# ROS2 Configuration
+# ===================================================================
+
+# ROS2 Humble distribution (required for RViz2)
+ROS_DISTRO = "humble"
+
+# Yocto/OpenEmbedded release series (must match Scarthgap)
+ROS_OE_RELEASE_SERIES = "scarthgap"
+
+# ===================================================================
+# Wayland + OpenGL Configuration (핵심 설정)
+# ===================================================================
+
+# Enable Wayland compositor support
+# Remove X11 support to eliminate xcb/GLX dependencies
+DISTRO_FEATURES:append = " wayland opengl"
+DISTRO_FEATURES:remove = "x11"
+
+# Note: Some recipes may still reference x11 in DEPENDS
+# This is acceptable if they support Wayland fallback
+
+# ===================================================================
+# Qt5 Wayland Backend Configuration
+# ===================================================================
+
+# Enable Qt5 Wayland QPA plugin and GLES2 backend
+# Required even in Flutter-based AGL images for RViz2 runtime
+PACKAGECONFIG:pn-qtbase:append = " wayland gles2"
+
+# Enable Wayland-EGL integration for qtwayland
+PACKAGECONFIG:pn-qtwayland:append = " wayland-egl"
+
+# Ensure Qt5 runtime libraries are included in the image
+# Flutter images do not include Qt5 by default
+IMAGE_INSTALL:append = " \
+    qtbase \
+    qtwayland \
+    qtwayland-plugins \
+"
+
+# ===================================================================
+# EGL/OpenGL Configuration
+# ===================================================================
+
+# Prefer native EGL/GLES implementation (Mesa or vendor driver)
+PREFERRED_PROVIDER_virtual/egl ?= "mesa"
+PREFERRED_PROVIDER_virtual/libgles2 ?= "mesa"
+
+# OpenGL driver selection (adjust for target hardware)
+# Options: i965, iris, swrast (software), nouveau, etc.
+# MESA_DRIVER ?= "i965"
+
+# ===================================================================
+# Additional Runtime Dependencies
+# ===================================================================
+
+# RViz2 runtime requirements
+IMAGE_INSTALL:append = " \
+    wayland \
+    wayland-protocols \
+    libdrm \
+    libxkbcommon \
+"
+
+# ROS2 Humble packages (add specific packages as needed)
+# IMAGE_INSTALL:append = " \
+#     ros-humble-rviz2 \
+#     ros-humble-rviz-common \
+#     ros-humble-rviz-rendering \
+# "
+
+# ===================================================================
+# Development Tools (optional, disable for production images)
+# ===================================================================
+
+# Uncomment to include development and debugging tools
+# EXTRA_IMAGE_FEATURES ?= "debug-tweaks tools-sdk dev-pkgs"
+
+# SSH server for remote access
+# EXTRA_IMAGE_FEATURES:append = " ssh-server-openssh"
+
+# ===================================================================
+# Build Optimization (선택적)
+# ===================================================================
+
+# Remove intermediate work files after build (saves disk space)
+# Warning: Makes incremental builds slower
+# INHERIT += "rm_work"
+
+# Enable build history tracking
+# INHERIT += "buildhistory"
+# BUILDHISTORY_COMMIT = "1"
+
+# ===================================================================
+# Target Image
+# ===================================================================
+
+# Select base image recipe
+# Examples:
+#   - agl-ivi-demo-flutter: Flutter-based HMI (default for Trout)
+#   - agl-ivi-demo: Qt-based HMI
+#   - core-image-minimal: Minimal rootfs
+# IMAGE_FSTYPES:append = " wic wic.bmap"
+
+# ===================================================================
+# License Handling
+# ===================================================================
+
+# Accept commercial licenses if needed (e.g., for vendor GPU drivers)
+# LICENSE_FLAGS_ACCEPTED:append = " commercial"
+
+# ===================================================================
+# Runtime Environment Variables (for RViz2)
+# ===================================================================
+
+# These should be set at runtime or in systemd service files
+# Not directly configured in local.conf, documented here for reference:
+#
+# export QT_QPA_PLATFORM=wayland
+# export WAYLAND_DISPLAY=wayland-0
+# export XDG_RUNTIME_DIR=/run/user/1000
+# export QT_WAYLAND_SHELL_INTEGRATION=xdg-shell
+
+# ===================================================================
+# Notes
+# ===================================================================
+
+# 1. Qt5 vs Flutter:
+#    - Flutter is the default HMI framework in AGL Trout
+#    - Qt5 must be explicitly added to IMAGE_INSTALL for RViz2
+#    - Both can coexist on the same agl-compositor
+#
+# 2. meta-ros2-humble 'scarthgap' branch:
+#    - Support level: best-effort (not fully validated)
+#    - May encounter build errors with gcc 13 / glibc 2.39
+#    - Verify package builds before production use
+#
+# 3. GPU/EGL requirements:
+#    - RViz2 (OGRE) requires EGL 1.4+ and OpenGL 3.3+
+#    - Alternatively, OGRE can be built with GLES2/GLES3 backend
+#    - Verify GPU capabilities on target hardware
+#
+# 4. See yocto/README.md for complete build instructions

@@ -1,3 +1,22 @@
+# ── docker CLI (static binary, x86_64) ─────────────────────────────────────
+# rviz2_monitor (running inside this image) directly controls the host rviz2
+# container via the docker CLI.  We download only the static `docker` binary
+# from the official download site; no daemon, no docker-compose.
+# The docker.sock is bind-mounted at runtime by adsw_manager/agl-service-list.
+#
+# To update: change DOCKER_CLI_VERSION and rebuild.
+FROM ubuntu:22.04 AS docker-cli-fetch
+ARG DOCKER_CLI_VERSION=27.5.1
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL \
+      "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" \
+      -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz --strip-components=1 -C /usr/local/bin docker/docker \
+    && rm /tmp/docker.tgz \
+    && chmod +x /usr/local/bin/docker
+# ── end docker CLI stage ────────────────────────────────────────────────────
+
 FROM ubuntu:22.04
 
 # Reusable runtime image. To use this Dockerfile for another Flutter app,
@@ -70,3 +89,8 @@ ENV XDG_RUNTIME_DIR=/tmp/runtime
 ENV DISPLAY=:0
 
 ENTRYPOINT ["/app/entrypoint"]
+
+# Copy the static docker CLI from the fetch stage.
+# Used by rviz2_monitor to control the host rviz2 container.
+# docker.sock must be bind-mounted at runtime: -v /var/run/docker.sock:/var/run/docker.sock
+COPY --from=docker-cli-fetch /usr/local/bin/docker /usr/local/bin/docker

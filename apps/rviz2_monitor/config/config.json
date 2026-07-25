@@ -1,0 +1,19 @@
+{
+  "containerName": "rviz2",
+  "image": "registry.obigo.com/oss/rviz2-agl:latest",
+  "aglOutput": "DP-1",
+  "rvizAppId": "wlroots",
+  "homeAppId": "hmi_launcher",
+  "pollIntervalSec": 3,
+  "dockerRunArgs": [
+    "--net=host",
+    "--ipc=host",
+    "--user", "1001:1001",
+    "--group-add", "44",
+    "-v", "/run/user/1001:/host-xdg",
+    "-e", "XDG_RUNTIME_DIR=/host-xdg",
+    "-e", "WAYLAND_DISPLAY=wayland-0",
+    "-e", "HOME=/tmp",
+    "-e", "LIBGL_ALWAYS_SOFTWARE=1"
+  ]
+}
