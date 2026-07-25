@@ -63,17 +63,18 @@ agl-compositor (호스트, 순수 Wayland, agl-shell)
 
 ## 3. 빌드
 
-> ### 아키텍처(amd64 / arm64) 제공 현황
-> | 이미지 | amd64 | arm64 | 비고 |
+> ### 아키텍처(amd64 / arm64) 제공 현황 — 레지스트리 태그
+> | 태그 | amd64 | arm64 | 내용 |
 > |---|:-:|:-:|---|
-> | **표준 rviz2-agl** (Dockerfile, §3-1) | ✅ | ✅ | `build_rviz2_multiarch.sh` 가 **멀티아치 manifest**를 레지스트리에 push |
-> | **터치 지원본** (Dockerfile.touch, §3-2) | (불필요) | ✅ | 현재 arm64 실기 배포본. 보드 네이티브 빌드 → 보드 로컬 `:latest` |
+> | **`oss/rviz2-agl:latest`** | base | **touch** | 멀티아치. amd64=표준, **arm64=터치 수정본** |
+> | **`oss/rviz2-agl:touch`** | — | touch | arm64 터치 수정본(명시적 태그) |
 >
-> - **표준 이미지는 amd64+arm64 둘 다** 레지스트리에 제공됩니다(원샷 멀티아치).
-> - **터치 지원본은 arm64만** 만들어져 있고, 지금은 **보드 로컬 이미지**입니다(레지스트리
->   미push). amd64는 터치 지원본이 필요 없습니다 — x86 개발은 host X11로 rviz2를 직접 띄워
->   (cage 우회, §5-4) 중첩 wayland 터치 이슈가 발생하지 않기 때문입니다.
-> - 터치 지원본을 **arm64 레지스트리 이미지로도 제공**하려면 §4-2 로 push하면 됩니다.
+> - **`:latest` 는 amd64 + arm64 둘 다 제공**되며, **arm64 는 터치 수정본**(wlroots 0.16.2/
+>   cage 0.1.5)입니다. 따라서 arm64 보드가 `:latest` 를 pull하면 **터치되는 이미지**를 받습니다.
+> - amd64 는 표준(base) 이미지입니다 — x86 개발은 host X11로 rviz2를 직접 띄워(cage 우회, §5-4)
+>   중첩 wayland 터치 이슈가 없으므로 터치 수정본이 필요 없습니다.
+> - 참고: `:latest` 는 `imagetools create` 로 [amd64 base manifest + arm64 :touch manifest]를
+>   결합해 구성했습니다(§4-4). 표준 arm64 base 는 기존 digest 로 남아있으나 태그 없음.
 
 ### 3-1. rviz2-agl 컨테이너 — 표준(터치 미지원, amd64+arm64 멀티아치)
 
@@ -169,6 +170,27 @@ ssh root@172.16.10.162 'gunzip -c /tmp/rviz2.tar.gz | docker load'
 > **중요**: 보드의 adsw_manager는 이미지를 **재-pull 하지 않고 로컬 이미지를 사용**합니다.
 > 따라서 보드에서 `docker build` 하거나 `docker load` 한 뒤 `docker tag ... :latest` 만 하면
 > 즉시 반영됩니다(레지스트리 필수 아님).
+
+### 4-4. arm64 터치본을 `:latest` 의 arm64 로 편입 (멀티아치 유지)
+
+`:latest` 는 멀티아치(amd64+arm64)라 arm64 터치본을 그냥 push하면 amd64가 사라집니다.
+대신 arm64 터치본을 `:touch` 로 push한 뒤, `imagetools create` 로 amd64(base)+arm64(touch)를
+결합해 `:latest` 를 재구성합니다:
+
+```bash
+# 1) 보드에서 arm64 터치본을 :touch 로 push (ossuser 로그인 후)
+ssh $BOARD 'docker tag registry.obigo.com/oss/rviz2-agl:latest registry.obigo.com/oss/rviz2-agl:touch \
+  && docker push registry.obigo.com/oss/rviz2-agl:touch'
+
+# 2) 현재 :latest 의 amd64 digest 확인
+docker buildx imagetools inspect registry.obigo.com/oss/rviz2-agl:latest \
+  --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{.Digest}}{{println}}{{end}}'
+
+# 3) :latest = amd64(base digest) + arm64(:touch) 로 재구성
+docker buildx imagetools create -t registry.obigo.com/oss/rviz2-agl:latest \
+  registry.obigo.com/oss/rviz2-agl@sha256:<amd64-base-digest> \
+  registry.obigo.com/oss/rviz2-agl:touch
+```
 
 ---
 
