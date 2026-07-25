@@ -140,6 +140,9 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   }
 
   Widget _buildStatusCard(BuildContext context) {
+    final outline = Theme.of(context).colorScheme.outline;
+    final labelStyle = TextStyle(
+        fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: outline);
     return Card(
       elevation: 1,
       child: Padding(
@@ -153,19 +156,29 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                 Icon(Icons.monitor_heart_outlined, size: 20),
                 SizedBox(width: 8),
                 Text(
-                  'rviz2 Container',
+                  'RViz2 Control',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            // State badge + exit code + last changed
+            const SizedBox(height: 12),
+            // State badge + a one-line "what to do now" hint (state-driven).
             Obx(() {
               final info = _ctrl.container.value;
-              return _ContainerStateRow(info: info);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ContainerStateRow(info: info),
+                  const SizedBox(height: 6),
+                  Text(_stateHint(info.state),
+                      style: TextStyle(fontSize: 12, color: outline)),
+                ],
+              );
             }),
             const SizedBox(height: 16),
-            // Control buttons row 1: Start / Stop
+            // ── Control: Start / Stop ──
+            Text('CONTROL', style: labelStyle),
+            const SizedBox(height: 6),
             Obx(() {
               final state = _ctrl.container.value.state;
               final canStart = state == ContainerState.notInstalled ||
@@ -198,33 +211,57 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                 ],
               );
             }),
-            const SizedBox(height: 8),
-            // Control buttons row 2: surface switcher
+            const SizedBox(height: 14),
+            // ── Display: fullscreen / back to launcher ──
+            Text('DISPLAY', style: labelStyle),
+            const SizedBox(height: 6),
             Obx(() {
-              final state = _ctrl.container.value.state;
-              final isRunning = state == ContainerState.running;
+              final isRunning =
+                  _ctrl.container.value.state == ContainerState.running;
               return Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: isRunning ? _ctrl.showRviz2 : null,
-                    icon: const Icon(Icons.view_in_ar, size: 18),
-                    label: const Text('rviz2 화면 보기'),
+                  Tooltip(
+                    message: isRunning
+                        ? 'Show rviz2 fullscreen'
+                        : 'Start rviz2 first',
+                    child: OutlinedButton.icon(
+                      onPressed: isRunning ? _ctrl.showRviz2 : null,
+                      icon: const Icon(Icons.view_in_ar, size: 18),
+                      label: const Text('View rviz2'),
+                    ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _ctrl.showHome,
-                    icon: const Icon(Icons.home_outlined, size: 18),
-                    label: const Text('홈으로'),
+                  Tooltip(
+                    message: 'Back to the launcher home',
+                    child: OutlinedButton.icon(
+                      onPressed: _ctrl.showHome,
+                      icon: const Icon(Icons.home_outlined, size: 18),
+                      label: const Text('Launcher'),
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh, size: 20),
-                    tooltip: '새로고침',
+                    tooltip: 'Refresh status',
                     onPressed: _ctrl.refreshStatus,
                   ),
                 ],
               );
             }),
+            const SizedBox(height: 12),
+            // Usage tip — the intended flow.
+            Row(
+              children: [
+                Icon(Icons.info_outline, size: 14, color: outline),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Start  →  View rviz2  →  tap the Home button (top-right) to return.',
+                    style: TextStyle(fontSize: 11, color: outline),
+                  ),
+                ),
+              ],
+            ),
             // Error banner
             Obx(() {
               final err = _ctrl.lastError.value;
@@ -277,14 +314,14 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                 Icon(Icons.tune, size: 20),
                 SizedBox(width: 8),
                 Text(
-                  'Run Options (v1 — local state)',
+                  'Run Options (optional)',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
             const SizedBox(height: 4),
             Text(
-              'Options are injected as docker run -e / -v flags on next Start.',
+              'Both are optional — leave blank to use defaults. Applied on the next Start.',
               style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).colorScheme.outline),
@@ -294,32 +331,27 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             TextField(
               controller: _rvizConfigCtrl,
               decoration: const InputDecoration(
-                labelText: '.rviz config path (optional)',
-                hintText: '/etc/rviz2/default.rviz',
+                labelText: 'RViz config file (optional)',
+                hintText: 'e.g. /etc/rviz2/default.rviz',
+                helperText: 'Path to a .rviz layout file — blank uses the default view',
                 prefixIcon: Icon(Icons.folder_open, size: 18),
                 isDense: true,
               ),
               style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             // ROS_DOMAIN_ID — appended as -e ROS_DOMAIN_ID=<val>
             TextField(
               controller: _domainIdCtrl,
               decoration: const InputDecoration(
                 labelText: 'ROS_DOMAIN_ID (optional)',
-                hintText: 'leave blank to use container default',
+                hintText: 'e.g. 0',
+                helperText: 'ROS 2 domain — blank uses the default (0)',
                 prefixIcon: Icon(Icons.lan_outlined, size: 18),
                 isDense: true,
               ),
               keyboardType: TextInputType.number,
               style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Changes take effect on next Start.',
-              style: TextStyle(
-                  fontSize: 10,
-                  color: Theme.of(context).colorScheme.outline),
             ),
           ],
         ),
@@ -410,6 +442,18 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
 }
 
 // ─── Helper widgets ───────────────────────────────────────────────────────────
+
+/// One-line "what to do now" hint shown under the state badge.
+String _stateHint(ContainerState s) {
+  switch (s) {
+    case ContainerState.running:
+      return 'Running — tap "View rviz2" to show it fullscreen.';
+    case ContainerState.notInstalled:
+    case ContainerState.exited:
+    case ContainerState.created:
+      return 'Stopped — tap "Start" to launch rviz2.';
+  }
+}
 
 class _ContainerStateRow extends StatelessWidget {
   const _ContainerStateRow({required this.info});
