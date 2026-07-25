@@ -26,8 +26,8 @@
 #include <wayland-client.h>
 #include "xdg-shell-client-protocol.h"
 
-#define BTN_W 50
-#define BTN_H 50
+#define BTN_W 26
+#define BTN_H 26
 #define HOME_APP_ID "hmi_launcher"
 
 static struct wl_display    *display;
