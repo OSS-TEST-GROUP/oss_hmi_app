@@ -207,12 +207,41 @@ class Rviz2Controller extends GetxController {
   ///   compiled .pb — verify on hardware before production use.
   Future<void> showRviz2() async {
     await _activateAglSurface(cfg.rvizAppId);
+    await _showHomebar();   // the home button belongs over rviz2, not the launcher
   }
 
   /// Activate the home launcher surface via the AGL shell gRPC service.
   Future<void> showHome() async {
     await _activateAglSurface(cfg.homeAppId);
+    await _hideHomebar();   // hide the home button on the launcher
   }
+
+  // ─── homebar (floating "home" button overlay) visibility ──────────────────
+  // The homebar is a separate always-on-top container that cannot itself tell
+  // which app is in the foreground, so we toggle it here whenever we switch
+  // surfaces: show it over rviz2, hide it on the launcher. We reuse homebar's
+  // own grpcurl via `docker exec` (avoids extending this app's gRPC stubs).
+  static const int _homebarX = 1890, _homebarY = 0;
+
+  Future<ProcessResult?> _grpcHomebar(String method, String data) => _run(
+        'docker',
+        [
+          'exec', 'homebar', 'grpcurl', '-plaintext', '-d', data,
+          '127.0.0.1:14005', 'agl_shell_ipc.AglShellManagerService/$method',
+        ],
+      );
+
+  Future<void> _showHomebar() async {
+    await _grpcHomebar('ActivateApp',
+        '{"app_id":"homebar","output_name":"${cfg.aglOutput}"}');
+    await _grpcHomebar(
+        'SetAppFloat', '{"app_id":"homebar","x_pos":$_homebarX,"y_pos":$_homebarY}');
+    await _grpcHomebar(
+        'SetAppPosition', '{"app_id":"homebar","x":$_homebarX,"y":$_homebarY}');
+  }
+
+  Future<void> _hideHomebar() =>
+      _grpcHomebar('DeactivateApp', '{"app_id":"homebar"}');
 
   /// Fetch the last 300 lines of container logs (stdout + stderr combined)
   /// and start a follow stream to append new lines in real time.

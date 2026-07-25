@@ -114,14 +114,14 @@ static void go_home(uint32_t time_ms)
 {
     if (time_ms && last_home_ms && (time_ms - last_home_ms) < 800) return;
     last_home_ms = time_ms;
-    fprintf(stderr, "[homebar] -> activate %s via grpc :14005\n", HOME_APP_ID);
+    fprintf(stderr, "[homebar] -> activate %s + hide self\n", HOME_APP_ID);
     if (fork() == 0) {
+        // Activate the launcher, then hide ourselves (the button is not wanted
+        // on the launcher — it reappears when rviz2_monitor shows rviz2 again).
         execlp("sh", "sh", "-c",
-            "grpcurl -plaintext -d '{\"app_id\":\"hmi_launcher\",\"output_name\":\"DP-1\"}' "
-            "127.0.0.1:14005 agl_shell_ipc.AglShellManagerService/ActivateApp 2>/dev/null "
-            "|| grpcurl -plaintext -import-path /opt -proto agl_shell.proto "
-            "-d '{\"app_id\":\"hmi_launcher\",\"output_name\":\"DP-1\"}' "
-            "127.0.0.1:14005 agl_shell_ipc.AglShellManagerService/ActivateApp",
+            "S=127.0.0.1:14005; A=agl_shell_ipc.AglShellManagerService; "
+            "grpcurl -plaintext -d '{\"app_id\":\"hmi_launcher\",\"output_name\":\"DP-1\"}' $S $A/ActivateApp >/dev/null 2>&1; "
+            "grpcurl -plaintext -d '{\"app_id\":\"homebar\"}' $S $A/DeactivateApp >/dev/null 2>&1",
             (char *)NULL);
         _exit(127);
     }
