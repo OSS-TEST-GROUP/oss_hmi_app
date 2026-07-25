@@ -41,9 +41,13 @@ ENV PATH=/usr/local/bin:$PATH
 WORKDIR /build
 
 # 1) wayland 1.22 (jammy 1.20 → wlroots 0.16 은 >=1.21 요구)
+#    -Db_ndebug=true: assert 비활성. wayland 1.21+ 의 wl_display_terminate 는 종료용
+#    eventfd write 결과를 assert 하는데, cage 종료(SIGTERM) 시 이 write 가 실패해
+#    abort(exit 133) 발생. write 는 그대로 수행되고 assert 만 컴파일 제거 → cage clean exit.
 RUN wget -q "https://gitlab.freedesktop.org/wayland/wayland/-/releases/${WAYLAND_VER}/downloads/wayland-${WAYLAND_VER}.tar.xz" \
     && tar xf "wayland-${WAYLAND_VER}.tar.xz" && cd "wayland-${WAYLAND_VER}" \
     && meson setup build --prefix=/usr/local -Ddocumentation=false -Dtests=false -Ddtd_validation=false \
+         -Db_ndebug=true \
     && ninja -C build && ninja -C build install
 
 # 2) wayland-protocols
