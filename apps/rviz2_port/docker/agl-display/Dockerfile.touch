@@ -91,4 +91,8 @@ RUN echo "/usr/local/lib/aarch64-linux-gnu" > /etc/ld.so.conf.d/zz-local.conf \
 USER agl
 ENV PATH=/usr/local/bin:$PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+# cage(nested wlroots)는 SIGTERM 종료가 wayland 1.22 terminate(eventfd) 경로에서
+# 동작하지 않아 hang→SIGKILL(느림) 이 된다. STOPSIGNAL=SIGKILL 로 `docker stop` 이
+# 즉시 SIGKILL 하도록 해 빠르게 정지시킨다(핸들러 우회 → assertion 도 안 뜸).
+STOPSIGNAL SIGKILL
 ENTRYPOINT ["/entrypoint.sh"]
