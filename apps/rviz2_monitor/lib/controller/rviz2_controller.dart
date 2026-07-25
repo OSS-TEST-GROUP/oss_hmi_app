@@ -154,8 +154,10 @@ class Rviz2Controller extends GetxController {
     //     -e WAYLAND_DISPLAY=wayland-0
     //     -e HOME=/tmp
     //     -e LIBGL_ALWAYS_SOFTWARE=1
-    //     [-e ROS_DOMAIN_ID=<val>  ...]
-    //     registry.obigo.com/oss/rviz2-agl:latest
+    //     [-e ROS_DOMAIN_ID=<val>]        # match Autoware (adsw=42 / ext-ros2=0)
+    //     [-e RMW_IMPLEMENTATION=<val>]   # match Autoware RMW (default FastDDS)
+    //     [-e RVIZ_CONFIG=<path>]         # entrypoint → rviz2 -d <path> (autoware.rviz)
+    //     registry.obigo.com/oss/rviz2-agl:autoware
     final runArgs = <String>[
       'run',
       '-d',

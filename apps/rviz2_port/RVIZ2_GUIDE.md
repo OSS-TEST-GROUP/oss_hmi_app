@@ -385,6 +385,77 @@ wayland **1.21+** 의 `wl_display_terminate()` 는 종료용 eventfd write 결�
 
 ---
 
+## 부록 B. Autoware(151) 크로스보드 시각화 (`:autoware` 이미지)
+
+162 의 rviz2 가 **151 보드에서 실행 중인 Autoware** ROS2 그래프를 크로스보드로 시각화한다.
+스펙 원본: `RVIZ2_AUTOWARE_CONNECT.md`.
+
+### B-1. 왜 별도 이미지(`:autoware`)가 필요한가
+Autoware 는 표준 rviz 타입이 아니라 **autoware-native 타입으로만** 발행한다(실측):
+`autoware_perception_msgs/DetectedObjects`, `autoware_planning_msgs/{Path,Trajectory}`,
+`autoware_adapi_v1_msgs/*`, `tier4_*_msgs` 등. `/tf`·`PointCloud2`·`MarkerArray` 같은
+표준 타입이 없어 **vanilla rviz2 로는 아무것도 안 보인다**. → 이미지에 autoware 메시지
+패키지 + autoware rviz 플러그인이 있어야 한다.
+
+`registry.obigo.com/oss/rviz2-agl:autoware` = 터치 이미지(`:latest`) 위에:
+- **CycloneDDS 추가** (fastrtps 는 기존) → `-e RMW_IMPLEMENTATION` 으로 Autoware 에 맞춰 전환
+- **`/opt/autoware` 오버레이(550MB)** — junohb 파티션 이미지에서 컴파일된 arm64 산출물
+  (msgs 40 + rviz 플러그인 16, `autoware.rviz` 포함). 소스 빌드 없이 `COPY --from` 슬림 오버레이.
+- **런타임 의존 보강** — `logging_demo`(planning/state 플러그인), `lanelet2`(traffic_light 플러그인),
+  표준 msg(`geographic_msgs` 등 — autoware_adapi_v1_msgs subscribe 에 필수).
+- **entrypoint** — `/opt/autoware/setup.bash` 소스 + `RVIZ_CONFIG` 지원(`rviz2 -d <path>`).
+
+> rviz2_monitor 기본 이미지가 `:autoware` 로 지정됨(AppConfig.defaults + config.json).
+
+### B-2. RViz2 Monitor 앱에서 실행
+`Run Options` 카드에서:
+1. **`Autoware (151) preset`** 버튼 탭 → 세 필드 자동 채움:
+   `ROS_DOMAIN_ID=42`, `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`,
+   `RViz config=/opt/autoware/share/autoware_launch/rviz/autoware.rviz`.
+2. **Start** → 아래 `docker run` 이 실행됨:
+   ```
+   docker run -d --name rviz2 --net=host --ipc=host --user 1001:1001 --group-add 44 \
+     -v /run/user/1001:/host-xdg -e XDG_RUNTIME_DIR=/host-xdg -e WAYLAND_DISPLAY=wayland-0 \
+     -e HOME=/tmp -e LIBGL_ALWAYS_SOFTWARE=1 \
+     -e ROS_DOMAIN_ID=42 -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
+     -e RVIZ_CONFIG=/opt/autoware/share/autoware_launch/rviz/autoware.rviz \
+     registry.obigo.com/oss/rviz2-agl:autoware
+   ```
+3. **View rviz2** → autoware.rviz 레이아웃으로 전환. 홈버튼으로 런처 복귀.
+
+### B-3. ⚠️ 도메인 (42 vs 0) — 켠 Autoware 에 맞춰라
+151 에는 Autoware 배포가 **둘** 있고 도메인이 다르다(실측):
+
+| 배포 | 이미지 | 도메인 |
+|---|---|:-:|
+| adsw 3-파티션 | `junohb/autoware-partition:sample-adsw-*` (saved-service-list.yaml) | **42** |
+| oss-mmf-ext-ros2 | `registry.obigo.com/oss/oss-mmf-ext-ros2` | **0** |
+
+preset 은 42(adsw 파티션)를 채운다. **oss-mmf-ext-ros2 를 쓰면 필드를 `0` 으로 수정**.
+RMW/디스커버리: 현행 Autoware=fastrtps(기본)이며 멀티캐스트 discovery 가 크로스보드로
+동작함(실증 — rviz2 가 64토픽 발견). cyclone 이면 필드를 `rmw_cyclonedds_cpp` 로.
+
+### B-4. 검증 (실기, 이 세션)
+- `:autoware` 이미지: autoware rviz 플러그인 16종 .so 전부 resolve(ldd), 양 RMW selectable.
+- `autoware.rviz` **오류 없이 로드**(typesupport 보강 후 "Could not load display config" 해소).
+- rviz2 가 `/perception/object_recognition/detection/objects`(DetectedObjects) **subscribe 확인**
+  (크로스보드 도메인 0, `ros2 topic info` Subscription count 1). **DDS+msgs+플러그인+config 전 구간 동작.**
+- ⚠️ 실제 픽셀은 **Autoware 가 활성 발행 중일 때만** 표출됨(현재 idle — 맵/시나리오/rosbag 필요).
+
+### B-5. 이미지 재빌드 (보드 네이티브 arm64)
+```bash
+# (151, 1회) autoware 오버레이 슬림 이미지 push — 6GB junohb 대신 550MB 만 전송
+printf 'FROM junohb/autoware-partition:sample-adsw-perception AS s\nFROM scratch\nCOPY --from=s /opt/autoware /opt/autoware\n' \
+  | docker build -t registry.obigo.com/oss/autoware-overlay:latest -
+docker push registry.obigo.com/oss/autoware-overlay:latest
+# (162) autoware rviz2 빌드 (buildx 없으면 DOCKER_BUILDKIT=0)
+cd docker/agl-display
+DOCKER_BUILDKIT=0 docker build -f Dockerfile.autoware -t registry.obigo.com/oss/rviz2-agl:autoware .
+docker push registry.obigo.com/oss/rviz2-agl:autoware
+```
+
+---
+
 ## 참고 문서
 
 - `apps/rviz2_port/docker/agl-display/README.md` — 컨테이너 격리 방식 상세(원본)

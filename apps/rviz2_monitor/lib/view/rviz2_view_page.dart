@@ -32,6 +32,21 @@ class Rviz2ViewPage extends StatefulWidget {
   State<Rviz2ViewPage> createState() => _Rviz2ViewPageState();
 }
 
+/// Baked-in Autoware rviz layout inside the `:autoware` image (from the
+/// junohb autoware overlay). Referenced by the "Autoware (151)" preset and
+/// passed to rviz2 as `-e RVIZ_CONFIG=<path>` (→ `rviz2 -d <path>`).
+const String kAutowareRvizConfig =
+    '/opt/autoware/share/autoware_launch/rviz/autoware.rviz';
+
+/// ROS 2 domain the adsw-managed Autoware partitions run on (151,
+/// saved-service-list.yaml). If Autoware runs as `oss-mmf-ext-ros2` instead,
+/// use domain 0 — edit the field after applying the preset.
+const String kAutowareDomainId = '42';
+
+/// RMW Autoware uses by default (Humble default = FastDDS). Must match on both
+/// boards or cross-board discovery fails (RVIZ2_AUTOWARE_CONNECT.md §3-②).
+const String kAutowareRmw = 'rmw_fastrtps_cpp';
+
 class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   late final Rviz2Controller _ctrl;
 
@@ -39,6 +54,8 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   final TextEditingController _rvizConfigCtrl = TextEditingController();
   final TextEditingController _domainIdCtrl =
       TextEditingController(text: '');
+  // RMW_IMPLEMENTATION — blank = image default (FastDDS). Set to match Autoware.
+  final TextEditingController _rmwCtrl = TextEditingController(text: '');
 
   // Log auto-scroll.
   final ScrollController _logScrollCtrl = ScrollController();
@@ -72,6 +89,7 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   void dispose() {
     _rvizConfigCtrl.dispose();
     _domainIdCtrl.dispose();
+    _rmwCtrl.dispose();
     _logScrollCtrl.dispose();
     super.dispose();
   }
@@ -296,11 +314,12 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
     );
   }
 
-  /// Options form (v1): local state.
-  ///
-  /// [_domainIdCtrl] feeds `-e ROS_DOMAIN_ID=<val>` when non-empty.
-  /// [_rvizConfigCtrl] is reserved for future `-v <path>:/tmp/default.rviz`
-  /// mount injection.
+  /// Options form: local state. Each non-empty field is injected as a
+  /// `-e KEY=VALUE` on the next `docker run` (see [_onStart]):
+  ///   [_rvizConfigCtrl] → `RVIZ_CONFIG` (entrypoint runs `rviz2 -d <path>`),
+  ///   [_domainIdCtrl]   → `ROS_DOMAIN_ID`,
+  ///   [_rmwCtrl]        → `RMW_IMPLEMENTATION`.
+  /// The "Autoware (151) preset" fills all three for Autoware visualization.
   Widget _buildOptionsCard(BuildContext context) {
     return Card(
       elevation: 1,
@@ -321,19 +340,38 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Both are optional — leave blank to use defaults. Applied on the next Start.',
+              'All optional — leave blank for defaults. Applied on the next Start.',
               style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).colorScheme.outline),
             ),
+            const SizedBox(height: 10),
+            // One-tap preset: fill the three fields for "visualize Autoware on 151".
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Tooltip(
+                message:
+                    'Fill the fields to visualize Autoware on 151 '
+                    '(domain $kAutowareDomainId, $kAutowareRmw, autoware.rviz)',
+                child: OutlinedButton.icon(
+                  onPressed: _applyAutowarePreset,
+                  icon: const Icon(Icons.auto_awesome, size: 16),
+                  label: const Text('Autoware (151) preset'),
+                ),
+              ),
+            ),
             const SizedBox(height: 14),
-            // .rviz config file path (future -v mount)
+            // .rviz layout — injected as -e RVIZ_CONFIG=<path> → `rviz2 -d <path>`.
+            // The :autoware image bakes in autoware.rviz (no host mount needed).
             TextField(
               controller: _rvizConfigCtrl,
               decoration: const InputDecoration(
-                labelText: 'RViz config file (optional)',
-                hintText: 'e.g. /etc/rviz2/default.rviz',
-                helperText: 'Path to a .rviz layout file — blank uses the default view',
+                labelText: 'RViz config (in-container path, optional)',
+                hintText: kAutowareRvizConfig,
+                helperText:
+                    'Layout inside the image — blank uses the default view. '
+                    'Autoware: $kAutowareRvizConfig',
+                helperMaxLines: 3,
                 prefixIcon: Icon(Icons.folder_open, size: 18),
                 isDense: true,
               ),
@@ -345,18 +383,49 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
               controller: _domainIdCtrl,
               decoration: const InputDecoration(
                 labelText: 'ROS_DOMAIN_ID (optional)',
-                hintText: 'e.g. 0',
-                helperText: 'ROS 2 domain — blank uses the default (0)',
+                hintText: 'e.g. 42',
+                helperText:
+                    'Must match Autoware. adsw partitions = 42, '
+                    'oss-mmf-ext-ros2 = 0. Blank = 0.',
+                helperMaxLines: 2,
                 prefixIcon: Icon(Icons.lan_outlined, size: 18),
                 isDense: true,
               ),
               keyboardType: TextInputType.number,
               style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
             ),
+            const SizedBox(height: 16),
+            // RMW_IMPLEMENTATION — appended as -e RMW_IMPLEMENTATION=<val>.
+            // Must match Autoware or cross-board discovery fails entirely.
+            TextField(
+              controller: _rmwCtrl,
+              decoration: const InputDecoration(
+                labelText: 'RMW_IMPLEMENTATION (optional)',
+                hintText: 'rmw_fastrtps_cpp | rmw_cyclonedds_cpp',
+                helperText:
+                    'Must match Autoware\'s RMW. Blank = image default '
+                    '(FastDDS). Cyclone is also installed.',
+                helperMaxLines: 2,
+                prefixIcon: Icon(Icons.hub_outlined, size: 18),
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// Fill the option fields with the settings that connect this rviz2 to the
+  /// Autoware graph on board 151 and load the bundled autoware.rviz layout.
+  /// Values are editable afterwards (e.g. change domain to 0 for oss-mmf-ext-ros2).
+  void _applyAutowarePreset() {
+    setState(() {
+      _domainIdCtrl.text = kAutowareDomainId;
+      _rmwCtrl.text = kAutowareRmw;
+      _rvizConfigCtrl.text = kAutowareRvizConfig;
+    });
   }
 
   // ─── Right panel: docker logs ─────────────────────────────────────────────
@@ -431,11 +500,22 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   // ─── Private action helpers ───────────────────────────────────────────────
 
   /// Collect option form values then call [Rviz2Controller.start].
+  ///
+  /// Each non-empty field becomes a `-e KEY=VALUE` on the `docker run`:
+  ///   ROS_DOMAIN_ID / RMW_IMPLEMENTATION / RVIZ_CONFIG (entrypoint → `rviz2 -d`).
   void _onStart() {
     final extraEnv = <String, String>{};
     final domainId = _domainIdCtrl.text.trim();
     if (domainId.isNotEmpty) {
       extraEnv['ROS_DOMAIN_ID'] = domainId;
+    }
+    final rmw = _rmwCtrl.text.trim();
+    if (rmw.isNotEmpty) {
+      extraEnv['RMW_IMPLEMENTATION'] = rmw;
+    }
+    final rvizConfig = _rvizConfigCtrl.text.trim();
+    if (rvizConfig.isNotEmpty) {
+      extraEnv['RVIZ_CONFIG'] = rvizConfig;
     }
     _ctrl.start(extraEnv: extraEnv);
   }

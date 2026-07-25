@@ -1,6 +1,6 @@
 {
   "containerName": "rviz2",
-  "image": "registry.obigo.com/oss/rviz2-agl:latest",
+  "image": "registry.obigo.com/oss/rviz2-agl:autoware",
   "aglOutput": "DP-1",
   "rvizAppId": "wlroots",
   "homeAppId": "hmi_launcher",

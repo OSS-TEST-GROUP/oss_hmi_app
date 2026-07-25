@@ -41,7 +41,10 @@ class AppConfig {
 
   factory AppConfig.defaults() => AppConfig(
         containerName: 'rviz2',
-        image: 'registry.obigo.com/oss/rviz2-agl:latest',
+        // :autoware = 터치 이미지 + Autoware msgs/rviz 플러그인 오버레이(550MB) + cyclonedds.
+        // Autoware 시각화가 이 보드 rviz2 의 목적이므로 기본값으로 채택(오버레이는 상위집합 —
+        // 일반 rviz2 사용에도 무해). 순수 터치 이미지가 필요하면 config.json 에서 :latest 로 override.
+        image: 'registry.obigo.com/oss/rviz2-agl:autoware',
         aglOutput: 'DP-1',
         rvizAppId: 'wlroots',
         homeAppId: 'hmi_launcher',
@@ -62,7 +65,7 @@ class AppConfig {
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
         containerName: (j['containerName'] as String?) ?? 'rviz2',
         image: (j['image'] as String?) ??
-            'registry.obigo.com/oss/rviz2-agl:latest',
+            'registry.obigo.com/oss/rviz2-agl:autoware',
         aglOutput: (j['aglOutput'] as String?) ?? 'DP-1',
         rvizAppId: (j['rvizAppId'] as String?) ?? 'wlroots',
         homeAppId: (j['homeAppId'] as String?) ?? 'hmi_launcher',
