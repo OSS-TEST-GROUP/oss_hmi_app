@@ -408,15 +408,11 @@ docker login registry.obigo.com        # username / password 입력
 # 성공하면 ~/.docker/config.json 의 auths 에 캐시됨 → 이후 생략 가능
 ```
 
-> **⚠️ push 는 push 권한 계정 필요 (중요)**: registry.obigo.com(Harbor)은 최소권한
-> 정책이다. **pull 전용 계정(`ossuser`)으로는 push 가 안 된다**(`unauthorized ...
-> action: push`). `--push`/`docker push` 를 하려면 **push 권한 계정**으로 로그인해야
-> 한다:
-> - **push 계정(권장)**: Harbor 프로젝트 `oss` 에 **Robot Account(Push+Pull)** 또는
->   **Developer 롤** 유저를 만들어 사용(관리자 아님). 임시로 builder(관리자) 사용 가능하나 지양.
-> - `docker login registry.obigo.com -u <push계정>` 후 push, 끝나면 pull 계정(ossuser)
->   으로 되돌리면 상시 관리자/광범위 권한 노출을 줄일 수 있다.
-> - CI(Jenkins/Actions)에서는 push 자격증명을 **secret/credentials 로 주입**(하드코딩 금지).
+> **레지스트리 계정 — `ossuser` 단일 계정으로 pull·push**: registry.obigo.com(Harbor) 는
+> **`ossuser` 계정 하나로 pull·push 를 모두** 수행한다. `docker login registry.obigo.com
+> -u ossuser` 후 `--push`/`docker push` 가 그대로 동작한다(별도 push 계정·로그인 전환 불필요).
+> - **builder 등 관리자 권한 계정은 쓰지 않는다.**
+> - CI(Jenkins/Actions)에서도 ossuser 자격증명을 **secret/credentials 로 주입**(하드코딩 금지).
 
 ### 6-2. 빌드 + push (버전 + latest 동시) — 권장
 
