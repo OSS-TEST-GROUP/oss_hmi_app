@@ -81,7 +81,29 @@ docker run -d --name rviz2 \
 - **`.rviz` 설정**: rviz2_monitor Run Options 의 `.rviz config 경로` 에 `autoware.rviz` 마운트 후 지정.
   단, config 가 참조하는 display 플러그인이 이미지에 있어야 함(없으면 해당 display 만 누락).
 
-## 5. 검증 절차
+## 5. 맵(Map) — Autoware(151) 소유, rviz2 는 구독·렌더링 (⚠ latched QoS)
+
+**map 파일은 rviz2 가 아니라 Autoware 가 가진다.** rviz2 에 map 파일을 둘 필요 없다.
+
+- map 파일(`.pcd` 포인트클라우드, `.osm`/lanelet2 벡터맵)은 **151(Autoware)** 에 있고,
+  Autoware 의 **map_loader**(pointcloud_map_loader / lanelet2_map_loader)가 읽어 토픽으로 발행한다:
+  - `/map/pointcloud_map` — `sensor_msgs/PointCloud2`
+  - `/map/vector_map`(+ marker) — 벡터/lanelet 맵
+- **rviz2(162)는 이 토픽을 DDS 로 구독해서 렌더링만** 한다.
+
+### ⚠️ latched(TRANSIENT_LOCAL) QoS — 크로스보드에서 map 만 안 보이는 주범
+- map 토픽은 보통 **부팅 시 1회, `TRANSIENT_LOCAL`(latched)** 로 발행된다.
+- rviz2 가 Autoware 보다 **나중에 접속**하면, rviz2 Display 의 QoS Durability 기본값(**Volatile**)으로는
+  **이미 지나간 latched 샘플을 못 받아 map 만 비어 보인다** (TF·센서 스트림은 정상 수신).
+- **해결**: rviz2 의 해당 Display(PointCloud2 / Map 등)에서 **Durability Policy = `Transient Local`** 로 설정.
+- 확인: `ros2 topic info /map/pointcloud_map -v` → Publisher 의 Durability 가 `TRANSIENT_LOCAL` 인지.
+
+### 타입/플러그인
+- 포인트클라우드 map(`PointCloud2`) → **vanilla rviz2 표시 OK** (Durability 만 맞추면 됨).
+- 벡터/lanelet map(`autoware_map_msgs/LaneletMapBin` + autoware lanelet rviz 플러그인)일 수 있음 →
+  그 경우 rviz2 이미지에 **autoware msgs + 플러그인 필요**(§4). MarkerArray 로도 발행되면 vanilla 가능.
+
+## 6. 검증 절차
 
 162 의 rviz2 컨테이너 안에서:
 ```bash
@@ -91,14 +113,15 @@ ros2 topic echo /tf --once      # 실제 데이터 흐름 확인
 ```
 토픽이 보이면 rviz2 Displays 에서 Fixed Frame(예: `map` 또는 `base_link`) 설정 + TF / PointCloud2 추가.
 
-## 6. rviz2_monitor 에 권장하는 변경
+## 7. rviz2_monitor 에 권장하는 변경
 
 1. Run Options 에 **`RMW_IMPLEMENTATION` 입력 필드** 추가 → `-e RMW_IMPLEMENTATION=` 주입 (Autoware 매칭용).
 2. rviz2 이미지에 **cyclonedds + fastrtps RMW 둘 다** 포함 (Autoware 가 어느 쪽이든 대응).
 3. (옵션) 유니캐스트 피어/디스커버리 설정 파일 마운트 옵션.
 4. (풀 비주얼 필요 시) autoware msgs + rviz 플러그인 포함 이미지 variant.
 5. "Autoware on 151" 기본 프리셋: `ROS_DOMAIN_ID=42` + `RMW_IMPLEMENTATION=<autoware 값>` 저장.
+6. map 표시용 프리셋 `.rviz` 제공: PointCloud2/Map display 의 **Durability = Transient Local** 기본 설정(§5).
 
-## 7. 참고 소스
+## 8. 참고 소스
 - Autoware 기동 설정(도메인 42/host/pid): `oss_multisw_framework/service/extension/ros2/adsw_manager/config/saved-service-list.yaml`
 - rviz2 기동/이미지: `apps/rviz2_port/RVIZ2_GUIDE.md`, `apps/rviz2_monitor/lib/config/app_config.dart`(기본 `dockerRunArgs`), `apps/rviz2_monitor/lib/view/rviz2_view_page.dart`(Run Options)
