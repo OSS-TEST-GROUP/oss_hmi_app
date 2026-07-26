@@ -17,13 +17,18 @@
 #     | docker build -t registry.obigo.com/oss/autoware-overlay:latest -
 #   docker push registry.obigo.com/oss/autoware-overlay:latest
 #
+# 태그 규약: :base(ros+rviz) → :touch(+cage) → :autoware(+오버레이). 런타임 기본 = :latest
+# (=:autoware 와 동일 이미지). FROM 은 :latest 를 참조하지 않는다(:latest 가 autoware 라 재귀됨).
+#
 # 빌드 (Orin 162 네이티브 arm64):
-#   # 터치 이미지가 :latest(arm64) 로 존재해야 함(FROM 참조). 오버레이는 build 중 자동 pull.
+#   # 터치 이미지 :touch(arm64) 가 FROM 베이스. 오버레이는 build 중 자동 pull.
 #   docker build -f Dockerfile.autoware -t registry.obigo.com/oss/rviz2-agl:autoware .
+#   # push 는 :latest 로(규약) + 스냅샷 태그:
+#   docker tag ...:autoware ...:latest && docker push ...:latest && docker push ...:autoware
 #
 # 실행: rviz2_monitor 가 -e ROS_DOMAIN_ID=<autoware 도메인> [-e RMW_IMPLEMENTATION=...]
 #       -e RVIZ_CONFIG=/opt/autoware/share/autoware_launch/rviz/autoware.rviz 로 기동.
-FROM registry.obigo.com/oss/rviz2-agl:latest AS autoware
+FROM registry.obigo.com/oss/rviz2-agl:touch AS autoware
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive

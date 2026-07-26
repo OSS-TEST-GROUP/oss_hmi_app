@@ -397,7 +397,11 @@ Autoware 는 표준 rviz 타입이 아니라 **autoware-native 타입으로만**
 표준 타입이 없어 **vanilla rviz2 로는 아무것도 안 보인다**. → 이미지에 autoware 메시지
 패키지 + autoware rviz 플러그인이 있어야 한다.
 
-`registry.obigo.com/oss/rviz2-agl:autoware` = 터치 이미지(`:latest`) 위에:
+**태그 규약**: rviz2 이미지는 `:latest` 로 push(런타임 기본) + 스냅샷 태그(`:autoware`, `:YYYYMMDD`).
+빌드 체인은 `:base`(ros+rviz) → `:touch`(+cage) → `:latest`(=`:autoware`, +오버레이). Dockerfile `FROM`
+은 `:base`/`:touch` 를 참조(‌`:latest` 은 런타임이라 FROM 에 안 씀 — 재귀 방지).
+
+`registry.obigo.com/oss/rviz2-agl:latest` (= `:autoware` 이미지) = 터치 이미지(`:touch`) 위에:
 - **CycloneDDS 추가** (fastrtps 는 기존) → `-e RMW_IMPLEMENTATION` 으로 Autoware 에 맞춰 전환
 - **`/opt/autoware` 오버레이(550MB)** — junohb 파티션 이미지에서 컴파일된 arm64 산출물
   (msgs 40 + rviz 플러그인 16, `autoware.rviz` 포함). 소스 빌드 없이 `COPY --from` 슬림 오버레이.
@@ -405,7 +409,7 @@ Autoware 는 표준 rviz 타입이 아니라 **autoware-native 타입으로만**
   표준 msg(`geographic_msgs` 등 — autoware_adapi_v1_msgs subscribe 에 필수).
 - **entrypoint** — `/opt/autoware/setup.bash` 소스 + `RVIZ_CONFIG` 지원(`rviz2 -d <path>`).
 
-> rviz2_monitor 기본 이미지가 `:autoware` 로 지정됨(AppConfig.defaults + config.json).
+> rviz2_monitor 기본 이미지가 `:latest` 로 지정됨(AppConfig.defaults + config.json).
 
 ### B-2. RViz2 Monitor 앱에서 실행 (autoware 가 기본값)
 `Run Options` 3필드가 **Autoware-on-151 값으로 미리 채워져 있다**(기본 설정):
@@ -420,7 +424,7 @@ Autoware 는 표준 rviz 타입이 아니라 **autoware-native 타입으로만**
      -e HOME=/tmp -e LIBGL_ALWAYS_SOFTWARE=1 \
      -e ROS_DOMAIN_ID=42 -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
      -e RVIZ_CONFIG=/opt/autoware/share/autoware_launch/rviz/autoware.rviz \
-     registry.obigo.com/oss/rviz2-agl:autoware
+     registry.obigo.com/oss/rviz2-agl:latest
    ```
 3. **View rviz2** → autoware.rviz 레이아웃으로 전환. 홈버튼으로 런처 복귀.
 
@@ -500,7 +504,10 @@ docker push registry.obigo.com/oss/autoware-overlay:latest
 # (162) autoware rviz2 빌드 (buildx 없으면 DOCKER_BUILDKIT=0)
 cd docker/agl-display
 DOCKER_BUILDKIT=0 docker build -f Dockerfile.autoware -t registry.obigo.com/oss/rviz2-agl:autoware .
-docker push registry.obigo.com/oss/rviz2-agl:autoware
+# push 규약: :latest(런타임 기본) + 스냅샷 태그. (:latest, :autoware, :YYYYMMDD 동일 이미지)
+R=registry.obigo.com/oss/rviz2-agl
+docker tag $R:autoware $R:latest && docker tag $R:autoware $R:$(date +%Y%m%d)
+docker push $R:latest && docker push $R:autoware && docker push $R:$(date +%Y%m%d)
 ```
 
 ---
