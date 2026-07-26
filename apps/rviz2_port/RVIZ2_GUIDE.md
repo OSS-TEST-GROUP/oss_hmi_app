@@ -407,12 +407,13 @@ Autoware 는 표준 rviz 타입이 아니라 **autoware-native 타입으로만**
 
 > rviz2_monitor 기본 이미지가 `:autoware` 로 지정됨(AppConfig.defaults + config.json).
 
-### B-2. RViz2 Monitor 앱에서 실행
-`Run Options` 카드에서:
-1. **`Autoware (151) preset`** 버튼 탭 → 세 필드 자동 채움:
-   `ROS_DOMAIN_ID=42`, `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`,
-   `RViz config=/opt/autoware/share/autoware_launch/rviz/autoware.rviz`.
-2. **Start** → 아래 `docker run` 이 실행됨:
+### B-2. RViz2 Monitor 앱에서 실행 (autoware 가 기본값)
+`Run Options` 3필드가 **Autoware-on-151 값으로 미리 채워져 있다**(기본 설정):
+`ROS_DOMAIN_ID=42` / `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` /
+`RViz config=/opt/autoware/share/autoware_launch/rviz/autoware.rviz`.
+→ **그냥 Start 만 누르면** autoware 에 연결된다. 값을 바꾸려면 필드 편집(예: domain 0),
+비웠으면 **`Autoware (151) preset`** 버튼으로 복원.
+1. **Start** → 아래 `docker run` 이 실행됨:
    ```
    docker run -d --name rviz2 --net=host --ipc=host --user 1001:1001 --group-add 44 \
      -v /run/user/1001:/host-xdg -e XDG_RUNTIME_DIR=/host-xdg -e WAYLAND_DISPLAY=wayland-0 \
@@ -435,12 +436,60 @@ preset 은 42(adsw 파티션)를 채운다. **oss-mmf-ext-ros2 를 쓰면 필드
 RMW/디스커버리: 현행 Autoware=fastrtps(기본)이며 멀티캐스트 discovery 가 크로스보드로
 동작함(실증 — rviz2 가 64토픽 발견). cyclone 이면 필드를 `rmw_cyclonedds_cpp` 로.
 
-### B-4. 검증 (실기, 이 세션)
+### B-4. 검증 (실기)
 - `:autoware` 이미지: autoware rviz 플러그인 16종 .so 전부 resolve(ldd), 양 RMW selectable.
 - `autoware.rviz` **오류 없이 로드**(typesupport 보강 후 "Could not load display config" 해소).
-- rviz2 가 `/perception/object_recognition/detection/objects`(DetectedObjects) **subscribe 확인**
-  (크로스보드 도메인 0, `ros2 topic info` Subscription count 1). **DDS+msgs+플러그인+config 전 구간 동작.**
-- ⚠️ 실제 픽셀은 **Autoware 가 활성 발행 중일 때만** 표출됨(현재 idle — 맵/시나리오/rosbag 필요).
+- rviz2 가 autoware-native 토픽 **크로스보드 수신**: `/tf` 40Hz + perception objects 10Hz,
+  332 토픽 발견. 실제 Shinjuku HD맵 + 로컬라이즈된 에고 + **계획 경로(초록)** 렌더 확인.
+- **경로 계획(Routing | Set)까지 성공** — §B-6 절차로 init pose + goal + 라우팅.
+- ⚠️ **자율주행 모션(engage)은 미동작** — junohb 3-파티션 배포의 인프라 결함:
+  `/system/operation_mode/state` 가 파티션 간 미발행 → `scenario_selector` 가 "Waiting for
+  operation mode state" 로 데드락 → 궤적 미생성 → `change_to_autonomous` 거부("check
+  diagnostics"). **goal 좌표 문제 아님**(경로는 SET 성공). autoware 배포측(파티션 간 DDS/노드
+  기동) 수정 필요.
+
+### B-6. 151 Autoware 기동 + 경로 설정 절차 (실기 검증됨)
+adsw_manager(`oss-mmf-ext-ros2` 내)가 saved-service-list 로 junohb 3-파티션을 관리하지만,
+수동 기동도 동일하다(recovery MANUAL). **맵은 `/home/beyhpc/autoware_map/sample-map-planning`**
+(실제 Shinjuku HD맵 — pcd 28MB + lanelet + MGRS projector).
+```bash
+# 151 에서 3-파티션 기동 (domain 42, 실제 맵 마운트). perception 은 시뮬레이터.
+MAP=/home/beyhpc/autoware_map/sample-map-planning
+docker run -d --name autoware-perception --network host --pid=host \
+  -e ROS_DOMAIN_ID=42 -e DISPLAY=:1 -e LIBGL_ALWAYS_SOFTWARE=1 \
+  -v /dev/shm:/dev/shm -v /tmp/.X11-unix:/tmp/.X11-unix -v "$MAP:/autoware_map" \
+  junohb/autoware-partition:sample-adsw-perception /autoware/start_script/adsw-perception.sh
+docker run -d --name autoware-decision --network host --pid=host -e ROS_DOMAIN_ID=42 \
+  -v /dev/shm:/dev/shm -v "$MAP:/autoware_map" \
+  junohb/autoware-partition:sample-adsw-decision /autoware/start_script/adsw-decision.sh
+docker run -d --name autoware-control --network host --pid=host -e ROS_DOMAIN_ID=42 \
+  -v /dev/shm:/dev/shm -v "$MAP:/autoware_map" \
+  junohb/autoware-partition:sample-adsw-control /autoware/start_script/adsw-control.sh
+```
+초기 포즈 + 경로(도메인 42 그래프. **초기포즈 토픽은 `/initialpose3d`** — `/initialpose` 아님):
+```bash
+# 초기 포즈 (맵프레임 MGRS-local). 차선 방향과 yaw 일치 필수(반대면 라우팅 실패).
+ros2 topic pub -t 3 /initialpose3d geometry_msgs/msg/PoseWithCovarianceStamped \
+  "{header: {frame_id: map}, pose: {pose: {position: {x: 3740.7, y: 73722.2, z: 0.0}, \
+   orientation: {z: -0.9718, w: 0.2359}}}}"
+# goal → 라우팅. goal 은 에고 lanelet 에서 연결된 차선이어야 함(안 그러면 "route is empty").
+#   유효 좌표는 lanelet2 getRoute 로 뽑되, autoware 라우팅이 수락하는지 후보 여러 개 시도.
+ros2 service call /api/routing/set_route_points \
+  autoware_adapi_v1_msgs/srv/SetRoutePoints \
+  "{header: {frame_id: map}, goal: {position: {x: 3855.8, y: 73873.7, z: 0.0}, \
+   orientation: {z: 0.854, w: 0.520}}, waypoints: []}"   # → success=True, routing state 2(SET)
+# 관측성: 크로스보드 discovery 는 162 rviz2 컨테이너가 가장 안정적(perception 컨테이너 CLI 는 flaky).
+```
+
+### B-7. 스크린샷 & 홈버튼 주의
+- **rviz2 화면 캡처**: rviz2 는 cage(wlroots) 안에서 돌아 `grim` 으로 뜬다.
+  `docker exec -u 1001 rviz2 bash -lc 'XDG_RUNTIME_DIR=/host-xdg WAYLAND_DISPLAY=wayland-1 grim /tmp/s.png'`
+  (컨테이너에 `apt-get install grim` 필요). **agl-compositor(wayland-0)=런처/homebar 화면은
+  wlr-screencopy 미지원 + fb0 빈버퍼라 캡처 불가** — 실물 촬영만 가능.
+- **홈버튼(homebar)**: rviz2_monitor 가 `showRviz2` 시 gRPC 로 float(1890,0), `showHome` 시 hide.
+  **첫 float 는 racy → entrypoint 가 activate+float 를 6회 재시도**(homebar entrypoint.sh).
+  surface 전환을 과도히 반복하면 agl-compositor float 상태가 꼬여 안 뜰 수 있음(`configure 0x0`)
+  → **리부팅으로 컴포지터 상태 리셋** 후 앱 정상 흐름(Start→View rviz2)에서 복구.
 
 ### B-5. 이미지 재빌드 (보드 네이티브 arm64)
 ```bash

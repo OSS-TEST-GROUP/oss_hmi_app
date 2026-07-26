@@ -50,12 +50,16 @@ const String kAutowareRmw = 'rmw_fastrtps_cpp';
 class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   late final Rviz2Controller _ctrl;
 
-  // Options form — local state (v1).
-  final TextEditingController _rvizConfigCtrl = TextEditingController();
+  // Options form — pre-filled with the Autoware-on-151 defaults so a plain
+  // "Start" connects to Autoware out of the box (domain 42 / FastDDS /
+  // autoware.rviz). Users can edit these (e.g. domain 0 for oss-mmf-ext-ros2)
+  // or clear them; the "Autoware (151) preset" button re-applies them.
+  final TextEditingController _rvizConfigCtrl =
+      TextEditingController(text: kAutowareRvizConfig);
   final TextEditingController _domainIdCtrl =
-      TextEditingController(text: '');
-  // RMW_IMPLEMENTATION — blank = image default (FastDDS). Set to match Autoware.
-  final TextEditingController _rmwCtrl = TextEditingController(text: '');
+      TextEditingController(text: kAutowareDomainId);
+  final TextEditingController _rmwCtrl =
+      TextEditingController(text: kAutowareRmw);
 
   // Log auto-scroll.
   final ScrollController _logScrollCtrl = ScrollController();
@@ -340,7 +344,8 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'All optional — leave blank for defaults. Applied on the next Start.',
+              'Pre-filled for Autoware on 151 — just press Start. Edit to change '
+              '(e.g. domain 0), or use the preset to restore. Applied on next Start.',
               style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).colorScheme.outline),
