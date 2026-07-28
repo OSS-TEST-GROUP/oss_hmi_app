@@ -1,0 +1,197 @@
+# R010 arm64 Cross-Compile local.conf (Yocto Scarthgap + AGL Trout + ROS2 Humble)
+#
+# This configuration extends yocto/local.conf.sample with arm64-specific settings
+# for bitbake-based cross-compilation targeting AGL Trout arm64 hardware.
+#
+# Usage:
+#   1. Copy to build/conf/local.conf:
+#      cp yocto/local.conf.arm64.sample build/conf/local.conf
+#   2. Adjust MACHINE, DL_DIR, SSTATE_DIR for your environment
+#   3. Review parallel build settings (BB_NUMBER_THREADS, PARALLEL_MAKE)
+#
+# Reference: ADR-006 Section 5 Implementation Blueprint
+
+# ===================================================================
+# Machine and Build Configuration (arm64 Specific)
+# ===================================================================
+
+# Target machine for AGL arm64 (options: qemuarm64, agl-trout-arm64, generic-arm64)
+# qemuarm64: QEMU emulation testing
+# agl-trout-arm64: AGL reference platform (if available in meta-agl-bsp)
+MACHINE ?= "qemuarm64"
+
+# Target distribution (AGL Trout 20.0.3 ~ Scarthgap)
+DISTRO ?= "poky-agl"
+
+# Parallel build configuration (adjust for host CPU cores)
+# Risk R3 Mitigation: Limit threads to avoid disk thrashing
+# Recommended: 4-8 threads for 8-core host
+BB_NUMBER_THREADS ?= "4"
+PARALLEL_MAKE ?= "-j 4"
+
+# Download and shared state cache directories
+# Risk R3 Mitigation: Use Docker volumes for persistence
+# Expected peak disk usage: 80-100GB (Risk R3)
+DL_DIR ?= "/workdir/downloads"
+SSTATE_DIR ?= "/workdir/sstate-cache"
+
+# Package management (RPM recommended for AGL)
+PACKAGE_CLASSES ?= "package_rpm"
+
+# ===================================================================
+# ROS2 Configuration (Humble on Scarthgap)
+# ===================================================================
+
+# ROS2 Humble distribution (required for RViz2)
+ROS_DISTRO = "humble"
+
+# Yocto/OpenEmbedded release series (must match Scarthgap)
+# Risk R1: Humble on Scarthgap is "best-effort" (gcc 13 compatibility)
+ROS_OE_RELEASE_SERIES = "scarthgap"
+
+# ===================================================================
+# Wayland + OpenGL Configuration (R005-R009 Requirements)
+# ===================================================================
+
+# Enable Wayland compositor support (R005-R007 dependency)
+# Issue 2 Fix (R010 Session 2b): Enable OpenGL in DISTRO_FEATURES (mesa requirement)
+# Issue 3 Fix (R010 Session 2b): Enable X11 build-time libraries (rviz-ogre-vendor transitive deps)
+# Note: Runtime image will still be Wayland-only (no X server installed)
+#
+# CRITICAL: poky-agl.conf removes x11 globally. Override with += to force inclusion.
+# This is build-time only; no X server will be installed in runtime image.
+DISTRO_FEATURES:append = " wayland opengl"
+DISTRO_FEATURES += "x11"
+
+# Note: Build-time X11 libraries (libx11, libxrandr, libxaw) are allowed
+# Runtime uses Wayland exclusively (controlled by IMAGE_INSTALL + R007 guards)
+
+# ===================================================================
+# Qt5 Wayland Backend Configuration (R006-R007 Requirements)
+# ===================================================================
+
+# Enable Qt5 Wayland QPA plugin and GLES2 backend (R006 AC-1)
+PACKAGECONFIG:pn-qtbase:append = " wayland gles2"
+
+# Enable Wayland-EGL integration for qtwayland (R006 AC-2)
+PACKAGECONFIG:pn-qtwayland:append = " wayland-egl"
+
+# Ensure Qt5 runtime libraries included in image (R006 AC-2)
+IMAGE_INSTALL:append = " \
+    qtbase \
+    qtwayland \
+    qtwayland-plugins \
+"
+
+# ===================================================================
+# EGL/OpenGL Configuration (R005 OGRE 14.x Requirements)
+# ===================================================================
+
+# Prefer native EGL/GLES implementation (Mesa for QEMU, vendor for hardware)
+PREFERRED_PROVIDER_virtual/egl ?= "mesa"
+PREFERRED_PROVIDER_virtual/libgles2 ?= "mesa"
+PREFERRED_PROVIDER_virtual/libgl ?= "mesa"
+
+# Mesa configuration for Wayland-only (no X11)
+# Issue 6 Fix (R010 Session 2d): Add dri3+dri backends (required by EGL feature)
+# Without DRI backend, mesa meson fails: "Feature egl cannot be enabled: EGL requires DRI"
+PACKAGECONFIG:pn-mesa:append = " wayland egl gles2 dri3 dri"
+PACKAGECONFIG:pn-mesa:remove = "x11"
+
+# ===================================================================
+# OGRE 14.x Configuration (R005 ogre_%.bbappend)
+# ===================================================================
+
+# OGRE version override handled by ogre_%.bbappend (SRC_URI override)
+# Expected version: 14.5.2 (R005 deliverable)
+# Build flags: -DOGRE_USE_WAYLAND=ON -OGRE_GLSUPPORT_USE_EGL=ON
+
+# Issue 5 Fix (R010 Session 2c): Remove openexr dependency from OGRE
+# openexr depends on clang-native (unavailable in baseline AGL Trout 20.0.3)
+# RViz2 does not use OGRE Material exporter (openexr feature) at runtime
+PACKAGECONFIG:pn-ogre:remove = "openexr"
+
+# ===================================================================
+# RViz2 Configuration (R007-R008-R010)
+# ===================================================================
+
+# RViz2 patches applied via rviz2_%.bbappend:
+#   - 0001-wayland-xcb-fallback-guard.patch (R007)
+# RViz2 dependencies:
+#   - qtwayland (R006-R008)
+#   - OGRE 14.5.2 (R005-R010)
+#   - rviz_ogre_vendor patched to use system OGRE (R010 T4)
+
+# ===================================================================
+# Disk Space Management (Risk R3 Mitigation)
+# ===================================================================
+
+# Automatically remove tmp/ work files after build
+# Risk R3: Reduces peak disk from 80GB to 50GB
+INHERIT += "rm_work"
+
+# Preserve specific packages for debugging (if needed)
+# RM_WORK_EXCLUDE += "rviz2 ogre rviz-rendering"
+
+# ===================================================================
+# Build Optimization
+# ===================================================================
+
+# Use shared state cache for incremental builds
+# First build: 5-9 hours (Risk R4)
+# Subsequent builds: 20-40 minutes (with sstate-cache)
+BB_HASHSERVE = "auto"
+BB_SIGNATURE_HANDLER = "OEEquivHash"
+
+# ===================================================================
+# Image Features (Minimal Runtime for RViz2)
+# ===================================================================
+
+# Minimal image features (reduce size)
+IMAGE_FEATURES ?= ""
+
+# Additional packages for RViz2 runtime
+IMAGE_INSTALL:append = " \
+    rviz2 \
+    ros-core \
+    wayland \
+    weston \
+"
+
+# ===================================================================
+# Debug and Development (Optional)
+# ===================================================================
+
+# Enable debug symbols (increases image size significantly)
+# EXTRA_IMAGE_FEATURES ?= "debug-tweaks tools-debug"
+
+# Package management at runtime (for testing)
+# EXTRA_IMAGE_FEATURES:append = " package-management"
+
+# ===================================================================
+# Locale Configuration
+# ===================================================================
+
+# Default locale (Yocto requirement)
+IMAGE_LINGUAS = "en-us"
+
+# ===================================================================
+# Notes for Developers
+# ===================================================================
+#
+# 1. Risk R1 (Scarthgap + Humble gcc 13): If build fails with gcc errors,
+#    consider pinning to known-good meta-ros2-humble commit.
+#
+# 2. Risk R2 (rviz_ogre_vendor X11 dependency): If do_configure fails with
+#    X11 errors, apply 0002-rviz_ogre_vendor-extras-wayland.patch (ADR-006).
+#
+# 3. Risk R3 (Disk exhaustion): Monitor df -h during build. Peak usage 80-100GB.
+#    rm_work reduces post-build footprint to 40-50GB.
+#
+# 4. Risk R4 (Build time >8 hours): Use run_in_background or split into
+#    multiple sessions. Subsequent builds use sstate-cache (20-40 min).
+#
+# 5. ABI Verification (AC-3): After build completes, run:
+#      ldd tmp/work/aarch64-poky-linux/rviz2/*/image/opt/ros/humble/lib/rviz2 \
+#        | grep libOgreMain.so
+#    Expected: libOgreMain.so.14.5 (not 1.12)

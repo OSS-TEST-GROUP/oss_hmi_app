@@ -54,6 +54,8 @@ dependencies:
     path: ../adsw_monitor
   lfc_monitor:
     path: ../lfc_monitor
+  rviz2_monitor:
+    path: ../rviz2_monitor
 
 dev_dependencies:
   flutter_test:
