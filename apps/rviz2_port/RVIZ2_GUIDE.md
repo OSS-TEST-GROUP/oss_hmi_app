@@ -501,14 +501,25 @@ ros2 service call /api/routing/set_route_points \
 printf 'FROM junohb/autoware-partition:sample-adsw-perception AS s\nFROM scratch\nCOPY --from=s /opt/autoware /opt/autoware\n' \
   | docker build -t registry.obigo.com/oss/autoware-overlay:latest -
 docker push registry.obigo.com/oss/autoware-overlay:latest
-# (162) autoware rviz2 빌드 (buildx 없으면 DOCKER_BUILDKIT=0)
+# (162) autoware rviz2 빌드 — provenance(소스 repo/커밋)를 이미지에 baking (build-arg).
+#   oss_hmi_app 저장소에서 git 정보를 뽑아 넘긴다(빌드는 별 머신이라도 무방).
 cd docker/agl-display
-DOCKER_BUILDKIT=0 docker build -f Dockerfile.autoware -t registry.obigo.com/oss/rviz2-agl:autoware .
-# push 규약: :latest(런타임 기본) + 스냅샷 태그. (:latest, :autoware, :YYYYMMDD 동일 이미지)
-R=registry.obigo.com/oss/rviz2-agl
-docker tag $R:autoware $R:latest && docker tag $R:autoware $R:$(date +%Y%m%d)
-docker push $R:latest && docker push $R:autoware && docker push $R:$(date +%Y%m%d)
+SHA=$(git -C <oss_hmi_app> rev-parse --short=7 HEAD)      # 예: 0912ca7
+BR=$(git -C <oss_hmi_app> rev-parse --abbrev-ref HEAD)    # 예: feature-rviz2
+URL=$(git -C <oss_hmi_app> remote get-url origin | sed 's#git@github.com:#https://github.com/#;s#\.git$##')
+DOCKER_BUILDKIT=0 docker build -f Dockerfile.autoware \
+  --build-arg GIT_REPO=oss_hmi_app --build-arg GIT_BRANCH="$BR" \
+  --build-arg GIT_SHA="$SHA" --build-arg GIT_URL="$URL" \
+  -t registry.obigo.com/oss/rviz2-agl:autoware .
+# push 규약: :latest(런타임 기본) + :autoware + **repo 정보 스냅샷 태그**(repo-branch-gSHA).
+#   스냅샷 태그로 어느 저장소/브랜치/커밋에서 만든 이미지인지 즉시 식별 (라벨로도 baking됨).
+R=registry.obigo.com/oss/rviz2-agl; SNAP="oss_hmi_app-${BR}-g${SHA}"
+docker tag $R:autoware $R:latest && docker tag $R:autoware $R:$SNAP
+docker push $R:latest && docker push $R:autoware && docker push $R:$SNAP
+# 확인: docker image inspect $R:latest -f '{{json .Config.Labels}}'  # revision/source/built-from-repo
 ```
+> 스냅샷 태그 예: `oss_hmi_app-feature-rviz2-g0912ca7`. 라벨: `org.opencontainers.image.{source,revision,ref.name}`
+> + `com.obigo.built-from-{repo,path}`. 날짜만 쓰던 `:YYYYMMDD` 는 **repo 정보 포함 태그로 대체**.
 
 ---
 
