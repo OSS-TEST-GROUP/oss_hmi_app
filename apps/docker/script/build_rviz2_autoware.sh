@@ -23,6 +23,7 @@
 #
 # Env: REGISTRY(registry.obigo.com) IMAGE(oss/rviz2-agl) TAG(latest)
 #      BOARD(root@172.16.10.162) BUILD_DIR(보드 빌드 컨텍스트 경로)
+#      SSH/SCP — ssh/scp 커맨드 오버라이드(옵션 주입용, 예: SSH="ssh -o BatchMode=yes ...")
 set -euo pipefail
 
 REGISTRY="${REGISTRY:-registry.obigo.com}"
@@ -30,6 +31,8 @@ IMAGE="${IMAGE:-oss/rviz2-agl}"
 TAG="${TAG:-latest}"
 BOARD="${BOARD:-root@172.16.10.162}"
 BUILD_DIR="${BUILD_DIR:-/root/rviz2-autoware-build}"
+SSH="${SSH:-ssh}"
+SCP="${SCP:-scp}"
 
 # 저장소 루트로 이동(git + Dockerfile 경로 기준). 스크립트는 apps/docker/script/ 에 있다.
 cd "$(dirname "$0")/../.."          # → apps/
@@ -65,11 +68,11 @@ LABELS=(
 )
 
 # ── 컨텍스트 전송(Dockerfile.autoware + entrypoint) → 보드 네이티브 빌드 → push ──────
-ssh "$BOARD" "mkdir -p '$BUILD_DIR'"
-scp "$CTX/Dockerfile.autoware" "$CTX/entrypoint.sh" "$BOARD:$BUILD_DIR/"
+$SSH "$BOARD" "mkdir -p '$BUILD_DIR'"
+$SCP "$CTX/Dockerfile.autoware" "$CTX/entrypoint.sh" "$BOARD:$BUILD_DIR/"
 
 # shellcheck disable=SC2029  # LABELS/변수는 로컬에서 확장해 원격에 전달(의도)
-ssh "$BOARD" "cd '$BUILD_DIR' && DOCKER_BUILDKIT=0 docker build -f Dockerfile.autoware \
+$SSH "$BOARD" "cd '$BUILD_DIR' && DOCKER_BUILDKIT=0 docker build -f Dockerfile.autoware \
   ${LABELS[*]} \
   -t '${R}:${TAG}' -t '${R}:${SNAP}' . \
   && docker push '${R}:${TAG}' \
