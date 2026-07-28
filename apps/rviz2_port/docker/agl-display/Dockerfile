@@ -16,9 +16,14 @@ FROM ros:humble-ros-base
 ENV DEBIAN_FRONTEND=noninteractive
 
 # rviz2 (rviz-ogre-vendor 의 libOgreMain 포함) + cage/xwayland + SW GL(llvmpipe)
+# RMW: ros:humble 기본 = rmw_fastrtps_cpp. cyclonedds 도 함께 설치해 Autoware 의
+# RMW 에 맞춰 -e RMW_IMPLEMENTATION 으로 전환 가능하게 한다(크로스보드 discovery 는
+# 양쪽 RMW 가 동일해야 성립 — RVIZ2_AUTOWARE_CONNECT.md §3-②).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-rviz2 \
         ros-humble-rviz-default-plugins \
+        ros-humble-rmw-cyclonedds-cpp \
+        ros-humble-rmw-fastrtps-cpp \
         cage \
         xwayland \
         libgl1-mesa-dri \

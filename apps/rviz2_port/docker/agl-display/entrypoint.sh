@@ -23,6 +23,27 @@ export QT_X11_NO_MITSHM=1                                     # 컨테이너 X �
 # ⚠️ WAYLAND_SOCKET 은 빈 값으로도 set 금지 — libwayland 가 fd 로 파싱 시도 (실측)
 unset WAYLAND_SOCKET
 
-echo "▶ cage + rviz2 시작 (host socket: $WAYLAND_DISPLAY, SW-GL=$LIBGL_ALWAYS_SOFTWARE)"
 source /opt/ros/humble/setup.bash
-exec cage -- ros2 run rviz2 rviz2 "$@"
+# Autoware 오버레이(autoware/tier4 msgs + rviz 플러그인)는 autoware 변형 이미지에만
+# 존재한다. 있으면 소스해 rviz2 가 autoware_*_msgs 토픽을 subscribe/표시할 수 있게 한다.
+# (기본 rviz2-agl 이미지엔 없음 → 이 블록은 no-op, 동일 entrypoint 재사용)
+if [ -f /opt/autoware/setup.bash ]; then
+    source /opt/autoware/setup.bash
+    echo "▶ autoware 오버레이 로드됨 (autoware/tier4 rviz 플러그인 + msgs)"
+fi
+
+# 선택적 rviz2 레이아웃: -e RVIZ_CONFIG=<컨테이너 내 경로>.
+# 예) /opt/autoware/share/autoware_launch/rviz/autoware.rviz (autoware 변형에 baked-in).
+# 파일이 없으면 경고만 하고 기본 뷰로 계속 (경계 방어 — 잘못된 경로에 죽지 않음).
+rviz_args=()
+if [ -n "${RVIZ_CONFIG:-}" ]; then
+    if [ -f "$RVIZ_CONFIG" ]; then
+        rviz_args+=(-d "$RVIZ_CONFIG")
+        echo "▶ rviz2 config: $RVIZ_CONFIG"
+    else
+        echo "⚠️ RVIZ_CONFIG 파일 없음(컨테이너): $RVIZ_CONFIG → 기본 뷰 사용" >&2
+    fi
+fi
+
+echo "▶ cage + rviz2 시작 (host socket: $WAYLAND_DISPLAY, SW-GL=$LIBGL_ALWAYS_SOFTWARE)"
+exec cage -- ros2 run rviz2 rviz2 "${rviz_args[@]}" "$@"

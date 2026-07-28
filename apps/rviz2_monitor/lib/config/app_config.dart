@@ -41,6 +41,9 @@ class AppConfig {
 
   factory AppConfig.defaults() => AppConfig(
         containerName: 'rviz2',
+        // :latest = 레지스트리 런타임 기본 태그(= :autoware 와 동일 이미지: 터치본 + Autoware
+        // msgs/rviz 플러그인 오버레이 + cyclonedds). push 규약상 rviz2 이미지는 :latest 로 올린다
+        // (+ :autoware/:YYYYMMDD 스냅샷). 특정 변형 필요 시 config.json 에서 image 오버라이드.
         image: 'registry.obigo.com/oss/rviz2-agl:latest',
         aglOutput: 'DP-1',
         rvizAppId: 'wlroots',
