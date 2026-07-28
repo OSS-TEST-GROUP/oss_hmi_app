@@ -397,7 +397,10 @@ Autoware 는 표준 rviz 타입이 아니라 **autoware-native 타입으로만**
 표준 타입이 없어 **vanilla rviz2 로는 아무것도 안 보인다**. → 이미지에 autoware 메시지
 패키지 + autoware rviz 플러그인이 있어야 한다.
 
-**태그 규약**: rviz2 이미지는 `:latest` 로 push(런타임 기본) + 스냅샷 태그(`:autoware`, `:YYYYMMDD`).
+**태그 규약**(RVIZ2_IMAGE_TAG_ALIGNMENT.md — 프로젝트 통일): rviz2 이미지는 `:latest` 로 push(런타임 기본)
++ **불변 스냅샷 태그 `<branch>-<date>-<shortsha>`**(예: `feature-rviz2-20260729-abc1234`, UTC).
+빌드 시 **OCI 라벨 5종**(revision/source/ref.name/created/version)을 `--label` 로 주입,
+**커밋 안 됐으면 push 차단**(dirty-block). 표준 빌드: `apps/docker/script/build_rviz2_autoware.sh`.
 빌드 체인은 `:base`(ros+rviz) → `:touch`(+cage) → `:latest`(=`:autoware`, +오버레이). Dockerfile `FROM`
 은 `:base`/`:touch` 를 참조(‌`:latest` 은 런타임이라 FROM 에 안 씀 — 재귀 방지).
 
@@ -495,31 +498,25 @@ ros2 service call /api/routing/set_route_points \
   surface 전환을 과도히 반복하면 agl-compositor float 상태가 꼬여 안 뜰 수 있음(`configure 0x0`)
   → **리부팅으로 컴포지터 상태 리셋** 후 앱 정상 흐름(Start→View rviz2)에서 복구.
 
-### B-5. 이미지 재빌드 (보드 네이티브 arm64)
+### B-5. 이미지 재빌드 (표준 스크립트 — 통일 태그/라벨/dirty 규약)
 ```bash
 # (151, 1회) autoware 오버레이 슬림 이미지 push — 6GB junohb 대신 550MB 만 전송
 printf 'FROM junohb/autoware-partition:sample-adsw-perception AS s\nFROM scratch\nCOPY --from=s /opt/autoware /opt/autoware\n' \
   | docker build -t registry.obigo.com/oss/autoware-overlay:latest -
 docker push registry.obigo.com/oss/autoware-overlay:latest
-# (162) autoware rviz2 빌드 — provenance(소스 repo/커밋)를 이미지에 baking (build-arg).
-#   oss_hmi_app 저장소에서 git 정보를 뽑아 넘긴다(빌드는 별 머신이라도 무방).
-cd docker/agl-display
-SHA=$(git -C <oss_hmi_app> rev-parse --short=7 HEAD)      # 예: 0912ca7
-BR=$(git -C <oss_hmi_app> rev-parse --abbrev-ref HEAD)    # 예: feature-rviz2
-URL=$(git -C <oss_hmi_app> remote get-url origin | sed 's#git@github.com:#https://github.com/#;s#\.git$##')
-DOCKER_BUILDKIT=0 docker build -f Dockerfile.autoware \
-  --build-arg GIT_REPO=oss_hmi_app --build-arg GIT_BRANCH="$BR" \
-  --build-arg GIT_SHA="$SHA" --build-arg GIT_URL="$URL" \
-  -t registry.obigo.com/oss/rviz2-agl:autoware .
-# push 규약: :latest(런타임 기본) + :autoware + **repo 정보 스냅샷 태그**(repo-branch-gSHA).
-#   스냅샷 태그로 어느 저장소/브랜치/커밋에서 만든 이미지인지 즉시 식별 (라벨로도 baking됨).
-R=registry.obigo.com/oss/rviz2-agl; SNAP="oss_hmi_app-${BR}-g${SHA}"
-docker tag $R:autoware $R:latest && docker tag $R:autoware $R:$SNAP
-docker push $R:latest && docker push $R:autoware && docker push $R:$SNAP
-# 확인: docker image inspect $R:latest -f '{{json .Config.Labels}}'  # revision/source/built-from-repo
+
+# (표준) rviz2 autoware 이미지 빌드+push — dirty 차단 + 스냅샷 태그 + OCI 라벨 자동.
+#   Orin(arm64)에서 네이티브 빌드(overlay COPY 라 QEMU 지양). 커밋 안 됐으면 중단.
+apps/docker/script/build_rviz2_autoware.sh                 # :latest + :<branch>-<date>-<shortsha>
+TAG=verify apps/docker/script/build_rviz2_autoware.sh      # 안전 검증용(비-latest)
+# 확인: docker image inspect registry.obigo.com/oss/rviz2-agl:latest -f '{{json .Config.Labels}}'
 ```
-> 스냅샷 태그 예: `oss_hmi_app-feature-rviz2-g0912ca7`. 라벨: `org.opencontainers.image.{source,revision,ref.name}`
-> + `com.obigo.built-from-{repo,path}`. 날짜만 쓰던 `:YYYYMMDD` 는 **repo 정보 포함 태그로 대체**.
+> 스냅샷 태그 예: `feature-rviz2-20260729-abc1234` (`<branch>-<date(UTC)>-<shortsha>`).
+> OCI 라벨 5종: `org.opencontainers.image.{revision,source,ref.name,created,version}`
+> (+ 커스텀 `com.obigo.built-from-{repo,path}`). 라벨은 **스크립트가 `--label` 로 주입**
+> (Dockerfile ARG/LABEL 아님). base/touch 는 `build_rviz2_multiarch.sh` 로 생성.
+> ⚠️ `Dockerfile.autoware` line ~40 `rmw-cyclonedds` 는 base 소스엔 추가됐으나 배포된 :touch 엔
+> 없어 현재는 필요(중복 아님). base+touch 재빌드 후 제거 가능(§RVIZ2_IMAGE_TAG_ALIGNMENT §3).
 
 ---
 
