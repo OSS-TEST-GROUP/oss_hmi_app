@@ -75,6 +75,11 @@ class ContainerServicesPanel extends StatelessWidget {
                 );
               }
 
+              // Q3: snapshot the in-flight Start sets INSIDE the Obx so a
+              // pending change (tap → 처리중, or RUNNING → clear) rebuilds the
+              // cards. .toSet() iterates the RxSet → registers the read.
+              final pendC = collector.pendingContainers.toSet();
+              final pendS = collector.pendingServices.toSet();
               final cards = <Widget>[
                 for (final c in containers)
                   _ContainerCard(
@@ -86,6 +91,8 @@ class ContainerServicesPanel extends StatelessWidget {
                     onStartService: collector.startService,
                     onStopService: collector.stopService,
                     onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
+                    startPending: pendC.contains(c.name),
+                    pendingServices: pendS,
                   ),
                 if (orphans.isNotEmpty)
                   _OrphanServicesCard(
@@ -94,6 +101,7 @@ class ContainerServicesPanel extends StatelessWidget {
                     onStartService: collector.startService,
                     onStopService: collector.stopService,
                     onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
+                    pendingServices: pendS,
                   ),
               ];
 
@@ -143,6 +151,8 @@ class _ContainerCard extends StatelessWidget {
     required this.onStartService,
     required this.onStopService,
     required this.onChangeServiceRecovery,
+    this.startPending = false,
+    this.pendingServices = const <String>{},
   });
 
   final ContainerInfo info;
@@ -154,6 +164,10 @@ class _ContainerCard extends StatelessWidget {
   final void Function(String serviceName) onStopService;
   final void Function(String serviceName, RecoveryPolicy policy)
       onChangeServiceRecovery;
+  /// Q3: container Start is in flight → button shows 처리중, disabled.
+  final bool startPending;
+  /// Q3: service names whose Start is in flight (per-service 처리중).
+  final Set<String> pendingServices;
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +241,7 @@ class _ContainerCard extends StatelessWidget {
                   enabled: !isRunning,
                   palette: p,
                   onPressed: onStart,
+                  busy: startPending,
                 ),
                 const SizedBox(width: 8),
                 _ActionButton(
@@ -261,6 +276,7 @@ class _ContainerCard extends StatelessWidget {
                     onStop: () => onStopService(services[i].name),
                     onChangeRecovery: (policy) =>
                         onChangeServiceRecovery(services[i].name, policy),
+                    startPending: pendingServices.contains(services[i].name),
                   ),
                   if (i != services.length - 1)
                     Divider(color: p.panelBorder, height: 1),
@@ -285,6 +301,7 @@ class _OrphanServicesCard extends StatelessWidget {
     required this.onStartService,
     required this.onStopService,
     required this.onChangeServiceRecovery,
+    this.pendingServices = const <String>{},
   });
 
   final List<ServiceInfo> services;
@@ -293,6 +310,8 @@ class _OrphanServicesCard extends StatelessWidget {
   final void Function(String serviceName) onStopService;
   final void Function(String serviceName, RecoveryPolicy policy)
       onChangeServiceRecovery;
+  /// Q3: service names whose Start is in flight (per-service 처리중).
+  final Set<String> pendingServices;
 
   @override
   Widget build(BuildContext context) {
@@ -338,6 +357,7 @@ class _OrphanServicesCard extends StatelessWidget {
                   onStop: () => onStopService(services[i].name),
                   onChangeRecovery: (policy) =>
                       onChangeServiceRecovery(services[i].name, policy),
+                  startPending: pendingServices.contains(services[i].name),
                 ),
                 if (i != services.length - 1)
                   Divider(color: p.panelBorder, height: 1),
@@ -357,6 +377,7 @@ class _ServiceRow extends StatelessWidget {
     required this.onStart,
     required this.onStop,
     required this.onChangeRecovery,
+    this.startPending = false,
   });
 
   final ServiceInfo info;
@@ -364,6 +385,8 @@ class _ServiceRow extends StatelessWidget {
   final VoidCallback onStart;
   final VoidCallback onStop;
   final void Function(RecoveryPolicy policy) onChangeRecovery;
+  /// Q3: this service's Start is in flight → button shows 처리중, disabled.
+  final bool startPending;
 
   @override
   Widget build(BuildContext context) {
@@ -435,6 +458,7 @@ class _ServiceRow extends StatelessWidget {
                   enabled: isDown,
                   palette: palette,
                   onPressed: onStart,
+                  busy: startPending,
                 ),
                 const SizedBox(width: 8),
                 _ActionButton(
@@ -585,6 +609,7 @@ class _ActionButton extends StatelessWidget {
     required this.enabled,
     required this.palette,
     required this.onPressed,
+    this.busy = false,
   });
 
   final String label;
@@ -593,18 +618,32 @@ class _ActionButton extends StatelessWidget {
   final LfcPalette palette;
   final VoidCallback onPressed;
 
+  /// Q3: a Start is in flight for this item — show a spinner + "처리중" and
+  /// disable the button so a re-tap can't fire a duplicate ctrl/Start.
+  final bool busy;
+
   @override
   Widget build(BuildContext context) {
+    final active = enabled && !busy;
     return SizedBox(
       height: 28,
       child: OutlinedButton.icon(
-        onPressed: enabled ? onPressed : null,
-        icon: Icon(icon, size: 14),
-        label: Text(label, style: const TextStyle(fontSize: 11)),
+        onPressed: active ? onPressed : null,
+        icon: busy
+            ? SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(palette.subtext),
+                ),
+              )
+            : Icon(icon, size: 14),
+        label: Text(busy ? '처리중' : label, style: const TextStyle(fontSize: 11)),
         style: OutlinedButton.styleFrom(
-          foregroundColor: enabled ? palette.accent : palette.subtext,
+          foregroundColor: active ? palette.accent : palette.subtext,
           side: BorderSide(
-            color: enabled
+            color: active
                 ? palette.accent.withValues(alpha: 0.4)
                 : palette.panelBorder,
           ),
