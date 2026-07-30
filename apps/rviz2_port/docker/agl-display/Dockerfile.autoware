@@ -17,14 +17,13 @@
 #     | docker build -t registry.obigo.com/oss/autoware-overlay:latest -
 #   docker push registry.obigo.com/oss/autoware-overlay:latest
 #
-# 태그 규약: :base(ros+rviz) → :touch(+cage) → :autoware(+오버레이). 런타임 기본 = :latest
-# (=:autoware 와 동일 이미지). FROM 은 :latest 를 참조하지 않는다(:latest 가 autoware 라 재귀됨).
+# 태그 규약(RVIZ2_IMAGE_TAG_ALIGNMENT.md): 빌드 체인 :base(ros+rviz) → :touch(+cage) →
+# :latest(+오버레이). FROM 은 :latest 를 참조하지 않는다(:latest 가 이 이미지라 재귀됨).
+# 런타임 기본 = :latest, 불변 스냅샷 = <branch>-<date>-<shortsha> (OCI 라벨 5종 동반).
 #
-# 빌드 (Orin 162 네이티브 arm64):
-#   # 터치 이미지 :touch(arm64) 가 FROM 베이스. 오버레이는 build 중 자동 pull.
-#   docker build -f Dockerfile.autoware -t registry.obigo.com/oss/rviz2-agl:autoware .
-#   # push 는 :latest 로(규약) + 스냅샷 태그:
-#   docker tag ...:autoware ...:latest && docker push ...:latest && docker push ...:autoware
+# 빌드/푸시(표준): apps/docker/script/build_rviz2_autoware.sh
+#   → dirty 차단 + 스냅샷 태그 + OCI 라벨(--label) 을 자동 적용해 Orin(arm64)에서 네이티브
+#     빌드 후 :latest + :<snap> push. (수동 docker build --label 도 가능하나 스크립트 권장)
 #
 # 실행: rviz2_monitor 가 -e ROS_DOMAIN_ID=<autoware 도메인> [-e RMW_IMPLEMENTATION=...]
 #       -e RVIZ_CONFIG=/opt/autoware/share/autoware_launch/rviz/autoware.rviz 로 기동.
@@ -33,9 +32,12 @@ FROM registry.obigo.com/oss/rviz2-agl:touch AS autoware
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 
-# CycloneDDS 추가 (fastrtps 는 base 에 이미 있음). Autoware 가 cyclone 이면 rviz2 도
-# -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp 로 맞춘다. 현행 Autoware=fastrtps(기본)이라
-# 미설정 시 fastrtps 로 자동 일치.
+# CycloneDDS 설치. Autoware 가 cyclone 이면 rviz2 도 -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# 로 맞춘다(현행 Autoware=fastrtps 기본 → 미설정 시 자동 일치).
+# ⚠️ base(agl-display/Dockerfile) 소스에도 cyclonedds+fastrtps 가 추가됐지만, 레지스트리의
+#    :base/:touch 이미지는 그 변경 전에 빌드돼 cyclone 이 없다(실측 ABSENT). 그래서 여기서
+#    설치가 여전히 필요하다. base+touch 를 재빌드하면 이 줄은 중복이 되어 제거 가능
+#    (RVIZ2_IMAGE_TAG_ALIGNMENT.md §3).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
@@ -75,22 +77,9 @@ USER agl
 ENV PATH=/usr/local/bin:$PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
 
-# ── Provenance — 이 이미지를 만든 소스 repo/브랜치/커밋을 이미지에 baking ──────────
-# 스냅샷 태그(oss_hmi_app-<branch>-g<sha>)와 함께 어디서 빌드됐는지 추적 가능하게 한다.
-# build-arg 로 주입(맨 끝 레이어 → git 정보 바뀌어도 상위 550MB 레이어 캐시 유지):
-#   docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) \
-#     --build-arg GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
-#     --build-arg GIT_URL=$(git remote get-url origin) -f Dockerfile.autoware -t ... .
-ARG GIT_REPO=oss_hmi_app
-ARG GIT_BRANCH=unknown
-ARG GIT_SHA=unknown
-ARG GIT_URL=""
-LABEL org.opencontainers.image.title="rviz2-agl (autoware)" \
-      org.opencontainers.image.source="${GIT_URL}" \
-      org.opencontainers.image.revision="${GIT_SHA}" \
-      org.opencontainers.image.ref.name="${GIT_BRANCH}" \
-      com.obigo.built-from-repo="${GIT_REPO}" \
-      com.obigo.built-from-path="apps/rviz2_port/docker/agl-display/Dockerfile.autoware"
+# Provenance(OCI 라벨 5종 + com.obigo.*)는 빌드 스크립트가 `--label` 로 주입한다
+# (RVIZ2_IMAGE_TAG_ALIGNMENT.md §1·§2 — Dockerfile ARG/LABEL 대신 래퍼 스크립트로 통일).
+# 표준 빌드: apps/docker/script/build_rviz2_autoware.sh (스냅샷 태그+라벨+dirty 차단 자동).
 
 # 터치 이미지와 동일 — cage 종료를 즉시 SIGKILL(자세한 이유는 Dockerfile.touch 참조).
 STOPSIGNAL SIGKILL
