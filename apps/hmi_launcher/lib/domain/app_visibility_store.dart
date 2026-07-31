@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart';
 ///
 /// Default policy: every discovered app is **enabled** unless it is listed in
 /// [kDefaultDisabled] (apps that ship hidden until the user opts in — currently
-/// OTA Monitor) or the user has explicitly disabled it.  Only the "disabled"
+/// OTA Monitor and RViz2 Monitor) or the user has explicitly disabled it. Only the "disabled"
 /// set is stored on disk; once a state file exists it fully replaces the
 /// defaults, so a user enabling a default-disabled app sticks across restarts,
 /// and newly installed apps appear automatically without any migration.
@@ -30,7 +30,7 @@ class AppVisibilityStore extends ChangeNotifier {
   /// Apps hidden by default on a fresh install (no state file yet).
   /// Applied by the production [AppVisibilityStore.file] factory only, so
   /// in-memory test stores keep the historical all-enabled default.
-  static const Set<String> kDefaultDisabled = {'ota_monitor'};
+  static const Set<String> kDefaultDisabled = {'ota_monitor', 'rviz2_monitor'};
 
   final FutureOr<String?> Function()? _readRaw;
   final Future<void> Function(String)? _writeRaw;
