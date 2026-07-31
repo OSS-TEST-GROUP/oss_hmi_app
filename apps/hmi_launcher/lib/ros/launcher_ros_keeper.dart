@@ -34,6 +34,10 @@ class LauncherRosKeeper {
 
   bool _stopping = false;
   bool _reconnecting = false;
+  // Held true from a reconnect kick until the connection actually settles
+  // (_onConnected) or a safety timeout fires — prevents the 2s watchdog from
+  // firing overlapping connect() calls that close+reopen the socket (churn).
+  Timer? _reconnectGuardTimer;
 
   Ros get ros => _ros ?? (throw StateError('ROS not initialized'));
 
@@ -92,6 +96,9 @@ class LauncherRosKeeper {
     _reconnectPoll = null;
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
+    _reconnectGuardTimer?.cancel();
+    _reconnectGuardTimer = null;
+    _reconnecting = false;
     await _statusSub?.cancel();
     _statusSub = null;
     _ros?.close();
@@ -159,37 +166,49 @@ class LauncherRosKeeper {
 
   void _kickReconnect() {
     if (_reconnecting) return;
-    _reconnecting = true;
 
     final r = _ros;
-    if (r == null) {
-      _reconnecting = false;
-      return;
-    }
+    if (r == null) return;
 
     if (r.status == Status.connected) {
       consecutiveFailures.value = 0;
-      _reconnecting = false;
       return;
     }
 
+    // Hold the guard across the async connect: cleared by _onConnected on
+    // success, or by the safety timer if the attempt never settles. Previously
+    // the guard was released synchronously, so the next 2s watchdog tick fired
+    // another connect() mid-handshake — closing + reopening the socket in a
+    // ~2s churn loop that reset every shared-Ros subscription.
+    _reconnecting = true;
     consecutiveFailures.value++;
     debugPrint('[LauncherROS] reconnect attempt ${consecutiveFailures.value}');
 
     r.connect();
-    _reconnecting = false;
+
+    _reconnectGuardTimer?.cancel();
+    _reconnectGuardTimer = Timer(const Duration(seconds: 8), () {
+      _reconnecting = false;
+    });
   }
 
   Future<void> _onConnected() async {
     consecutiveFailures.value = 0;
+    // Connection settled — release the reconnect guard + cancel the safety timer.
+    _reconnecting = false;
+    _reconnectGuardTimer?.cancel();
+    _reconnectGuardTimer = null;
 
-    // Register or replace the global Ros instance in GetX
-    if (Get.isRegistered<Ros>()) {
-      Get.replace<Ros>(_ros!);
-      debugPrint('[LauncherROS] Ros replaced in GetX');
-    } else {
+    // Register the global Ros ONCE. Replace only when the instance actually
+    // changed (e.g. a rosUrl change recreated it). Replacing with the SAME
+    // instance on every reconnect churns GetX and orphaned the shared-Ros
+    // subscriptions of lfc_monitor / adsw_monitor (diagnostics tab).
+    if (!Get.isRegistered<Ros>()) {
       Get.put<Ros>(_ros!);
       debugPrint('[LauncherROS] Ros registered in GetX');
+    } else if (!identical(Get.find<Ros>(), _ros)) {
+      Get.replace<Ros>(_ros!);
+      debugPrint('[LauncherROS] Ros replaced in GetX (instance changed)');
     }
 
     try {
