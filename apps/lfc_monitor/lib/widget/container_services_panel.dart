@@ -76,10 +76,12 @@ class ContainerServicesPanel extends StatelessWidget {
               }
 
               // Q3: snapshot the in-flight Start sets INSIDE the Obx so a
-              // pending change (tap → 처리중, or RUNNING → clear) rebuilds the
+              // pending change (tap → spinner, or state settled → clear) rebuilds the
               // cards. .toSet() iterates the RxSet → registers the read.
               final pendC = collector.pendingContainers.toSet();
               final pendS = collector.pendingServices.toSet();
+              final pendStopC = collector.pendingStopContainers.toSet();
+              final pendStopS = collector.pendingStopServices.toSet();
               final cards = <Widget>[
                 for (final c in containers)
                   _ContainerCard(
@@ -92,7 +94,9 @@ class ContainerServicesPanel extends StatelessWidget {
                     onStopService: collector.stopService,
                     onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
                     startPending: pendC.contains(c.name),
+                    stopPending: pendStopC.contains(c.name),
                     pendingServices: pendS,
+                    pendingStopServices: pendStopS,
                   ),
                 if (orphans.isNotEmpty)
                   _OrphanServicesCard(
@@ -102,6 +106,7 @@ class ContainerServicesPanel extends StatelessWidget {
                     onStopService: collector.stopService,
                     onChangeServiceRecovery: collector.setServiceRecoveryPolicy,
                     pendingServices: pendS,
+                    pendingStopServices: pendStopS,
                   ),
               ];
 
@@ -152,7 +157,9 @@ class _ContainerCard extends StatelessWidget {
     required this.onStopService,
     required this.onChangeServiceRecovery,
     this.startPending = false,
+    this.stopPending = false,
     this.pendingServices = const <String>{},
+    this.pendingStopServices = const <String>{},
   });
 
   final ContainerInfo info;
@@ -164,10 +171,14 @@ class _ContainerCard extends StatelessWidget {
   final void Function(String serviceName) onStopService;
   final void Function(String serviceName, RecoveryPolicy policy)
       onChangeServiceRecovery;
-  /// Q3: container Start is in flight → button shows 처리중, disabled.
+  /// Q3: container Start is in flight → button shows the spinner, disabled.
   final bool startPending;
-  /// Q3: service names whose Start is in flight (per-service 처리중).
+  /// Stop guard: container Stop is in flight → Stop button spinner, disabled.
+  final bool stopPending;
+  /// Q3: service names whose Start is in flight (per-service spinner).
   final Set<String> pendingServices;
+  /// Stop guard: service names whose Stop is in flight (per-service spinner).
+  final Set<String> pendingStopServices;
 
   @override
   Widget build(BuildContext context) {
@@ -250,6 +261,7 @@ class _ContainerCard extends StatelessWidget {
                   enabled: isRunning,
                   palette: p,
                   onPressed: onStop,
+                  busy: stopPending,
                 ),
               ],
             ),
@@ -277,6 +289,7 @@ class _ContainerCard extends StatelessWidget {
                     onChangeRecovery: (policy) =>
                         onChangeServiceRecovery(services[i].name, policy),
                     startPending: pendingServices.contains(services[i].name),
+                    stopPending: pendingStopServices.contains(services[i].name),
                   ),
                   if (i != services.length - 1)
                     Divider(color: p.panelBorder, height: 1),
@@ -302,6 +315,7 @@ class _OrphanServicesCard extends StatelessWidget {
     required this.onStopService,
     required this.onChangeServiceRecovery,
     this.pendingServices = const <String>{},
+    this.pendingStopServices = const <String>{},
   });
 
   final List<ServiceInfo> services;
@@ -310,8 +324,10 @@ class _OrphanServicesCard extends StatelessWidget {
   final void Function(String serviceName) onStopService;
   final void Function(String serviceName, RecoveryPolicy policy)
       onChangeServiceRecovery;
-  /// Q3: service names whose Start is in flight (per-service 처리중).
+  /// Q3: service names whose Start is in flight (per-service spinner).
   final Set<String> pendingServices;
+  /// Stop guard: service names whose Stop is in flight (per-service spinner).
+  final Set<String> pendingStopServices;
 
   @override
   Widget build(BuildContext context) {
@@ -358,6 +374,7 @@ class _OrphanServicesCard extends StatelessWidget {
                   onChangeRecovery: (policy) =>
                       onChangeServiceRecovery(services[i].name, policy),
                   startPending: pendingServices.contains(services[i].name),
+                  stopPending: pendingStopServices.contains(services[i].name),
                 ),
                 if (i != services.length - 1)
                   Divider(color: p.panelBorder, height: 1),
@@ -378,6 +395,7 @@ class _ServiceRow extends StatelessWidget {
     required this.onStop,
     required this.onChangeRecovery,
     this.startPending = false,
+    this.stopPending = false,
   });
 
   final ServiceInfo info;
@@ -385,8 +403,10 @@ class _ServiceRow extends StatelessWidget {
   final VoidCallback onStart;
   final VoidCallback onStop;
   final void Function(RecoveryPolicy policy) onChangeRecovery;
-  /// Q3: this service's Start is in flight → button shows 처리중, disabled.
+  /// Q3: this service's Start is in flight → button shows the spinner, disabled.
   final bool startPending;
+  /// Stop guard: this service's Stop is in flight → Stop button spinner, disabled.
+  final bool stopPending;
 
   @override
   Widget build(BuildContext context) {
@@ -467,6 +487,7 @@ class _ServiceRow extends StatelessWidget {
                   enabled: isAlive,
                   palette: palette,
                   onPressed: onStop,
+                  busy: stopPending,
                 ),
                 const Spacer(),
                 _RecoveryDropdown(
@@ -618,8 +639,8 @@ class _ActionButton extends StatelessWidget {
   final LfcPalette palette;
   final VoidCallback onPressed;
 
-  /// Q3: a Start is in flight for this item — show a spinner + "처리중" and
-  /// disable the button so a re-tap can't fire a duplicate ctrl/Start.
+  /// An op (Start or Stop) is in flight for this item — show a spinner +
+  /// "Working…" and disable the button so a re-tap can't fire a duplicate.
   final bool busy;
 
   @override
@@ -639,7 +660,7 @@ class _ActionButton extends StatelessWidget {
                 ),
               )
             : Icon(icon, size: 14),
-        label: Text(busy ? '처리중' : label, style: const TextStyle(fontSize: 11)),
+        label: Text(busy ? 'Working…' : label, style: const TextStyle(fontSize: 11)),
         style: OutlinedButton.styleFrom(
           foregroundColor: active ? palette.accent : palette.subtext,
           side: BorderSide(

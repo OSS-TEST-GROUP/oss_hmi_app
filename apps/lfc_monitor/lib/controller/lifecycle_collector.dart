@@ -71,6 +71,11 @@ class LifecycleCollector extends GetxController {
   /// button permanently disabled.
   final RxSet<String> pendingContainers = <String>{}.obs;
   final RxSet<String> pendingServices = <String>{}.obs;
+  // Stop-side pending (mirrors the Start sets): a Stop is in flight -> the
+  // button shows the spinner + is disabled, cleared when the target reaches
+  // STOPPED / NOT_RUNNING or the pending timeout fires.
+  final RxSet<String> pendingStopContainers = <String>{}.obs;
+  final RxSet<String> pendingStopServices = <String>{}.obs;
   final Map<String, Timer> _pendingTimers = {};
   static const Duration _pendingTimeout = Duration(seconds: 45);
 
@@ -267,7 +272,10 @@ class LifecycleCollector extends GetxController {
       info.lastChangedAt = DateTime.now();
       containers[name] = info;
       if (newState == ContainerState.running) {
-        _endPending(pendingContainers, 'c', name); // Q3: 처리중 해제(기동 확인)
+        _endPending(pendingContainers, 'c', name); // Start pending: clear on RUNNING
+      }
+      if (newState == ContainerState.stopped) {
+        _endPending(pendingStopContainers, 'cs', name); // Stop pending: clear on STOPPED
       }
       if (prevState != newState) {
         _pushEvent(LifecycleEvent(
@@ -365,7 +373,10 @@ class LifecycleCollector extends GetxController {
       final cn = entry['container_name'];
       if (cn is String) info.containerName = cn;
       if (info.state == ServiceState.running) {
-        _endPending(pendingServices, 's', name); // Q3: 처리중 해제(기동 확인)
+        _endPending(pendingServices, 's', name); // Start pending: clear on RUNNING
+      }
+      if (info.state == ServiceState.notRunning) {
+        _endPending(pendingStopServices, 'ss', name); // Stop pending: clear on NOT_RUNNING
       }
       services[name] = info;
     }
@@ -486,6 +497,12 @@ class LifecycleCollector extends GetxController {
 
   void stopService(String name) {
     _logCall('stopService', name);
+    // Block duplicate taps while a stop is already in flight (mirror of Start).
+    if (pendingStopServices.contains(name)) {
+      _logCall('stopService.ignored', '$name already pending (processing)');
+      return;
+    }
+    _beginPending(pendingStopServices, 'ss', name); // button -> spinner; cleared on NOT_RUNNING/timeout
     // Same optimistic flip as startService — see commentary there.
     _optimisticServiceState(name, ServiceState.notRunning);
     _publish(_ctrlStopServiceReqPub, 'ctrlStopService', {
@@ -567,6 +584,12 @@ class LifecycleCollector extends GetxController {
 
   void stopContainer(String name) {
     _logCall('stopContainer', name);
+    // Block duplicate taps while a stop is already in flight (mirror of Start).
+    if (pendingStopContainers.contains(name)) {
+      _logCall('stopContainer.ignored', '$name already pending (processing)');
+      return;
+    }
+    _beginPending(pendingStopContainers, 'cs', name); // button -> spinner; cleared on STOPPED/timeout
     _publish(_ctrlStopContainerReqPub, 'ctrlStopContainer', {
       'container_list': [name],
     });
