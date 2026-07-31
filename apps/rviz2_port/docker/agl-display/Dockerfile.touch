@@ -9,7 +9,9 @@
 # jammy libwayland 는 1.20 이라 wlroots 0.16(>=1.21 요구)용으로 wayland 1.22 도 함께 빌드.
 # 네이티브 arm64(Orin) 빌드 권장 (QEMU 는 매우 느림):
 #   docker build -f Dockerfile.touch -t rviz2-agl:touch .
-FROM registry.obigo.com/oss/rviz2-agl:latest AS build
+# FROM 베이스는 :base(ros:humble+rviz2, agl-display/Dockerfile 산출물). :latest 는 런타임
+# 기본(=autoware)이라 FROM 에 쓰지 않는다(재귀 방지). 태그 규약: :base→:touch→:autoware(=:latest).
+FROM registry.obigo.com/oss/rviz2-agl:base AS build
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive

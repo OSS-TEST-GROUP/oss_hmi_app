@@ -385,6 +385,141 @@ wayland **1.21+** 의 `wl_display_terminate()` 는 종료용 eventfd write 결�
 
 ---
 
+## 부록 B. Autoware(151) 크로스보드 시각화 (`:autoware` 이미지)
+
+162 의 rviz2 가 **151 보드에서 실행 중인 Autoware** ROS2 그래프를 크로스보드로 시각화한다.
+스펙 원본: `RVIZ2_AUTOWARE_CONNECT.md`.
+
+### B-1. 왜 별도 이미지(`:autoware`)가 필요한가
+Autoware 는 표준 rviz 타입이 아니라 **autoware-native 타입으로만** 발행한다(실측):
+`autoware_perception_msgs/DetectedObjects`, `autoware_planning_msgs/{Path,Trajectory}`,
+`autoware_adapi_v1_msgs/*`, `tier4_*_msgs` 등. `/tf`·`PointCloud2`·`MarkerArray` 같은
+표준 타입이 없어 **vanilla rviz2 로는 아무것도 안 보인다**. → 이미지에 autoware 메시지
+패키지 + autoware rviz 플러그인이 있어야 한다.
+
+**태그 규약**(RVIZ2_IMAGE_TAG_ALIGNMENT.md — 프로젝트 통일): rviz2 이미지는 `:latest` 로 push(런타임 기본)
++ **불변 스냅샷 태그 `<branch>-<date>-<shortsha>`**(예: `feature-rviz2-20260729-abc1234`, UTC).
+빌드 시 **OCI 라벨 5종**(revision/source/ref.name/created/version)을 `--label` 로 주입,
+**커밋 안 됐으면 push 차단**(dirty-block). 표준 빌드: `apps/docker/script/build_rviz2_autoware.sh`.
+빌드 체인은 `:base`(ros+rviz) → `:touch`(+cage) → `:latest`(=`:autoware`, +오버레이). Dockerfile `FROM`
+은 `:base`/`:touch` 를 참조(‌`:latest` 은 런타임이라 FROM 에 안 씀 — 재귀 방지).
+
+`registry.obigo.com/oss/rviz2-agl:latest` (= `:autoware` 이미지) = 터치 이미지(`:touch`) 위에:
+- **CycloneDDS 추가** (fastrtps 는 기존) → `-e RMW_IMPLEMENTATION` 으로 Autoware 에 맞춰 전환
+- **`/opt/autoware` 오버레이(550MB)** — junohb 파티션 이미지에서 컴파일된 arm64 산출물
+  (msgs 40 + rviz 플러그인 16, `autoware.rviz` 포함). 소스 빌드 없이 `COPY --from` 슬림 오버레이.
+- **런타임 의존 보강** — `logging_demo`(planning/state 플러그인), `lanelet2`(traffic_light 플러그인),
+  표준 msg(`geographic_msgs` 등 — autoware_adapi_v1_msgs subscribe 에 필수).
+- **entrypoint** — `/opt/autoware/setup.bash` 소스 + `RVIZ_CONFIG` 지원(`rviz2 -d <path>`).
+
+> rviz2_monitor 기본 이미지가 `:latest` 로 지정됨(AppConfig.defaults + config.json).
+
+### B-2. RViz2 Monitor 앱에서 실행 (autoware 가 기본값)
+`Run Options` 3필드가 **Autoware-on-151 값으로 미리 채워져 있다**(기본 설정):
+`ROS_DOMAIN_ID=42` / `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` /
+`RViz config=/opt/autoware/share/autoware_launch/rviz/autoware.rviz`.
+→ **그냥 Start 만 누르면** autoware 에 연결된다. 값을 바꾸려면 필드 편집(예: domain 0),
+비웠으면 **`Autoware (151) preset`** 버튼으로 복원.
+1. **Start** → 아래 `docker run` 이 실행됨:
+   ```
+   docker run -d --name rviz2 --net=host --ipc=host --user 1001:1001 --group-add 44 \
+     -v /run/user/1001:/host-xdg -e XDG_RUNTIME_DIR=/host-xdg -e WAYLAND_DISPLAY=wayland-0 \
+     -e HOME=/tmp -e LIBGL_ALWAYS_SOFTWARE=1 \
+     -e ROS_DOMAIN_ID=42 -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
+     -e RVIZ_CONFIG=/opt/autoware/share/autoware_launch/rviz/autoware.rviz \
+     registry.obigo.com/oss/rviz2-agl:latest
+   ```
+3. **View rviz2** → autoware.rviz 레이아웃으로 전환. 홈버튼으로 런처 복귀.
+
+### B-3. ⚠️ 도메인 (42 vs 0) — 켠 Autoware 에 맞춰라
+151 에는 Autoware 배포가 **둘** 있고 도메인이 다르다(실측):
+
+| 배포 | 이미지 | 도메인 |
+|---|---|:-:|
+| adsw 3-파티션 | `junohb/autoware-partition:sample-adsw-*` (saved-service-list.yaml) | **42** |
+| oss-mmf-ext-ros2 | `registry.obigo.com/oss/oss-mmf-ext-ros2` | **0** |
+
+preset 은 42(adsw 파티션)를 채운다. **oss-mmf-ext-ros2 를 쓰면 필드를 `0` 으로 수정**.
+RMW/디스커버리: 현행 Autoware=fastrtps(기본)이며 멀티캐스트 discovery 가 크로스보드로
+동작함(실증 — rviz2 가 64토픽 발견). cyclone 이면 필드를 `rmw_cyclonedds_cpp` 로.
+
+### B-4. 검증 (실기)
+- `:autoware` 이미지: autoware rviz 플러그인 16종 .so 전부 resolve(ldd), 양 RMW selectable.
+- `autoware.rviz` **오류 없이 로드**(typesupport 보강 후 "Could not load display config" 해소).
+- rviz2 가 autoware-native 토픽 **크로스보드 수신**: `/tf` 40Hz + perception objects 10Hz,
+  332 토픽 발견. 실제 Shinjuku HD맵 + 로컬라이즈된 에고 + **계획 경로(초록)** 렌더 확인.
+- **경로 계획(Routing | Set)까지 성공** — §B-6 절차로 init pose + goal + 라우팅.
+- ⚠️ **자율주행 모션(engage)은 미동작** — junohb 3-파티션 배포의 인프라 결함:
+  `/system/operation_mode/state` 가 파티션 간 미발행 → `scenario_selector` 가 "Waiting for
+  operation mode state" 로 데드락 → 궤적 미생성 → `change_to_autonomous` 거부("check
+  diagnostics"). **goal 좌표 문제 아님**(경로는 SET 성공). autoware 배포측(파티션 간 DDS/노드
+  기동) 수정 필요.
+
+### B-6. 151 Autoware 기동 + 경로 설정 절차 (실기 검증됨)
+adsw_manager(`oss-mmf-ext-ros2` 내)가 saved-service-list 로 junohb 3-파티션을 관리하지만,
+수동 기동도 동일하다(recovery MANUAL). **맵은 `/home/beyhpc/autoware_map/sample-map-planning`**
+(실제 Shinjuku HD맵 — pcd 28MB + lanelet + MGRS projector).
+```bash
+# 151 에서 3-파티션 기동 (domain 42, 실제 맵 마운트). perception 은 시뮬레이터.
+MAP=/home/beyhpc/autoware_map/sample-map-planning
+docker run -d --name autoware-perception --network host --pid=host \
+  -e ROS_DOMAIN_ID=42 -e DISPLAY=:1 -e LIBGL_ALWAYS_SOFTWARE=1 \
+  -v /dev/shm:/dev/shm -v /tmp/.X11-unix:/tmp/.X11-unix -v "$MAP:/autoware_map" \
+  junohb/autoware-partition:sample-adsw-perception /autoware/start_script/adsw-perception.sh
+docker run -d --name autoware-decision --network host --pid=host -e ROS_DOMAIN_ID=42 \
+  -v /dev/shm:/dev/shm -v "$MAP:/autoware_map" \
+  junohb/autoware-partition:sample-adsw-decision /autoware/start_script/adsw-decision.sh
+docker run -d --name autoware-control --network host --pid=host -e ROS_DOMAIN_ID=42 \
+  -v /dev/shm:/dev/shm -v "$MAP:/autoware_map" \
+  junohb/autoware-partition:sample-adsw-control /autoware/start_script/adsw-control.sh
+```
+초기 포즈 + 경로(도메인 42 그래프. **초기포즈 토픽은 `/initialpose3d`** — `/initialpose` 아님):
+```bash
+# 초기 포즈 (맵프레임 MGRS-local). 차선 방향과 yaw 일치 필수(반대면 라우팅 실패).
+ros2 topic pub -t 3 /initialpose3d geometry_msgs/msg/PoseWithCovarianceStamped \
+  "{header: {frame_id: map}, pose: {pose: {position: {x: 3740.7, y: 73722.2, z: 0.0}, \
+   orientation: {z: -0.9718, w: 0.2359}}}}"
+# goal → 라우팅. goal 은 에고 lanelet 에서 연결된 차선이어야 함(안 그러면 "route is empty").
+#   유효 좌표는 lanelet2 getRoute 로 뽑되, autoware 라우팅이 수락하는지 후보 여러 개 시도.
+ros2 service call /api/routing/set_route_points \
+  autoware_adapi_v1_msgs/srv/SetRoutePoints \
+  "{header: {frame_id: map}, goal: {position: {x: 3855.8, y: 73873.7, z: 0.0}, \
+   orientation: {z: 0.854, w: 0.520}}, waypoints: []}"   # → success=True, routing state 2(SET)
+# 관측성: 크로스보드 discovery 는 162 rviz2 컨테이너가 가장 안정적(perception 컨테이너 CLI 는 flaky).
+```
+
+### B-7. 스크린샷 & 홈버튼 주의
+- **rviz2 화면 캡처**: rviz2 는 cage(wlroots) 안에서 돌아 `grim` 으로 뜬다.
+  `docker exec -u 1001 rviz2 bash -lc 'XDG_RUNTIME_DIR=/host-xdg WAYLAND_DISPLAY=wayland-1 grim /tmp/s.png'`
+  (컨테이너에 `apt-get install grim` 필요). **agl-compositor(wayland-0)=런처/homebar 화면은
+  wlr-screencopy 미지원 + fb0 빈버퍼라 캡처 불가** — 실물 촬영만 가능.
+- **홈버튼(homebar)**: rviz2_monitor 가 `showRviz2` 시 gRPC 로 float(1890,0), `showHome` 시 hide.
+  **첫 float 는 racy → entrypoint 가 activate+float 를 6회 재시도**(homebar entrypoint.sh).
+  surface 전환을 과도히 반복하면 agl-compositor float 상태가 꼬여 안 뜰 수 있음(`configure 0x0`)
+  → **리부팅으로 컴포지터 상태 리셋** 후 앱 정상 흐름(Start→View rviz2)에서 복구.
+
+### B-5. 이미지 재빌드 (표준 스크립트 — 통일 태그/라벨/dirty 규약)
+```bash
+# (151, 1회) autoware 오버레이 슬림 이미지 push — 6GB junohb 대신 550MB 만 전송
+printf 'FROM junohb/autoware-partition:sample-adsw-perception AS s\nFROM scratch\nCOPY --from=s /opt/autoware /opt/autoware\n' \
+  | docker build -t registry.obigo.com/oss/autoware-overlay:latest -
+docker push registry.obigo.com/oss/autoware-overlay:latest
+
+# (표준) rviz2 autoware 이미지 빌드+push — dirty 차단 + 스냅샷 태그 + OCI 라벨 자동.
+#   Orin(arm64)에서 네이티브 빌드(overlay COPY 라 QEMU 지양). 커밋 안 됐으면 중단.
+apps/docker/script/build_rviz2_autoware.sh                 # :latest + :<branch>-<date>-<shortsha>
+TAG=verify apps/docker/script/build_rviz2_autoware.sh      # 안전 검증용(비-latest)
+# 확인: docker image inspect registry.obigo.com/oss/rviz2-agl:latest -f '{{json .Config.Labels}}'
+```
+> 스냅샷 태그 예: `feature-rviz2-20260729-abc1234` (`<branch>-<date(UTC)>-<shortsha>`).
+> OCI 라벨 5종: `org.opencontainers.image.{revision,source,ref.name,created,version}`
+> (+ 커스텀 `com.obigo.built-from-{repo,path}`). 라벨은 **스크립트가 `--label` 로 주입**
+> (Dockerfile ARG/LABEL 아님). base/touch 는 `build_rviz2_multiarch.sh` 로 생성.
+> ⚠️ `Dockerfile.autoware` line ~40 `rmw-cyclonedds` 는 base 소스엔 추가됐으나 배포된 :touch 엔
+> 없어 현재는 필요(중복 아님). base+touch 재빌드 후 제거 가능(§RVIZ2_IMAGE_TAG_ALIGNMENT §3).
+
+---
+
 ## 참고 문서
 
 - `apps/rviz2_port/docker/agl-display/README.md` — 컨테이너 격리 방식 상세(원본)

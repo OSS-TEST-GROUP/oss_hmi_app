@@ -44,9 +44,44 @@ CONFIG_FILE="${CONFIG_FILE:-launcher_config.json}"
 # apps/ is the docker build context (Dockerfiles reference output/, <APP>/…).
 cd "$(dirname "$0")/../.."
 
-MANIFEST="${REGISTRY}/${IMAGE}:${TAG}"
-AMD64_TAG="${MANIFEST}-amd64"
-ARM64_TAG="${MANIFEST}-arm64"
+# ── 소스 스냅샷 메타 ────────────────────────────────────────────────────────
+# :${TAG}(기본 latest) 와 함께 불변 스냅샷 태그(<branch>-<date>-<shortsha>)로도 push,
+# 소스 정보를 OCI 라벨로 baked. 재현성 보장 위해 커밋 안 된(tracked) 변경이 있으면 차단.
+if ! git diff --quiet HEAD 2>/dev/null; then
+  echo "ERROR: 커밋되지 않은 변경이 있습니다 — 커밋 후 다시 실행하세요 (스냅샷 태그/재현성 보장)." >&2
+  git status --short --untracked-files=no >&2 || true
+  exit 1
+fi
+GIT_REV="$(git rev-parse HEAD)"
+GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD | sed 's/[^A-Za-z0-9._-]/-/g')"
+GIT_SHORT="$(git rev-parse --short HEAD)"
+
+# 배포 정책: :latest + 스냅샷 태그 push 는 default 브랜치(develop)에서만 허용한다.
+# feature/기타 브랜치에서 실수로 :latest 를 덮어쓰는 것을 방지. 정책상 default
+# 브랜치 이외의 빌드는 여기서 중단한다 (필요 시 DEFAULT_BRANCH 로 정책 조정).
+DEFAULT_BRANCH="${DEFAULT_BRANCH:-develop}"
+if [ "${GIT_BRANCH}" != "${DEFAULT_BRANCH}" ]; then
+  echo "ERROR: 현재 브랜치 '${GIT_BRANCH}' — :latest + 스냅샷 push 는 default 브랜치 '${DEFAULT_BRANCH}' 에서만 허용됩니다." >&2
+  echo "       '${DEFAULT_BRANCH}' 로 머지 후 그 브랜치에서 빌드하세요." >&2
+  exit 1
+fi
+BUILD_DATE_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+SNAP="${GIT_BRANCH}-$(date -u +%Y%m%d)-${GIT_SHORT}"
+OCI_LABELS=(
+  --label "org.opencontainers.image.revision=${GIT_REV}"
+  --label "org.opencontainers.image.source=github.com/obigo-gov/oss_hmi_app"
+  --label "org.opencontainers.image.ref.name=${GIT_BRANCH}"
+  --label "org.opencontainers.image.created=${BUILD_DATE_UTC}"
+  --label "org.opencontainers.image.version=${SNAP}"
+)
+
+BASE="${REGISTRY}/${IMAGE}"
+MANIFEST="${BASE}:${TAG}"
+SNAP_MANIFEST="${BASE}:${SNAP}"
+# per-arch 빌드는 스냅샷 태그 기준으로 push 후, :${TAG} + :${SNAP} 매니페스트를 함께 생성.
+AMD64_TAG="${BASE}:${SNAP}-amd64"
+ARM64_TAG="${BASE}:${SNAP}-arm64"
+echo "Snapshot tag:  ${SNAP}"
 
 amd64_bundle="output/${APP}-x86_64-release.tar.gz"
 arm64_bundle="output/${APP}-arm64-release.tar.gz"
@@ -83,6 +118,7 @@ docker buildx build \
   -f docker/dockerfile/Dockerfile \
   --build-arg "APP_NAME=${APP}" \
   --build-arg "CONFIG_FILE=${CONFIG_FILE}" \
+  "${OCI_LABELS[@]}" \
   --push -t "${AMD64_TAG}" .
 
 # ── arm64 ────────────────────────────────────────────────────────────────
@@ -93,11 +129,12 @@ docker buildx build \
   --build-arg "APP_NAME=${APP}" \
   --build-arg "APP_VERSION=${APP_VERSION}" \
   --build-arg "CONFIG_FILE=${CONFIG_FILE}" \
+  "${OCI_LABELS[@]}" \
   --push -t "${ARM64_TAG}" .
 
-# ── manifest list ────────────────────────────────────────────────────────
-echo ""; echo "=== manifest list: ${MANIFEST} ==="
-docker buildx imagetools create -t "${MANIFEST}" "${AMD64_TAG}" "${ARM64_TAG}"
+# ── manifest list (:${TAG} + :${SNAP}) ────────────────────────────────────
+echo ""; echo "=== manifest list: ${MANIFEST}  +  ${SNAP_MANIFEST} ==="
+docker buildx imagetools create -t "${MANIFEST}" -t "${SNAP_MANIFEST}" "${AMD64_TAG}" "${ARM64_TAG}"
 
-echo ""; echo "=== Done. Multi-arch manifest pushed ==="
+echo ""; echo "=== Done. Multi-arch manifest pushed (:${TAG} + :${SNAP}) ==="
 docker buildx imagetools inspect "${MANIFEST}" | grep -iE "Name|Platform|MediaType" | sed 's/^/  /'
