@@ -1,4 +1,4 @@
-# hmi_launcher AGL aarch64 빌드 (로컬 마운트 SDK 사용 — repo.obigo.com 다운로드 없음)
+# hmi_launcher AGL aarch64 빌드 (로컬 마운트 SDK 사용 — S3 다운로드 없음)
 # 로컬 SDK 를 host 와 동일 경로로 마운트하고 AGL_SDK_INSTALL_DIR 로 지정한다.
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive

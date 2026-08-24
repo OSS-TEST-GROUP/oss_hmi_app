@@ -1,0 +1,5 @@
+# 자격증명 — 각자 로컬에만 둔다 (README 의 "SSH 설정" 참조)
+askpass-*.sh
+# 실행 산출물
+*.png
+*-loop*.log

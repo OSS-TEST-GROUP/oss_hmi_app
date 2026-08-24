@@ -229,6 +229,14 @@ def create_platform_aot(app_path: str, sdk_info: dict, args):
         # Clean the project
         if args.gen_snapshot_only is False:
             run_command('flutter clean', app_path)
+            # 이 아래 명령들은 initialize_sdk_environment() 가 PATH 앞에 끼워 넣은
+            # **AGL SDK 의 Flutter**(3.32.5)로 돌아간다 — 이미지의 /opt/flutter 가 아니다
+            # (os.putenv 는 os.environ 을 안 바꾸므로 `which flutter` 로는 안 보인다).
+            # 두 SDK 버전이 어긋나면 여기서 pub 이 pubspec.lock 을 조용히 다시 써서
+            # 워크트리를 더럽히고, 그 변경이 이미지 빌드의 재현성 가드에 엉뚱한 자리에서
+            # 걸린다(실측 2026-08-18: analyzer 10.2.0 ↔ 8.1.1, 매 빌드 30 줄 왕복).
+            # 그래서 여기서 먼저 enforce 로 검증해 **불일치를 즉시 실패**시킨다.
+            run_command('flutter pub get --enforce-lockfile', app_path)
 
         if runtime_mode == 'jit_release':
             cmd = f'flutter build {flutter_build_args} --local-engine'

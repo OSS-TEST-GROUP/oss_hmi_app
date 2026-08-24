@@ -7,6 +7,8 @@
 #   docker build \
 #     --build-arg AGL_SDK_USER=<username> \
 #     --build-arg AGL_SDK_PASSWORD=<password> \
+#     # (선택) S3 에서 받기: --build-arg AGL_SDK_SOURCE=s3 \
+#     #   --build-arg AWS_ACCESS_KEY_ID=... --build-arg AWS_SECRET_ACCESS_KEY=... \
 #     -f docker/Dockerfile.build.arm64 \
 #     -t adsw_monitor_builder:arm64 .
 #
@@ -21,11 +23,30 @@
 
 FROM ubuntu:22.04
 
-ARG FLUTTER_VERSION=3.41.8
-# AGL SDK 20.0.3 (build-toolchain 플레이버 — engine_sdk.zip / native protoc·grpc_cpp_plugin / pyyaml / utf8_validity / ONNX GenAI 포함)
+# ⚠️ **AGL SDK / 보드와 같은 버전이어야 한다** (2026-08-18 확정).
+# arm64 AOT 는 create_aot_with_yocto_sdk.py 가 PATH 앞에 AGL SDK 의 Flutter
+# (3.32.5 / Dart 3.8.1 — 보드 /usr/share/flutter/3.32.5 와 동일)를 끼워 넣고 돌린다.
+# 여기서 다른 버전을 쓰면 **두 SDK 가 서로 다른 의존성 해를 내서** pubspec.lock 이
+# 빌드마다 30 줄씩 왔다 갔다 하고(analyzer 10.2.0 ↔ 8.1.1), 그 더러워진 워크트리가
+# 이미지 빌드의 재현성 가드에 엉뚱한 자리에서 걸린다.
+ARG FLUTTER_VERSION=3.32.5
+# ── AGL SDK 취득 경로 — **기본 Nexus**, S3 는 선택 ──────────────────────────
+# 2026-08-19 에 S3 단일 경로로 바뀌면서 Nexus 경로가 사라졌었다(be520fa). 두 경로를
+# 함께 두고 기본값을 Nexus 로 되돌린다. S3 를 쓸 때만 `AGL_SDK_SOURCE=s3` 로 바꾼다.
+# 어느 쪽이든 같은 SDK(20.0.3) 를 받으므로 만들어지는 이미지 내용은 동일하다.
+ARG AGL_SDK_SOURCE=nexus
+
+# Nexus (기본) — 인증: AGL_SDK_USER / AGL_SDK_PASSWORD
 ARG AGL_SDK_URL=https://repo.obigo.com/repository/yocto-adt/agl/poky-agl-glibc-x86_64-agl-ivi-demo-flutter-aarch64-p3737-0000-p3701-0005-toolchain-20.0.3.sh
 ARG AGL_SDK_USER=ossdev
-ARG AGL_SDK_PASSWORD=ossdev1234
+# 비밀번호 기본값을 두지 않는다 — --build-arg 또는 compose env 로 주입.
+ARG AGL_SDK_PASSWORD=
+
+# S3 (선택) — 인증: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+ARG AGL_SDK_S3_URL=s3://oss-artifact/yocto-adt/agl/poky-agl-glibc-x86_64-agl-ivi-demo-flutter-aarch64-p3737-0000-p3701-0005-toolchain-20.0.3.sh
+ARG AWS_ACCESS_KEY_ID=
+ARG AWS_SECRET_ACCESS_KEY=
+ARG AWS_DEFAULT_REGION=ap-northeast-2
 # SDK 가 빌드된 기본 경로에 설치 → ELF relocation 불필요(install dir 불일치 회피)
 ARG AGL_SDK_INSTALL_DIR=/opt/agl-sdk/20.0.3-aarch64
 
@@ -36,6 +57,7 @@ ENV AGL_SDK_INSTALL_DIR=${AGL_SDK_INSTALL_DIR}
 
 # 시스템 의존성 설치
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    awscli \
     bash \
     ca-certificates \
     curl \
@@ -72,17 +94,46 @@ RUN git clone --depth 1 \
     flutter doctor -v && \
     chmod -R go+rwX ${FLUTTER_ROOT}
 
-# AGL SDK 다운로드 및 설치
-# 내부 Nexus 저장소 인증 필요: --build-arg AGL_SDK_USER / AGL_SDK_PASSWORD 로 전달
+# AGL SDK 다운로드 및 설치 — AGL_SDK_SOURCE 로 Nexus(기본)/S3 선택
 RUN set -e; \
-    WGET_OPTS="-q"; \
-    if [ -n "${AGL_SDK_USER}" ]; then \
-        WGET_OPTS="${WGET_OPTS} --user=${AGL_SDK_USER}"; \
-    fi; \
-    if [ -n "${AGL_SDK_PASSWORD}" ]; then \
-        WGET_OPTS="${WGET_OPTS} --password=${AGL_SDK_PASSWORD}"; \
-    fi; \
-    wget ${WGET_OPTS} "${AGL_SDK_URL}" -O /tmp/agl-sdk-installer.sh && \
+    case "${AGL_SDK_SOURCE}" in \
+      nexus) \
+        if [ -z "${AGL_SDK_PASSWORD}" ]; then \
+            echo "ERROR: AGL_SDK_PASSWORD 가 비어 있습니다 (AGL_SDK_SOURCE=nexus)."; \
+            echo "       툴체인 이미지를 만들 때만 필요합니다:"; \
+            echo "         AGL_SDK_PASSWORD=... docker compose -f docker/compose/docker-compose.yml \\"; \
+            echo "           --profile toolchain build hmi_builder_image_arm64"; \
+            echo "       앱만 빌드할 거라면 이 이미지를 직접 만들 필요가 없습니다:"; \
+            echo "         docker compose -f docker/compose/docker-compose.yml pull <APP>_builder_arm64"; \
+            echo "       S3 에서 받으려면 --build-arg AGL_SDK_SOURCE=s3 + AWS 키를 주세요."; \
+            exit 1; \
+        fi; \
+        echo "==> AGL SDK 취득: Nexus (${AGL_SDK_URL})"; \
+        wget -q --user="${AGL_SDK_USER}" --password="${AGL_SDK_PASSWORD}" \
+             "${AGL_SDK_URL}" -O /tmp/agl-sdk-installer.sh \
+        ;; \
+      s3) \
+        if ! aws sts get-caller-identity >/dev/null 2>&1 && ! aws s3 ls s3://oss-artifact >/dev/null 2>&1; then \
+            if [ -n "${AWS_ACCESS_KEY_ID}" ] && [ -n "${AWS_SECRET_ACCESS_KEY}" ]; then \
+                echo "==> AWS CLI credentials 발견 — 자동 설정을 진행합니다."; \
+                aws configure set aws_access_key_id "${AWS_ACCESS_KEY_ID}" && \
+                aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}" && \
+                aws configure set region "${AWS_DEFAULT_REGION:-ap-northeast-2}"; \
+            else \
+                echo "ERROR: AWS CLI 인증 정보가 설정되어 있지 않습니다 (AGL_SDK_SOURCE=s3)."; \
+                echo "       --build-arg AWS_ACCESS_KEY_ID=... --build-arg AWS_SECRET_ACCESS_KEY=... 를 전달하세요."; \
+                echo "       기본 경로(Nexus)를 쓰려면 AGL_SDK_SOURCE 를 지정하지 마세요."; \
+                exit 1; \
+            fi; \
+        fi; \
+        echo "==> AGL SDK 취득: S3 (${AGL_SDK_S3_URL})"; \
+        aws s3 cp "${AGL_SDK_S3_URL}" /tmp/agl-sdk-installer.sh \
+        ;; \
+      *) \
+        echo "ERROR: AGL_SDK_SOURCE='${AGL_SDK_SOURCE}' — nexus 또는 s3 만 가능합니다."; \
+        exit 1 \
+        ;; \
+    esac; \
     chmod +x /tmp/agl-sdk-installer.sh && \
     /tmp/agl-sdk-installer.sh -d "${AGL_SDK_INSTALL_DIR}" -y; \
     # installer 의 relocate 단계는 Flutter 문서 파일명(작은따옴표)에서 xargs 가 깨져

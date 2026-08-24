@@ -36,8 +36,10 @@ ARG SEATD_VER=0.8.0
 
 # /usr/local 을 앞에 둬 wayland 1.22 가 jammy 1.20 보다 우선하되, 시스템 pkgconfig
 # (libseat/libdrm/libinput/xkbcommon/pixman/xcb …) 도 검색되도록 뒤에 append.
-ENV PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+# 아키별 트리플릿을 모두 나열 — 없는 경로는 무시되므로 amd64/arm64 공용
+# (meson 은 /usr/local/lib/<triplet> 에 설치한다).
+ENV PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib/x86_64-linux-gnu:/usr/local/lib
 ENV PATH=/usr/local/bin:$PATH
 
 WORKDIR /build
@@ -86,13 +88,49 @@ RUN git clone --depth 1 -b "${CAGE_VER}" https://github.com/cage-kiosk/cage.git 
 
 # 새 cage/wlroots 를 우선 사용하도록 ldconfig + 옛 apt cage 제거(경로 충돌 방지)
 RUN echo "/usr/local/lib/aarch64-linux-gnu" > /etc/ld.so.conf.d/zz-local.conf \
+    && echo "/usr/local/lib/x86_64-linux-gnu" >> /etc/ld.so.conf.d/zz-local.conf \
     && echo "/usr/local/lib" >> /etc/ld.so.conf.d/zz-local.conf \
     && ldconfig \
     && (dpkg -r --force-depends cage || true)
 
+# ── homebar (홈 버튼 오버레이) 통합 ────────────────────────────────────────────
+# 이전에는 별도 컨테이너(homebar:latest, ubuntu22.04)로 돌렸다. 하지만 homebar 는
+# cage 와 무관한 **호스트 agl-compositor 의 일반 Wayland 클라이언트**일 뿐이고,
+# rviz2 컨테이너도 같은 컴포지터에 붙으므로 같은 컨테이너에서 돌리면 된다.
+# 통합 이득:
+#   - 컨테이너/adsw 서비스 1개 감소, 이미지 중복(빌드도구·grpcurl) 제거
+#   - **생명주기 일치**: 버튼은 rviz2 가 살아있는 동안에만 존재 → rviz2 정지 후
+#     유령 버튼/죽은 서페이스가 남지 않는다
+#   - 부팅 시 "띄웠다 숨기는" 경합이 원천 소멸(버튼은 rviz2 와 함께 생겨 바로 표시)
+# 빌드 전제는 이 이미지에 이미 있다: build-essential, 소스빌드 wayland(+wayland-scanner),
+# wayland-protocols(xdg-shell.xml).
+ARG GRPCURL_VER=1.9.1
+# TARGETARCH 는 BuildKit 이 자동 주입(amd64/arm64). grpcurl 릴리스 파일명은 x86_64/arm64 를
+# 쓰므로 매핑한다 — 미지정(고전 builder)이면 arm64(보드 기본)로 떨어진다.
+ARG TARGETARCH
+RUN case "${TARGETARCH:-arm64}" in \
+      amd64) GARCH=x86_64 ;; \
+      arm64) GARCH=arm64 ;; \
+      *)     GARCH="${TARGETARCH}" ;; \
+    esac \
+    && wget -qO /tmp/g.tgz \
+      "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VER}/grpcurl_${GRPCURL_VER}_linux_${GARCH}.tar.gz" \
+    && tar -xzf /tmp/g.tgz -C /usr/local/bin grpcurl \
+    && rm /tmp/g.tgz && chmod +x /usr/local/bin/grpcurl
+
+COPY homebar.c /src/homebar.c
+RUN cd /src \
+    && XDG=/usr/local/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml \
+    && wayland-scanner private-code  "$XDG" xdg-shell-protocol.c \
+    && wayland-scanner client-header "$XDG" xdg-shell-client-protocol.h \
+    && gcc -O2 -Wall homebar.c xdg-shell-protocol.c -o /usr/local/bin/homebar \
+         $(PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig \
+           pkg-config --cflags --libs wayland-client) \
+    && rm -rf /src
+
 USER agl
 ENV PATH=/usr/local/bin:$PATH
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib/x86_64-linux-gnu:/usr/local/lib
 # cage(nested wlroots)는 SIGTERM 종료가 wayland 1.22 terminate(eventfd) 경로에서
 # 동작하지 않아 hang→SIGKILL(느림) 이 된다. STOPSIGNAL=SIGKILL 로 `docker stop` 이
 # 즉시 SIGKILL 하도록 해 빠르게 정지시킨다(핸들러 우회 → assertion 도 안 뜸).

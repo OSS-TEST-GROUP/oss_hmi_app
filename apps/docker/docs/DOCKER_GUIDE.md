@@ -28,7 +28,84 @@ cd apps/
 
 ## 1. x86_64 빌드 & 실행
 
-### 1-1. 빌드 이미지 생성
+### 1-1. 빌더 이미지 — **레지스트리에서 pull** (직접 빌드 불필요)
+
+빌더(툴체인) 이미지는 `registry.obigo.com/oss/oss-hmi-builder` 에 올라가 있다.
+태그가 곧 툴체인 신분이다:
+
+| 태그 | 내용 | 크기 |
+|---|---|---|
+| `x86-flutter3.32.5` | Flutter 3.32.5 (Linux GTK 번들 빌드용) | 2.2 GB |
+| `agl20.0.3-flutter3.32.5` | 위 + AGL SDK 20.0.3 (arm64 AOT 크로스빌드) | 14 GB |
+
+```bash
+cd apps
+docker compose -f docker/compose/docker-compose.yml pull hmi_launcher_builder_x86
+docker compose -f docker/compose/docker-compose.yml pull hmi_launcher_builder_arm64
+```
+
+**arm64 도 AGL SDK 자격증명이 필요 없다** — SDK 가 이미지에 들어 있다.
+`AGL_SDK_PASSWORD` 는 아래 "툴체인 재생성" 때만 쓴다.
+
+> **왜 레지스트리로 옮겼나** (2026-08-18): 예전엔 4 앱 × 2 아키가 **같은 이미지를
+> 8 개 이름으로 각자 빌드**했고(로컬 2.2GB×4 + 14GB×4), 툴체인 변경이 커밋으로만
+> 전파돼 낡은 이미지를 가진 사람은 옛 SDK 로 계속 빌드했다. Flutter 핀을 3.32.5 로
+> 맞춘 뒤에도 3.41.8 이미지를 쓰면 `pubspec.lock` 이 거부돼 빌드가 실패하는데, 그
+> 원인이 "내 이미지가 낡았다"라는 걸 알아채기 어렵다. 이제 커밋의 `image:` 태그가
+> 툴체인을 지목하므로 그 불일치 자체가 생기지 않는다.
+
+### 1-1b. 툴체인 재생성 (관리자 — Flutter/AGL SDK 버전 올릴 때만)
+
+AGL SDK 취득 경로는 **기본이 Nexus** 이고 S3 는 선택이다:
+
+| `AGL_SDK_SOURCE` | 받는 곳 | 필요한 인증 |
+|---|---|---|
+| `nexus` (기본) | `repo.obigo.com` | `AGL_SDK_USER` / `AGL_SDK_PASSWORD` |
+| `s3` | `s3://oss-artifact` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` |
+
+둘 다 같은 SDK(20.0.3)를 받으므로 만들어지는 이미지 내용은 동일하다.
+
+```bash
+cd apps
+# 1) Dockerfile.build{,.arm64} 의 ARG FLUTTER_VERSION (+ SDK URL) 갱신
+# 2) 새 태그로 이미지 생성
+AGL_SDK_PASSWORD=... docker compose -f docker/compose/docker-compose.yml \
+  --profile toolchain build hmi_builder_image_x86 hmi_builder_image_arm64
+# 3) push (태그는 compose 의 image: 와 같아야 한다)
+docker push registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
+docker push registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
+# 4) compose 의 앱 빌더 image: 태그 10 곳 + pubspec.lock 재생성을 **같은 커밋에** 담는다
+```
+
+**S3 에서 받으려면** `AGL_SDK_SOURCE=s3` 로 바꾸고 AWS 키를 준다:
+
+```bash
+cd apps
+AGL_SDK_SOURCE=s3 \
+AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_DEFAULT_REGION=ap-northeast-2 \
+docker compose -f docker/compose/docker-compose.yml \
+  --profile toolchain build hmi_builder_image_arm64
+```
+
+compose 없이 직접 빌드할 때:
+
+```bash
+cd apps
+docker build -f docker/dockerfile/Dockerfile.build.arm64 \
+  --build-arg AGL_SDK_SOURCE=s3 \
+  --build-arg AWS_ACCESS_KEY_ID=... \
+  --build-arg AWS_SECRET_ACCESS_KEY=... \
+  -t registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5 ..
+```
+
+> ⚠️ 호스트의 `~/.aws/credentials` 는 **빌드 컨테이너로 상속되지 않는다** — 키를
+> build-arg(또는 위 compose env)로 직접 넘겨야 한다. 다른 버킷/경로를 쓸 때는
+> `--build-arg AGL_SDK_S3_URL=s3://…` 로 바꾼다(Nexus 쪽은 `AGL_SDK_URL`).
+>
+> `AGL_SDK_SOURCE` 에 `nexus`/`s3` 외의 값을 주면 그 자리에서 중단된다.
+> 자격증명이 비어 있으면 각 경로에 맞는 안내가 출력된다(실측: 0.15 초에 중단).
+
+### 1-1c. (참고) 예전 방식 — 로컬 빌드
 
 ```bash
 docker compose -f docker/compose/docker-compose.yml --profile build build adsw_monitor_builder_x86
@@ -56,6 +133,36 @@ docker run --rm \
 ```
 
 결과물: `output/adsw_monitor-x86_64-release.tar.gz`
+
+> **⚠️ pubspec.lock 은 빌더 안에서만 갱신한다** (2026-08-18 확정)
+>
+> 빌드는 `flutter pub get --enforce-lockfile` 로 돌아간다 — lock 을 **고쳐 쓰지 않고**,
+> 커밋된 lock 으로 풀리지 않으면 그 자리에서 실패한다. 의존성을 추가·변경했다면:
+>
+> ```bash
+> cd apps && docker compose -f docker/compose/docker-compose.yml --profile build \
+>   run --rm --entrypoint bash <APP>_builder_x86 \
+>   -c 'cd /workspace/apps/<APP> && flutter pub get'
+> git add <APP>/pubspec.lock && git commit -m "build(<APP>): pubspec.lock 갱신"
+> ```
+>
+> **로컬에서 `dart pub get` 으로 만들지 말 것** — Flutter SDK 가 핀으로 묶는
+> `analyzer`/`_fe_analyzer_shared`/`meta`/`test_api` 를 보지 않아 빌더와 어긋난다.
+> 이 상태였을 때 pub 이 매 빌드마다 lock 을 되돌려 써서 워크트리를 더럽혔고, 그 변경이
+> 이미지 빌드의 재현성 가드에 **원인과 무관해 보이는 자리에서** 걸렸다(8 앱 중 6 개가 해당).
+> **Flutter 버전은 AGL SDK/보드와 같아야 한다(3.32.5)** — 이게 근본 원인이었다.
+> arm64 AOT 는 `create_aot_with_yocto_sdk.py` 가 PATH 앞에 **AGL SDK 의 Flutter
+> (3.32.5 / Dart 3.8.1, 보드 `/usr/share/flutter/3.32.5` 와 동일)** 를 끼워 넣고 돌리고,
+> x86 번들은 이미지의 `/opt/flutter` 를 쓴다. 이 둘이 다르면(예전 `/opt/flutter`=3.41.8)
+> 서로의 lock 을 거부해 **빌드마다 30 줄씩 왕복**한다. 지금은 `ARG FLUTTER_VERSION=3.32.5`
+> 로 정렬했고, x86·arm64 두 경로 모두 `--enforce-lockfile` 로 검증한다.
+>
+> ⚠️ `os.putenv` 는 `os.environ` 을 갱신하지 않으므로 스크립트 안에서 `which flutter` 를
+> 찍어도 `/opt/flutter` 가 나온다 — **버전 확인은 실제 빌드 로그의 해석 결과로** 하라.
+>
+> 관련: arm64 번들은 x86 빌더가 만든 `<APP>/build/flutter_assets` 를 쓴다 →
+> **x86 을 먼저** 돌려야 하고, 이전 실패가 남긴 `<APP>/temp/` 가 있으면
+> `mkdir data lib` 충돌로 또 실패한다.
 
 ### 1-3. 런타임 이미지 생성
 
@@ -129,18 +236,21 @@ GPU=nvidia bash docker/script/run-hmi-x86.sh   # nvidia-container-toolkit 필요
 
 ### 2-1. 빌드 이미지 생성
 
-AGL Yocto SDK를 내부 Nexus에서 다운로드하여 설치합니다 (약 10-15분 소요).
+AGL Yocto SDK를 AWS S3에서 다운로드하여 설치합니다 (약 10-15분 소요).
+*(AWS CLI 인증이 설정되어 있지 않은 경우 `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` 환경변수 또는 `--build-arg`로 전달해야 합니다.)*
 
 ```bash
-docker compose -f docker/compose/docker-compose.yml --profile build build adsw_monitor_builder_arm64
+# 사전 `aws configure` 로그인이 되어있거나 환경변수가 주입된 경우
+AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." \
+  docker compose -f docker/compose/docker-compose.yml --profile toolchain build hmi_builder_image_arm64
 ```
 
-또는 직접:
+또는 `docker build` 직접 실행 시:
 
 ```bash
 docker build \
-  --build-arg AGL_SDK_USER=ossdev \
-  --build-arg AGL_SDK_PASSWORD=ossdev1234 \
+  --build-arg AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+  --build-arg AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
   -f docker/dockerfile/Dockerfile.build.arm64 \
   -t adsw_monitor_builder:arm64 .
 ```

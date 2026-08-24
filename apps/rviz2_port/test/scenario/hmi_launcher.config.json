@@ -1,0 +1,11 @@
+{
+  "rosbridge": {
+    "url": "ws://172.16.10.151:9090"
+  },
+  "statusTopic": "/app_status/hmi_launcher",
+  "rosReconnectIntervalSec": 2,
+  "heartbeatIntervalSec": 1,
+  "otaTheme": "light",
+  "adswTheme": "light",
+  "lfcTheme": "light"
+}

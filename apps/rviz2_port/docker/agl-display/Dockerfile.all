@@ -1,0 +1,247 @@
+# rviz2-agl — **단일 Dockerfile**. 이 하나로 런타임 이미지(:latest)를 끝까지 만든다.
+#
+# 왜 통합했나
+#   기존은 이미지 3개를 이어 붙이는 체인이었다: :base(ros+rviz2) → :touch(+wayland/wlroots/
+#   cage/homebar 소스빌드) → :latest(+autoware 오버레이). 체인의 문제:
+#     ① 레지스트리에 중간 태그(:base/:touch)를 유지·동기화해야 하고, ":latest 가 어느
+#        :touch 에서 나왔는지"가 태그만으로 드러나지 않는다(실측: :touch 가 arm64 전용으로
+#        남아 amd64 빌드가 막혔다).
+#     ② 중간 이미지가 **빌드 도구를 그대로 안고** 최종 이미지까지 내려온다(실측 217MB —
+#        libicu-dev 45MB, libavcodec-dev 21MB, libglib2.0-dev 10MB, meson/ninja/git …).
+#   단일 multi-stage 로 바꾸면 중간 태그가 필요 없고, 빌드 도구는 builder 스테이지에만 남아
+#   최종 이미지에서 빠진다. 재현성도 좋아진다 — 한 파일 + 두 build-arg 가 전부다.
+#
+# 구성
+#   awsrc   : Autoware 파티션 이미지(멀티아치) — /opt/autoware 오버레이 공급원
+#   runtime : ros:humble + rviz2 + RMW 2종 + XWayland + SW-GL + autoware 런타임 보충 패키지
+#   builder : runtime + 빌드도구 → wayland 1.22 / wayland-protocols / seatd / wlroots 0.16.2 /
+#             cage 0.1.5 / grpcurl / homebar 를 /usr/local 에 설치
+#   final   : runtime + builder 의 /usr/local + awsrc 의 /opt/autoware + entrypoint
+#
+# 빌드
+#   docker build -f Dockerfile.all -t registry.obigo.com/oss/rviz2-agl:latest .
+#   # 다른 파티션/스냅샷 핀: --build-arg AUTOWARE_SRC_IMAGE=…:adsw-decision
+#   # 멀티아치는 각 아키 네이티브 빌드 후 imagetools 로 매니페스트 결합(QEMU 소스빌드 회피)
+#
+# 실행
+#   보드(AGL)   : cage 모드 — 호스트 wayland 소켓 + agl-shell (entrypoint 가 자동 판정)
+#   x86 개발 PC : X11 직행 모드 — docker run --net=host -e DISPLAY=:0 …
+#
+# 기존 3-파일 체인(Dockerfile / Dockerfile.touch / Dockerfile.autoware)은 당장 지우지 않는다.
+# 팀이 이 파일로 옮겨간 뒤 정리한다.
+
+ARG AUTOWARE_SRC_IMAGE=ghcr.io/oss-test-group/autoware-partition:adsw-perception
+ARG ROS_BASE=ros:humble-ros-base
+
+# ── 오버레이 공급원 (buildx 가 타깃 플랫폼 변종을 자동 선택) ─────────────────────
+FROM ${AUTOWARE_SRC_IMAGE} AS awsrc
+
+# ── 오버레이 다이어트: rviz2 가 실제로 쓰는 것만 남긴다 (548MB → 약 124MB) ───────
+# 손으로 만든 제외 목록은 파티션 갱신 때 어긋나므로, prune 스크립트가 트리 자신에서
+# 유지 집합을 유도한다(플러그인 인덱스 ∪ msgs ∪ *_description ∪ *_launch → ldd 클로저).
+# 전체 트리를 원하면 --build-arg AUTOWARE_PRUNE=0.
+FROM awsrc AS awtrim
+ARG AUTOWARE_PRUNE=1
+COPY prune-autoware-overlay.sh /prune.sh
+RUN set -eux; \
+    if [ "${AUTOWARE_PRUNE}" = "1" ]; then \
+        bash /prune.sh /opt/autoware /opt/autoware-trimmed; \
+    else \
+        cp -a /opt/autoware /opt/autoware-trimmed; \
+    fi; \
+    # 가드 1) rviz 플러그인 인덱스가 비면 rviz 가 Autoware 디스플레이를 하나도 못 만든다.
+    n=$(ls /opt/autoware-trimmed/share/ament_index/resource_index/rviz_common__pluginlib__plugin | wc -l); \
+    [ "$n" -ge 10 ] || { echo "prune 가드 실패: 플러그인 인덱스 $n 개"; exit 1; }; \
+    # 가드 2) colcon 부기 파일이 남아 환경을 만들 수 있어야 한다.
+    #   merged install 에서 colcon 은 `share/colcon-core/packages` 로 패키지를 찾고
+    #   `.colcon_install_layout` 로 레이아웃을 판단한다. 둘 중 하나만 빠져도 util 이
+    #   패키지를 0개로 보고 AMENT_PREFIX_PATH 를 만들지 않아, rviz 가 Autoware 플러그인을
+    #   **하나도** 못 찾는다(실측). setup.sh 를 직접 source 해 확인할 수는 없다 —
+    #   colcon 이 설치 당시 절대경로(/opt/autoware)를 스크립트에 baked 해 두기 때문.
+    (cd /opt/autoware-trimmed && python3 ./_local_setup_util_sh.py sh --merged-install) \
+        | grep -q 'AMENT_PREFIX_PATH' \
+        || { echo "prune 가드 실패: colcon 환경 생성 불가(부기 파일 누락)"; exit 1; }; \
+    du -sm /opt/autoware /opt/autoware-trimmed
+
+# ── 런타임 베이스 ───────────────────────────────────────────────────────────────
+FROM ${ROS_BASE} AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 앞 묶음: rviz2 스택 + RMW 2종(Autoware 가 cyclone 이면 -e RMW_IMPLEMENTATION 로 맞춘다) +
+#          XWayland(cage 안에서 rviz2 를 띄우는 경로) + llvmpipe(SW-GL).
+# 뒤 묶음: **autoware 오버레이의 런타임 의존**. 오버레이(/opt/autoware)만 복사하면 그 밖
+#          (시스템/ROS)에 있는 의존이 빠져 플러그인 로드·구독이 실패한다(ldd + 런타임 확인):
+#            logging_demo typesupport → tier4_planning / state / planning_factor 플러그인
+#            lanelet2 스택            → tier4_traffic_light 플러그인
+#            표준 msg 패키지          → autoware_*_msgs 의 transitive 의존. 특히
+#              geographic_msgs 가 없으면 autoware_adapi_v1_msgs 구독이 "Type support not
+#              from this implementation" 로 실패해 autoware.rviz 로드 자체가 중단된다.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ros-humble-rviz2 \
+        ros-humble-rviz-default-plugins \
+        ros-humble-rmw-cyclonedds-cpp \
+        ros-humble-rmw-fastrtps-cpp \
+        xwayland \
+        libgl1-mesa-dri \
+        mesa-utils \
+        dbus-x11 \
+        ros-humble-logging-demo \
+        ros-humble-lanelet2 \
+        ros-humble-geographic-msgs \
+        ros-humble-unique-identifier-msgs \
+        ros-humble-pcl-msgs \
+        ros-humble-radar-msgs \
+        ros-humble-grid-map-msgs \
+        ros-humble-velodyne-msgs \
+        ros-humble-can-msgs \
+        ros-humble-udp-msgs \
+        libxcb-composite0 \
+        libxcb-res0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 보드 agl-driver(uid 1001)와 동일 uid — wayland 소켓/XDG_RUNTIME_DIR 권한 정합.
+# cage 는 root 실행을 거부하므로 런타임 uid 는 반드시 비-root 여야 한다.
+RUN useradd -m -u 1001 -U agl
+
+# 아키별 트리플릿을 모두 나열 — 없는 경로는 무시되므로 amd64/arm64 공용
+# (meson 은 /usr/local/lib/<triplet> 에 설치한다).
+ENV PATH=/usr/local/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib/x86_64-linux-gnu:/usr/local/lib
+
+# ── 빌더: 소스빌드 (빌드 도구는 이 스테이지에만 남는다) ──────────────────────────
+# runtime 이 아니라 ROS_BASE 에서 시작한다 — 런타임 패키지 목록을 손대도 소스빌드(약 10분)
+# 캐시가 무효화되지 않게 두 스테이지를 독립시킨다.
+ARG ROS_BASE
+FROM ${ROS_BASE} AS builder
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+# xwayland 는 **빌드타임에도** 필요하다 — wlroots 의 -Dxwayland=enabled 가 pkgconfig 로
+# xwayland 를 찾는다(실측: 없으면 "Install \"xwayland\" or pass -Dxwayland=disabled" 로 중단).
+# 기존 체인에서는 :base 가 xwayland 를 갖고 있어 builder 가 상속했다.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential meson ninja-build pkg-config git ca-certificates wget xz-utils \
+        xwayland \
+        libffi-dev libexpat1-dev libxml2-dev \
+        libdrm-dev libinput-dev libxkbcommon-dev libpixman-1-dev libseat-dev \
+        libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libgl1-mesa-dev \
+        hwdata libcap-dev libpng-dev libavutil-dev libavcodec-dev libavformat-dev \
+        libxcb1-dev libxcb-composite0-dev libxcb-render0-dev libxcb-res0-dev \
+        libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xfixes0-dev \
+        libxcb-dri3-dev libxcb-present-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH=/usr/local/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib/x86_64-linux-gnu:/usr/local/lib
+
+ARG WAYLAND_VER=1.22.0
+ARG WLPROTO_VER=1.31
+ARG WLROOTS_VER=0.16.2
+ARG CAGE_VER=v0.1.5
+ARG SEATD_VER=0.8.0
+
+# /usr/local 을 앞에 둬 wayland 1.22 가 jammy 1.20 보다 우선하되, 시스템 pkgconfig
+# (libseat/libdrm/libinput/xkbcommon/pixman/xcb …) 도 검색되도록 뒤에 append.
+ENV PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+
+WORKDIR /build
+
+# 1) wayland 1.22 (jammy 1.20 → wlroots 0.16 은 >=1.21 요구)
+#    -Db_ndebug=true: assert 비활성. wayland 1.21+ 의 wl_display_terminate 는 종료용 eventfd
+#    write 결과를 assert 하는데, cage 종료(SIGTERM) 시 이 write 가 실패해 abort(exit 133).
+#    write 는 그대로 수행되고 assert 만 컴파일 제거 → cage clean exit.
+RUN wget -q "https://gitlab.freedesktop.org/wayland/wayland/-/releases/${WAYLAND_VER}/downloads/wayland-${WAYLAND_VER}.tar.xz" \
+    && tar xf "wayland-${WAYLAND_VER}.tar.xz" && cd "wayland-${WAYLAND_VER}" \
+    && meson setup build --prefix=/usr/local -Ddocumentation=false -Dtests=false -Ddtd_validation=false \
+         -Db_ndebug=true \
+    && ninja -C build && ninja -C build install
+
+# 2) wayland-protocols (xdg-shell.xml — homebar 가 wayland-scanner 로 코드 생성)
+RUN wget -q "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/${WLPROTO_VER}/downloads/wayland-protocols-${WLPROTO_VER}.tar.xz" \
+    && tar xf "wayland-protocols-${WLPROTO_VER}.tar.xz" && cd "wayland-protocols-${WLPROTO_VER}" \
+    && meson setup build --prefix=/usr/local \
+    && ninja -C build install
+
+# 3) libseat — wlroots 0.16 은 session/libseat 을 무조건 링크한다(옵션으로 제거 불가).
+#    jammy libseat-dev(0.6.4) 의 pkg-config 인식이 불안정해 /usr/local 에 소스 빌드한다.
+RUN wget -q "https://git.sr.ht/~kennylevinsen/seatd/archive/${SEATD_VER}.tar.gz" -O seatd.tar.gz \
+    && tar xf seatd.tar.gz && cd "seatd-${SEATD_VER}" \
+    && meson setup build --prefix=/usr/local \
+         -Dserver=disabled -Dman-pages=disabled -Dexamples=disabled \
+         -Dlibseat-logind=disabled -Dlibseat-seatd=enabled -Dlibseat-builtin=enabled \
+    && ninja -C build && ninja -C build install
+
+# 4) wlroots 0.16.2 (wayland 백엔드 터치 전달 + XWayland)
+RUN git clone --depth 1 -b "${WLROOTS_VER}" https://gitlab.freedesktop.org/wlroots/wlroots.git \
+    && cd wlroots \
+    && meson setup build --prefix=/usr/local -Dexamples=false -Dwerror=false \
+         -Dxwayland=enabled \
+    && ninja -C build && ninja -C build install
+
+# 5) cage 0.1.5 (app_id="wlroots" 유지, XWayland 지원)
+RUN git clone --depth 1 -b "${CAGE_VER}" https://github.com/cage-kiosk/cage.git \
+    && cd cage \
+    && meson setup build --prefix=/usr/local -Dxwayland=true -Dwerror=false \
+    && ninja -C build && ninja -C build install
+
+# 6) grpcurl — agl-shell gRPC 로 창 활성화/플로팅 호출(cage 모드에서만 사용).
+#    TARGETARCH 는 BuildKit 이 자동 주입(amd64/arm64). 릴리스 파일명은 x86_64/arm64.
+ARG GRPCURL_VER=1.9.1
+ARG TARGETARCH
+RUN case "${TARGETARCH:-arm64}" in \
+      amd64) GARCH=x86_64 ;; \
+      arm64) GARCH=arm64 ;; \
+      *)     GARCH="${TARGETARCH}" ;; \
+    esac \
+    && wget -qO /tmp/g.tgz \
+      "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VER}/grpcurl_${GRPCURL_VER}_linux_${GARCH}.tar.gz" \
+    && tar -xzf /tmp/g.tgz -C /usr/local/bin grpcurl \
+    && rm /tmp/g.tgz && chmod +x /usr/local/bin/grpcurl
+
+# 7) homebar — rviz2 위의 홈 버튼(호스트 agl-compositor 의 일반 wayland 클라이언트).
+#    rviz2 와 생명주기를 묶기 위해 별도 컨테이너가 아니라 이 이미지에 넣는다.
+COPY homebar.c /src/homebar.c
+RUN cd /src \
+    && XDG=/usr/local/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml \
+    && wayland-scanner private-code  "$XDG" xdg-shell-protocol.c \
+    && wayland-scanner client-header "$XDG" xdg-shell-client-protocol.h \
+    && gcc -O2 -Wall homebar.c xdg-shell-protocol.c -o /usr/local/bin/homebar \
+         $(pkg-config --cflags --libs wayland-client) \
+    && rm -rf /src
+
+# ── 최종 런타임 이미지 ──────────────────────────────────────────────────────────
+FROM runtime AS final
+USER root
+
+# 빌더 산출물만 가져온다 — 빌드 도구/-dev 패키지는 넘어오지 않는다.
+COPY --from=builder /usr/local /usr/local
+RUN echo "/usr/local/lib/aarch64-linux-gnu" > /etc/ld.so.conf.d/zz-local.conf \
+    && echo "/usr/local/lib/x86_64-linux-gnu" >> /etc/ld.so.conf.d/zz-local.conf \
+    && echo "/usr/local/lib" >> /etc/ld.so.conf.d/zz-local.conf \
+    && ldconfig
+
+# Autoware 오버레이 — awtrim 이 rviz2 가 실제로 쓰는 것만 남긴 트리(약 124MB).
+# 구성·유도 규칙은 README '포함된 파일 인벤토리' 절, 규칙 구현은 prune-autoware-overlay.sh.
+# root:root world-readable 유지(rviz2 는 read 만 필요 → chown 생략해 레이어 중복 방지).
+COPY --from=awtrim /opt/autoware-trimmed /opt/autoware
+
+# 가드 3) 남긴 .so 가 이 이미지의 런타임에서 모두 해석되는지 — 하나라도 미해결이면
+# 플러그인이 dlopen 실패로 조용히 빠진다(실측: ldd 클로저를 LD_LIBRARY_PATH 없이 돌렸을 때).
+RUN set -e; \
+    . /opt/ros/humble/setup.sh; . /opt/autoware/setup.sh; \
+    bad=0; \
+    for so in /opt/autoware/lib/*.so*; do \
+        if ldd "$so" 2>/dev/null | grep -q "not found"; then bad=$((bad+1)); echo "미해결: $so"; fi; \
+    done; \
+    [ "$bad" -eq 0 ] || { echo "오버레이 가드 실패: 미해결 의존 $bad 건"; exit 1; }; \
+    echo "오버레이 검증 OK — $(ls /opt/autoware/lib/*.so* | wc -l) 개 .so, 미해결 0"
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+USER agl
+# cage(nested wlroots)는 SIGTERM 종료가 wayland 1.22 terminate(eventfd) 경로에서 동작하지
+# 않아 hang→SIGKILL(느림)이 된다. STOPSIGNAL=SIGKILL 로 `docker stop` 이 즉시 SIGKILL 하도록
+# 한다. x11 모드에서는 rviz2 가 직접 받으므로 무해하다.
+STOPSIGNAL SIGKILL
+ENTRYPOINT ["/entrypoint.sh"]

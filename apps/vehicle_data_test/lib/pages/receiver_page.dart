@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:vehicle_data_test/grpc/grpc_client.dart';
@@ -24,29 +25,64 @@ class _ReceiverPageState extends State<ReceiverPage>
       TextEditingController(text: '50052'); // 기본 포트값
 
   final List<String> _paths = const [
-    'Vehicle.Speed',
-    'Vehicle.Powertrain.CombustionEngine.Speed',
-    //'Vehicle.Chassis.SteeringWheel.Angle',
-    // 'Vehicle.Chassis.Brake.PedalPosition',
-    'Vehicle.Acceleration.Longitudinal',
-    'Vehicle.Acceleration.Lateral',
-    'Vehicle.Acceleration.Vertical',
-    'Vehicle.Attitude.Yaw',
-    'Vehicle.Attitude.Roll',
-    'Vehicle.Attitude.Pitch',
-    'Vehicle.CurrentLocation.Latitude',
-    'Vehicle.CurrentLocation.Longitude',
-    'Vehicle.CurrentLocation.Altitude',
-    // 'Vehicle.CurrentLocation.Heading',
-    'Vehicle.Body.Lights.DirectionIndicator.Left.IsSignaling',
-    'Vehicle.Body.Lights.DirectionIndicator.Right.IsSignaling',
-    'Vehicle.Body.Lights.Backup.IsOn',
-    'Vehicle.Body.Windshield.Front.Wiping.System.IsWiping',
-    'Vehicle.Powertrain.Transmission.TravelledDistance',
-    'Vehicle.StartTime',
-    'Vehicle.Chassis.Accelerator.PedalPosition',
-    'Vehicle.Powertrain.FuelSystem.RelativeLevel',
-    'Vehicle.Exterior.AirTemperature',
+    "Vehicle.ADS.Safety.MRM.Status",
+    "Vehicle.ADS.Safety.MRM.Behavior",
+    "Vehicle.ADS.Safety.HazardStatus.Level",
+    "Vehicle.ADS.Safety.HazardStatus.IsEmergency",
+    "Vehicle.ADS.Safety.HazardStatus.NoFault",
+    "Vehicle.ADS.Safety.HazardStatus.SafeFault",
+    "Vehicle.ADS.Safety.HazardStatus.LatentFault",
+    "Vehicle.ADS.Safety.HazardStatus.SinglePointFault",
+    "Vehicle.ADS.OperationMode.Availability.IsStop",
+    "Vehicle.ADS.OperationMode.Availability.IsAutonomous",
+    "Vehicle.ADS.OperationMode.Availability.IsLocal",
+    "Vehicle.ADS.OperationMode.Availability.IsRemote",
+    "Vehicle.ADS.OperationMode.Availability.IsEmergencyStop",
+    "Vehicle.ADS.OperationMode.Availability.IsComfortableStop",
+    "Vehicle.ADS.OperationMode.Availability.IsPullOver",
+    "Vehicle.ADS.OperationMode.State.Mode",
+    "Vehicle.ADS.OperationMode.State.IsAutowareControlEnabled",
+    "Vehicle.ADS.OperationMode.State.IsInTransition",
+    "Vehicle.ADS.Perception.DetectedObject.ObjectCount",
+    "Vehicle.ADS.Perception.DetectedObject.Objects",
+    "Vehicle.ADS.Perception.DynamicObject.ObjectCount",
+    "Vehicle.ADS.Perception.DynamicObject.Objects",
+    "Vehicle.ADS.Perception.TrafficLight.LightCount",
+    "Vehicle.ADS.Perception.TrafficLight.Lights",
+    "Vehicle.ADS.Planning.Trajectory.PointCount",
+    "Vehicle.ADS.Planning.Trajectory.Points",
+    "Vehicle.ADS.Planning.Path",
+    "Vehicle.ADS.Planning.VelocityFactor.Count",
+    "Vehicle.ADS.Planning.VelocityFactor.Factors",
+    "Vehicle.ADS.Planning.SteeringFactor.Count",
+    "Vehicle.ADS.Planning.SteeringFactor.Factors",
+    "Vehicle.ADS.IsEmergency",
+    "Vehicle.ADS.Route.RouteState",
+    "Vehicle.ADS.Route.Start",
+    "Vehicle.ADS.Route.Goal",
+    "Vehicle.ADS.Route.Segments",
+    "Vehicle.ADS.VehicleKinematics.GeographicPose",
+    "Vehicle.ADS.VehicleKinematics.Pose",
+    "Vehicle.ADS.VehicleKinematics.Twist",
+    "Vehicle.ADS.VehicleKinematics.Accel",
+    "Vehicle.ADS.Diagnostics.Count",
+    "Vehicle.ADS.Diagnostics.GraphStatus",
+    "Vehicle.ADS.Diagnostics.GraphStruct",
+    "Vehicle.CurrentLocation.Altitude",
+    "Vehicle.CurrentLocation.Latitude",
+    "Vehicle.CurrentLocation.Longitude",
+    "Vehicle.CurrentLocation.Heading",
+    "Vehicle.Acceleration.Lateral",
+    "Vehicle.Acceleration.Longitudinal",
+    "Vehicle.Acceleration.Vertical",
+    "Vehicle.AngularVelocity.Pitch",
+    "Vehicle.AngularVelocity.Roll",
+    "Vehicle.AngularVelocity.Yaw",
+    "Vehicle.Speed",
+    "Vehicle.Body.Lights.DirectionIndicator.Left.IsSignaling",
+    "Vehicle.Body.Lights.DirectionIndicator.Right.IsSignaling",
+    "Vehicle.Body.Lights.Hazard.IsSignaling",
+    "Vehicle.Powertrain.Transmission.SelectedGear",
   ];
 
   String? _selectedPath;
@@ -221,7 +257,7 @@ class _ReceiverPageState extends State<ReceiverPage>
           ),
           // 두 번째 줄: path 선택 드롭다운 + 상태 표시
           Padding(
-            padding: const EdgeInsets.only(left:15, right:15),
+            padding: const EdgeInsets.only(left: 15, right: 15),
             child: Row(
               children: [
                 const Text(
@@ -274,6 +310,32 @@ class _ReceiverPageState extends State<ReceiverPage>
     return StreamBuilder<DataPackages>(
       stream: widget.cloud.events,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          final err = snapshot.error;
+          String errorText = '에러 발생:\n$err';
+          if (err is ErrorResponseMessage) {
+            errorText = '에러 발생 (코드: ${err.number})\n'
+                '이유: ${err.reason}\n'
+                '상세: ${err.description}';
+          }
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                  const SizedBox(height: 12),
+                  Text(
+                    errorText,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
         if (!snapshot.hasData) {
           return const Center(
             child: Text(
@@ -286,11 +348,64 @@ class _ReceiverPageState extends State<ReceiverPage>
         final rows = <Widget>[];
         for (final pkg in dp.data) {
           for (final p in pkg.dp) {
+            final formatted = _formatValue(p.value);
             rows.add(
-              ListTile(
-                title: Text(pkg.path),
-                subtitle: Text(p.ts),
-                trailing: Text(p.value),
+              Card(
+                margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              pkg.path,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Colors.blueAccent,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            p.ts,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F5F5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: SelectableText(
+                          formatted,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             );
           }
@@ -313,6 +428,20 @@ class _ReceiverPageState extends State<ReceiverPage>
         );
       },
     );
+  }
+
+  String _formatValue(String rawValue) {
+    final trimmed = rawValue.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        final decoded = json.decode(rawValue);
+        return const JsonEncoder.withIndent('  ').convert(decoded);
+      } catch (_) {
+        // JSON 파싱 실패 시 원본 반환
+      }
+    }
+    return rawValue;
   }
 
   @override

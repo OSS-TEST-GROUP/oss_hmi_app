@@ -532,6 +532,31 @@ class LifecycleCollector extends GetxController {
     ));
   }
 
+  // Container-side mirror of _optimisticServiceState. Repaint the local
+  // ContainerInfo to STOPPED + push an Events row the instant the Stop tap
+  // fires, instead of waiting for the authoritative NotifyContainerState —
+  // which trails docker stop's grace period + the health poll + aggregation.
+  // The next authoritative report corrects any divergence: if the container
+  // failed to stop it flips back to running and a second Events row follows.
+  void _optimisticContainerState(String name, ContainerState newState) {
+    final info = containers[name];
+    if (info == null) return;
+    final prevState = info.state;
+    if (prevState == newState) return;
+    info.state = newState;
+    info.lastChangedAt = DateTime.now();
+    containers[name] = info;
+    containers.refresh();
+    _pushEvent(LifecycleEvent(
+      timestamp: DateTime.now(),
+      serviceName: name,
+      from: ServiceState.unknown,
+      to: ServiceState.unknown,
+      kind: LifecycleEventKind.containerStateChange,
+      detail: '${prevState.label} → ${newState.label}',
+    ));
+  }
+
   void _logCall(String label, String arg) {
     final stack = StackTrace.current.toString().split('\n');
     // Skip frames 0-1 (this helper + the caller itself); keep next 4
@@ -590,6 +615,10 @@ class LifecycleCollector extends GetxController {
       return;
     }
     _beginPending(pendingStopContainers, 'cs', name); // button -> spinner; cleared on STOPPED/timeout
+    // Same optimistic flip as stopService — paint STOPPED now so the badge
+    // reacts on tap; the authoritative NotifyContainerState corrects it if the
+    // stop was rejected or failed.
+    _optimisticContainerState(name, ContainerState.stopped);
     _publish(_ctrlStopContainerReqPub, 'ctrlStopContainer', {
       'container_list': [name],
     });

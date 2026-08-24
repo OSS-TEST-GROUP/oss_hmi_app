@@ -4,18 +4,27 @@
 #       Autoware 는 표준 rviz 타입이 아니라 autoware_*_msgs / tier4_*_msgs 로만 발행하므로
 #       (실측: /perception/.../DetectedObjects, /planning/.../Trajectory, autoware_adapi_v1_msgs …)
 #       vanilla rviz2 로는 아무것도 안 보인다. → autoware msgs + autoware rviz 플러그인 필요.
-#       (RVIZ2_AUTOWARE_CONNECT.md §4)
+#       (실측 근거: autoware.rviz 가 autoware_perception_rviz_plugin/{PredictedObjects,
+#        TrackedObjects}, rviz_plugins/{Path,MrmSummaryOverlayDisplay,PolarGridDisplay} 등
+#        autoware/tier4 전용 display 를 사용)
 #
-# 전략: 터치 이미지(cage/wlroots/wayland + rviz2) 위에, Autoware 파티션 이미지가 이미
-#       arm64 로 컴파일해 둔 /opt/autoware 오버레이(msgs 40 + rviz 플러그인 16, 550MB)를
-#       그대로 COPY. 소스 빌드 불필요. 동일 ROS Humble arm64 → rviz_rendering/OGRE ABI 정합.
+# 전략: 터치 이미지(cage/wlroots/wayland + homebar + rviz2) 위에, Autoware 파티션 이미지가
+#       이미 컴파일해 둔 /opt/autoware 트리 전체(패키지 244 = msgs 40 + rviz 플러그인 16 +
+#       그 외 188, 548MB — 내용은 README '포함된 파일 인벤토리' 절)를
+#       그대로 COPY. 소스 빌드 불필요. 동일 ROS Humble → rviz_rendering/OGRE ABI 정합.
 #
-# autoware-overlay 이미지: junohb 6GB 전체를 162 로 옮기지 않기 위해, 151 에서
-# /opt/autoware(550MB)만 담은 슬림 이미지를 미리 만들어 레지스트리에 올려둔다:
-#   # (151 에서, 1회) junohb 의 /opt/autoware 만 추출 → 레지스트리 push
-#   printf 'FROM junohb/autoware-partition:sample-adsw-perception AS s\nFROM scratch\nCOPY --from=s /opt/autoware /opt/autoware\n' \
-#     | docker build -t registry.obigo.com/oss/autoware-overlay:latest -
-#   docker push registry.obigo.com/oss/autoware-overlay:latest
+# **오버레이는 이 이미지 안으로 들어온다 — 별도 autoware-overlay 이미지를 쓰지 않는다.**
+#   이전 방식: 151 에서 /opt/autoware 만 담은 슬림 이미지(autoware-overlay)를 손으로 만들어
+#   push 하고 여기서 COPY 했다. 문제가 둘이었다.
+#     ① 수동 단계 — Autoware 가 갱신되면 사람이 추출·push 를 다시 해야 하고, 잊으면 rviz2
+#        플러그인과 실행 중 Autoware 의 버전이 어긋난다.
+#     ② arm64 고정 — 151(arm64)에서 추출했으므로 amd64 변종이 없어, x86 개발 PC 에서
+#        Autoware 시각화를 재현할 수 없었다.
+#   지금은 **151 이 실제로 실행하는 그 파티션 이미지**(멀티아치 amd64+arm64)에서 직접 COPY
+#   한다 → 수동 단계 0, 버전 자동 정합, 빌드 타깃 플랫폼에 맞는 아키가 자동 선택.
+#   대가: 빌드 시 파티션 이미지(5.7GB)를 당겨야 한다(오버레이 548MB 대비). 빌드 1회 비용이고
+#   레이어 캐시가 남으므로 위 두 문제를 없애는 값으로 받아들인다.
+#   출처를 바꾸려면 --build-arg AUTOWARE_SRC_IMAGE=<image> 로 오버라이드한다.
 #
 # 태그 규약(RVIZ2_IMAGE_TAG_ALIGNMENT.md): 빌드 체인 :base(ros+rviz) → :touch(+cage) →
 # :latest(+오버레이). FROM 은 :latest 를 참조하지 않는다(:latest 가 이 이미지라 재귀됨).
@@ -25,28 +34,36 @@
 #   → dirty 차단 + 스냅샷 태그 + OCI 라벨(--label) 을 자동 적용해 Orin(arm64)에서 네이티브
 #     빌드 후 :latest + :<snap> push. (수동 docker build --label 도 가능하나 스크립트 권장)
 #
-# 실행: rviz2_monitor 가 -e ROS_DOMAIN_ID=<autoware 도메인> [-e RMW_IMPLEMENTATION=...]
+# 실행: rviz2_panel 가 -e ROS_DOMAIN_ID=<autoware 도메인> [-e RMW_IMPLEMENTATION=...]
 #       -e RVIZ_CONFIG=/opt/autoware/share/autoware_launch/rviz/autoware.rviz 로 기동.
-FROM registry.obigo.com/oss/rviz2-agl:touch AS autoware
+# ── 빌드 인자 — FROM 에서 참조하므로 **첫 FROM 앞(전역 스코프)** 에 선언해야 한다
+#    (스테이지 안에서 선언하면 그 스테이지 전용이 되어 FROM 이 빈 값을 받는다).
+# 오버레이 공급원: 151 이 실행하는 파티션 이미지(멀티아치) — buildx 가 타깃 플랫폼에 맞는
+# 변종을 자동 선택하므로 amd64/arm64 양쪽 빌드가 같은 Dockerfile 로 된다.
+ARG AUTOWARE_SRC_IMAGE=ghcr.io/oss-test-group/autoware-partition:adsw-perception
+# 터치 베이스도 오버라이드 가능 — 레지스트리에 해당 아키 :touch 가 아직 없을 때 로컬
+# 빌드본을 지정한다. 예) --build-arg TOUCH_IMAGE=rviz2-agl:touch-amd64
+ARG TOUCH_IMAGE=registry.obigo.com/oss/rviz2-agl:touch
+
+FROM ${AUTOWARE_SRC_IMAGE} AS awsrc
+
+FROM ${TOUCH_IMAGE} AS autoware
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 
-# CycloneDDS 설치. Autoware 가 cyclone 이면 rviz2 도 -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-# 로 맞춘다(현행 Autoware=fastrtps 기본 → 미설정 시 자동 일치).
-# ⚠️ base(agl-display/Dockerfile) 소스에도 cyclonedds+fastrtps 가 추가됐지만, 레지스트리의
-#    :base/:touch 이미지는 그 변경 전에 빌드돼 cyclone 이 없다(실측 ABSENT). 그래서 여기서
-#    설치가 여전히 필요하다. base+touch 를 재빌드하면 이 줄은 중복이 되어 제거 가능
-#    (RVIZ2_IMAGE_TAG_ALIGNMENT.md §3).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ros-humble-rmw-cyclonedds-cpp \
-    && rm -rf /var/lib/apt/lists/*
+# RMW(cyclonedds + fastrtps)는 **base 에서 상속**한다 — 여기서 재설치하지 않는다.
+# (base 재빌드로 :base/:touch 에 두 RMW 가 포함됨을 실측 확인. 중복 설치 제거.)
+# Autoware 가 cyclone 이면 실행 시 -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp 로 맞춘다.
 
-# Autoware 오버레이(msgs + rviz 플러그인) — 파티션 이미지에서 컴파일된 arm64 산출물 복사.
-# 슬림 오버레이 이미지(150→550MB)에서 복사해 162 로 6GB junohb 전체를 안 옮긴다.
-# root:root world-readable 로 유지(rviz2 는 agl uid 로 read 만 필요 → chown 생략해 550MB
+# Autoware 오버레이(msgs + rviz 플러그인) — 파티션 이미지에서 컴파일된 산출물 복사.
+# root:root world-readable 로 유지(rviz2 는 agl uid 로 read 만 필요 → chown 생략해 548MB
 # 레이어 중복 방지).
-COPY --from=registry.obigo.com/oss/autoware-overlay:latest /opt/autoware /opt/autoware
+#
+# 이 줄은 이제 손댈 일이 거의 없다 — 공급원이 151 이 실행하는 파티션 이미지 자체이고 아키는
+# buildx 가 고른다. 다른 파티션(decision/control)이나 특정 스냅샷을 쓰려면 Dockerfile 수정
+# 대신 --build-arg AUTOWARE_SRC_IMAGE=<image> 로 넘긴다. 상세는 README.md 참조.
+COPY --from=awsrc /opt/autoware /opt/autoware
 
 # autoware rviz 플러그인 + autoware 메시지의 런타임 의존은 /opt/autoware 밖(시스템/ROS)에
 # 있어 오버레이 COPY 만으로는 누락된다(ldd + 런타임 확인). 채워 넣어 로드/subscribe 실패 방지:
@@ -75,7 +92,8 @@ RUN chmod +x /entrypoint.sh
 
 USER agl
 ENV PATH=/usr/local/bin:$PATH
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+# 두 트리플릿을 모두 나열 — 없는 경로는 무시되므로 amd64/arm64 공용.
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib/x86_64-linux-gnu:/usr/local/lib
 
 # Provenance(OCI 라벨 5종 + com.obigo.*)는 빌드 스크립트가 `--label` 로 주입한다
 # (RVIZ2_IMAGE_TAG_ALIGNMENT.md §1·§2 — Dockerfile ARG/LABEL 대신 래퍼 스크립트로 통일).

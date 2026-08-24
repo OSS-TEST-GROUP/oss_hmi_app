@@ -1,0 +1,17 @@
+{
+  "containerName": "rviz2",
+  "image": "registry.obigo.com/oss/rviz2-agl:latest",
+  "aglOutput": "DP-5",
+  "rvizAppId": "rviz2",
+  "homeAppId": "hmi_launcher",
+  "pollIntervalSec": 3,
+  "dockerRunArgs": [
+    "--net=host", "--ipc=host",
+    "--user", "1000:1000",
+    "-e", "DISPLAY=:0",
+    "-v", "/tmp/.X11-unix:/tmp/.X11-unix",
+    "-e", "HOME=/tmp",
+    "-e", "LIBGL_ALWAYS_SOFTWARE=1",
+    "-e", "RVIZ_CONFIG=/opt/autoware/share/autoware_launch/rviz/autoware.rviz"
+  ]
+}

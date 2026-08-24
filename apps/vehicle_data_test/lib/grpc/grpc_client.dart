@@ -146,6 +146,7 @@ class GrpcClient {
     } else if (resp.hasErrorResponse()) {
       final err = resp.errorResponse;
       print('[CLOUD][GET][ERROR] ${err.number} ${err.reason} ${err.description}');
+      _events.addError(err);
     } else {
       print('[CLOUD][GET] No DataPack / No ErrorResponse');
     }
@@ -192,6 +193,7 @@ class GrpcClient {
             } else if (msg.hasEvent() && msg.event.hasErrorResponse()) {
               final err = msg.event.errorResponse;
               print('[CLOUD][EVENT][ERROR] ${err.number} ${err.reason} ${err.description}');
+              _events.addError(err);
             }
             break;
         }
@@ -250,8 +252,9 @@ class GrpcClient {
         }
       }
     } else if (resp.hasErrorResponse()) {
-      print('[CLOUD][GET][ERROR] ${resp.errorResponse.number} '
-              '${resp.errorResponse.reason} ${resp.errorResponse.description}');
+      final err = resp.errorResponse;
+      print('[CLOUD][GET][ERROR] ${err.number} ${err.reason} ${err.description}');
+      _events.addError(err);
     }
   }
 }

@@ -1,5 +1,5 @@
 # ── docker CLI (static binary, x86_64) ─────────────────────────────────────
-# rviz2_monitor (running inside this image) directly controls the host rviz2
+# rviz2_panel (running inside this image) directly controls the host rviz2
 # container via the docker CLI.  We download only the static `docker` binary
 # from the official download site; no daemon, no docker-compose.
 # The docker.sock is bind-mounted at runtime by adsw_manager/agl-service-list.
@@ -75,11 +75,12 @@ COPY ${APP_NAME}/config/${CONFIG_FILE} /app/config/${CONFIG_FILE}
 # (lines 41,84-88). OTA Monitor ships default-disabled via the launcher's
 # AppVisibilityStore.kDefaultDisabled, so no manifest change is needed for that.
 ENV HMI_APPS_ROOT=/apps
-RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor /apps/rviz2_monitor
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor /apps/rviz2_panel /apps/vehicle_data_app
 COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
 COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
 COPY lfc_monitor/manifest.json /apps/lfc_monitor/manifest.json
-COPY rviz2_monitor/manifest.json /apps/rviz2_monitor/manifest.json
+COPY rviz2_panel/manifest.json /apps/rviz2_panel/manifest.json
+COPY vehicle_data_app/manifest.json /apps/vehicle_data_app/manifest.json
 
 # Set executable bit + stable entrypoint name (the exec-form ENTRYPOINT
 # does not expand variables, so use a symlink).
@@ -92,6 +93,6 @@ ENV DISPLAY=:0
 ENTRYPOINT ["/app/entrypoint"]
 
 # Copy the static docker CLI from the fetch stage.
-# Used by rviz2_monitor to control the host rviz2 container.
+# Used by rviz2_panel to control the host rviz2 container.
 # docker.sock must be bind-mounted at runtime: -v /var/run/docker.sock:/var/run/docker.sock
 COPY --from=docker-cli-fetch /usr/local/bin/docker /usr/local/bin/docker

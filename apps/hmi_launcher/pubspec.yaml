@@ -45,7 +45,7 @@ dependencies:
 
   # F015: Agent.Submit gRPC thin client (ADR-014 결정 2, 5)
   grpc: ^4.0.1
-  protobuf: ^3.1.0
+  protobuf: ^4.1.0
 
   # L009: Plugin path dependencies
   ota_monitor:
@@ -54,8 +54,10 @@ dependencies:
     path: ../adsw_monitor
   lfc_monitor:
     path: ../lfc_monitor
-  rviz2_monitor:
-    path: ../rviz2_monitor
+  rviz2_panel:
+    path: ../rviz2_panel
+  vehicle_data_app:
+    path: ../vehicle_data_app
 
 dev_dependencies:
   flutter_test:

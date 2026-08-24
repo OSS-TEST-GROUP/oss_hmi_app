@@ -36,8 +36,31 @@ cd "$APP_PATH"
 # 이전 빌드 캐시 정리 (호스트/컨테이너 경로 불일치 방지)
 flutter clean
 
-# pub get
-flutter pub get
+# pub get — **lock 을 고쳐 쓰지 않는다**(--enforce-lockfile).
+#
+# 왜: 예전엔 그냥 `flutter pub get` 이었다. 커밋된 lock 이 이 빌더의 Flutter 로 풀리지
+# 않으면 pub 이 **조용히 lock 을 다시 써서** 워크트리를 더럽혔고, 그 상태가 이미지 빌드
+# 스크립트의 재현성 가드에 "커밋되지 않은 변경"으로 뒤늦게 걸렸다(원인과 무관해 보이는
+# 자리에서 터진다). 실측 2026-08-18: 8 앱 중 6 개의 lock 이 이 상태였다 —
+# Flutter SDK 가 핀으로 묶는 analyzer/_fe_analyzer_shared/meta/test_api 가 어긋나 있었고,
+# lock 이 Flutter 핀 밖(예: `dart pub get`)에서 만들어졌기 때문이다.
+#
+# 이제는 불일치를 **여기서 바로** 실패시킨다. 해결법은 아래 메시지대로 이 빌더 안에서
+# lock 을 만들어 커밋하는 것이다 (x86/arm64 빌더는 같은 해를 낸다 — 실측).
+if ! flutter pub get --enforce-lockfile; then
+    cat >&2 <<'EOM'
+
+╭─ pubspec.lock 이 이 빌더의 Flutter 로 풀리지 않습니다 ─────────────────────────
+│ 로컬에서 `dart pub get` 으로 lock 을 만들면 Flutter SDK 핀(analyzer/meta/
+│ test_api 등)을 보지 않아 어긋납니다. lock 은 **빌더 안에서** 갱신하세요:
+│
+│   cd apps && docker compose -f docker/compose/docker-compose.yml --profile build │     run --rm --entrypoint bash <APP>_builder_x86 │     -c 'cd /workspace/apps/<APP> && flutter pub get'
+│
+│ 그 결과 pubspec.lock 을 커밋한 뒤 다시 빌드하세요.
+╰───────────────────────────────────────────────────────────────────────────────
+EOM
+    exit 1
+fi
 
 # x86_64 release build
 flutter build linux --release

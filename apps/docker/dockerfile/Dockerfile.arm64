@@ -27,7 +27,7 @@
 #     adsw_monitor:arm64
 
 # ── docker CLI (static binary, aarch64) ────────────────────────────────────
-# rviz2_monitor (running inside this image) directly controls the host rviz2
+# rviz2_panel (running inside this image) directly controls the host rviz2
 # container via the docker CLI.  We download only the static `docker` binary
 # from the official download site; no daemon, no docker-compose.
 # The docker.sock is bind-mounted at runtime by adsw_manager/agl-service-list.
@@ -43,6 +43,16 @@ RUN curl -fsSL \
     && tar -xzf /tmp/docker.tgz --strip-components=1 -C /usr/local/bin docker/docker \
     && rm /tmp/docker.tgz \
     && chmod +x /usr/local/bin/docker
+# grpcurl — agl-shell gRPC(:14005) 로 자기 서페이스를 풀화면·활성화한다(agl-run.sh).
+# agl-compositor 는 클라이언트의 set_fullscreen(flutter-auto -f)을 무시하므로 이 경로가
+# 유일하다. rviz2 이미지가 homebar/cage 활성화에 쓰는 것과 같은 정적 바이너리.
+ARG GRPCURL_VERSION=1.9.1
+RUN curl -fsSL \
+      "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_arm64.tar.gz" \
+      -o /tmp/grpcurl.tgz \
+    && tar -xzf /tmp/grpcurl.tgz -C /usr/local/bin grpcurl \
+    && rm /tmp/grpcurl.tgz \
+    && chmod +x /usr/local/bin/grpcurl
 # ── end docker CLI stage ────────────────────────────────────────────────────
 
 FROM --platform=linux/arm64 ubuntu:24.04
@@ -101,11 +111,12 @@ ADD output/${APP_NAME}-arm64-release.tar.gz /
 COPY ${APP_NAME}/config/${CONFIG_FILE} ${BUNDLE_PATH}/data/flutter_assets/assets/config/${CONFIG_FILE}
 
 # Plugin manifests: hmi_launcher scans HMI_APPS_ROOT for <app>/manifest.json.
-RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor /apps/rviz2_monitor
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor /apps/rviz2_panel /apps/vehicle_data_app
 COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
 COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
 COPY lfc_monitor/manifest.json /apps/lfc_monitor/manifest.json
-COPY rviz2_monitor/manifest.json /apps/rviz2_monitor/manifest.json
+COPY rviz2_panel/manifest.json /apps/rviz2_panel/manifest.json
+COPY vehicle_data_app/manifest.json /apps/vehicle_data_app/manifest.json
 
 # flutter-auto entrypoint script.
 # The flutter-auto binary is expected to be mounted from the host, or it
@@ -114,8 +125,12 @@ COPY docker/script/agl-run.sh /usr/local/bin/agl-run.sh
 RUN chmod +x /usr/local/bin/agl-run.sh
 
 # Copy the static docker CLI from the fetch stage.
-# The binary is used by rviz2_monitor to control the host rviz2 container.
+# The binary is used by rviz2_panel to control the host rviz2 container.
 # docker.sock must be bind-mounted at runtime: -v /var/run/docker.sock:/var/run/docker.sock
 COPY --from=docker-cli-fetch /usr/local/bin/docker /usr/local/bin/docker
+
+# agl-shell 활성화용(agl-run.sh 가 호출). 호스트의 agl-shell-activator 는
+# libprotobuf/absl 에 링크돼 컨테이너에 마운트할 수 없어 정적 grpcurl 을 쓴다.
+COPY --from=docker-cli-fetch /usr/local/bin/grpcurl /usr/local/bin/grpcurl
 
 ENTRYPOINT ["/usr/local/bin/agl-run.sh"]

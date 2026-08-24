@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 import 'package:hmi_launcher/domain/app_manifest.dart';
+import 'package:hmi_launcher/domain/app_visibility_store.dart';
 import 'package:hmi_launcher/domain/plugin_registry.dart';
 import 'package:hmi_launcher/main.dart';
 import 'package:hmi_launcher/presentation/shell/launcher_bot_shell.dart';
@@ -55,6 +56,7 @@ Future<void> _wideView(WidgetTester tester) async {
 Future<void> _pumpApp(WidgetTester tester, PluginRegistry registry) async {
   await tester.pumpWidget(HmiLauncherApp(
     initialRegistry: registry,
+    visibilityStore: AppVisibilityStore.inMemory(),
     enableRos: false,
     panelBuilder: _placeholderPanel,
     // Deterministic launcher-bot probe — avoid a real socket (and its pending

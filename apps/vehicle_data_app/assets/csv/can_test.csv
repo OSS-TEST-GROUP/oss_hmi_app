@@ -1,0 +1,7 @@
+Signal,Type,Value
+Vehicle.Powertrain.CombustionEngine.Speed,Int16,3
+Vehicle.Speed,Float32,4.4
+Vehicle.Chassis.Accelerator.PedalPosition,Int8,30
+Vehicle.Acceleration.Longitudinal,Float32,5.7
+Vehicle.Acceleration.Lateral,Float32,9.7
+Vehicle.Acceleration.Vertical,Float32,2.4546
