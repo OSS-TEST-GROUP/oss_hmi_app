@@ -1,0 +1,77 @@
+# PC(amd64) 시나리오용 AGL 서비스 목록 — ext-agl 이 /oss/bin/config/agl-service-list.x86.yaml
+# 로 마운트해 읽는다(x86_64 에서 이 경로를 자동 선택).
+#
+# ⚠️ 사용 전 ${SCENARIO_CFG_DIR} 를 **자기 환경의 절대 경로**로 바꾼다 — 아래 3 파일이 있는
+#    디렉토리다: hmi_launcher.config.json / hmi_launcher.app_visibility.json(→ hmi_cfg/) /
+#    rviz2_panel.x86.json.  자세한 준비 절차는 docs/rviz2/scenario-test-guide.md 참조.
+#   compose 가 자동 생성하는 x86 목록에는 docker.sock / 런처 config / 패널 설정이 없어
+#   rviz2_panel 이 컨테이너를 제어하지 못하고 rosbridge 도 localhost 로 붙는다.
+#   그 3가지를 채워 넣은 버전이다. ext-agl entrypoint 가 x86_64 에서 이 경로를 자동 선택한다.
+services:
+- name: adsw_monitor
+  service_type: NORMAL
+  recovery_policy: ALWAYS
+  is_enabled: true
+  mw_type: AGL
+  init_state: NOT_RUNNING
+- name: ota_monitor
+  service_type: NORMAL
+  recovery_policy: R_DEFAULT
+  is_enabled: true
+  mw_type: AGL
+  init_state: NOT_RUNNING
+- name: lfc_monitor
+  service_type: NORMAL
+  recovery_policy: R_DEFAULT
+  is_enabled: true
+  mw_type: AGL
+  init_state: NOT_RUNNING
+- name: hmi_launcher
+  service_type: NORMAL
+  recovery_policy: ALWAYS
+  is_enabled: true
+  mw_type: AGL
+  init_state: NOT_RUNNING
+  # 3번(임베디드 패널 설정 주입)이 반영된 로컬 빌드. 레지스트리 :latest 는 아직 이전 빌드.
+  image: oss-hmi-launcher:dev-newui
+  extra_args:
+  - "-it"
+  - --net=host
+  - --privileged
+  - --restart
+  - unless-stopped
+  - --group-add
+  - "999"
+  # PC 에 NVIDIA + nvidia 컨테이너 런타임이 있다. GPU 없이 띄우면 GTK/Flutter 가
+  # GLX BadValue(request 152, minor 22)로 즉사한다(실측 exit 133). compose 의 x86
+  # 분기와 동일하게 --gpus all 을 준다.
+  - --gpus
+  - all
+  - "-e"
+  - DISPLAY=:0
+  - "-e"
+  - XDG_RUNTIME_DIR=/run/user/1000
+  - "-e"
+  - LAUNCHER_BOT_ENABLED=0
+  - "-e"
+  - RVIZ2_MONITOR_CONFIG=/app/config/rviz2_panel.json
+  # 앱 표시/숨김 영속 — rviz2_panel 은 기본 숨김(kDefaultDisabled)이라 보드처럼
+  # XDG_CONFIG_HOME 을 마운트해 app_visibility.json 으로 켜 준다.
+  - "-e"
+  - XDG_CONFIG_HOME=/cfg
+  - "-v"
+  - ${SCENARIO_CFG_DIR}/hmi_cfg:/cfg
+  - "-v"
+  - /tmp/.X11-unix:/tmp/.X11-unix
+  - "-v"
+  - /run/user/1000:/run/user/1000
+  - "-v"
+  - /var/run/docker.sock:/var/run/docker.sock
+  - "-v"
+  - ${SCENARIO_CFG_DIR}/hmi_launcher.config.json:/app/config/launcher_config.json:ro
+  - "-v"
+  - ${SCENARIO_CFG_DIR}/rviz2_panel.x86.json:/app/config/rviz2_panel.json:ro
+  - "-v"
+  - /usr/share/fonts:/usr/share/fonts:ro
+  - "-v"
+  - /etc/fonts:/etc/fonts:ro

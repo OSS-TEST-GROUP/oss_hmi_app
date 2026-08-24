@@ -100,10 +100,9 @@ genhtml coverage/lcov.info -o coverage/html
 
 ## How to build for arm
 ### Setting cross compile environment
-1. install agl-sdk
-```
-wget --user=ossdev --password=ossdev1234 \
-  https://repo.obigo.com/repository/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
+1. install agl-sdk (Make sure AWS CLI is configured via `aws configure`)
+```bash
+aws s3 cp s3://oss-artifact/yocto-adt/agl/oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh .
 chmod +x oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh
 ./oss-agl-ivi-flutter-aarch64-toolchain-19.92.0.sh -d /opt/agl-sdk -y
 ```

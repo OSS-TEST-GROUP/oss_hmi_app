@@ -1,0 +1,18 @@
+{
+  "id": "vehicle_data_app",
+  "name": "Vehicle Data",
+  "icon": "🚗",
+  "version": "1.0.0",
+  "category": "monitoring",
+  "color": "#10B981",
+  "prompts": [
+    "차량 데이터 열어줘",
+    "차량 데이터 보여줘",
+    "Vehicle Data 열어줘",
+    "Vehicle Data 실행해줘",
+    "차량 정보 보기"
+  ],
+  "entry": "vehicle_data_app/main.dart",
+  "permissions": ["vss", "can_bus"],
+  "min_launcher": "4.0.0"
+}

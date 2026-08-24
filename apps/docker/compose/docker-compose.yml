@@ -1,15 +1,58 @@
 services:
   # ─────────────────────────────────────────────
+  # 툴체인 이미지 (빌더) — **레지스트리에서 pull 해서 쓴다**
+  # ─────────────────────────────────────────────
+  #
+  # 아래 앱 빌더 서비스들은 모두 이 두 이미지를 참조한다. 예전에는 4 앱 × 2 아키가
+  # **완전히 같은 이미지를 8 개 이름으로 각자 빌드**했다(로컬 2.2GB × 4 + 14GB × 4).
+  # 게다가 툴체인 변경(예: Flutter 핀)이 커밋으로만 전파돼, 낡은 이미지를 가진 사람은
+  # 옛 SDK 로 계속 빌드했다 — 2026-08-18 의 pubspec.lock 왕복 사고가 그 경로였다.
+  #
+  # 태그가 곧 툴체인 신분이다: `x86-flutter<버전>` / `agl<SDK버전>-flutter<버전>`.
+  # 버전을 올릴 때는 아래 두 서비스로 다시 만들어 push 하고, 앱 빌더들의 image: 태그를
+  # **같은 커밋에서** 함께 올린다. 그러면 커밋과 툴체인이 1:1 로 붙는다.
+  #
+  # 사용법 (일반 개발자):
+  #   docker compose -f docker/compose/docker-compose.yml pull hmi_launcher_builder_x86
+  #   → AGL SDK 자격증명 없이도 arm64 빌드까지 가능하다(SDK 가 이미지에 들어 있다).
+  #
+  # 재생성 (툴체인 관리자):
+  #   AGL_SDK_PASSWORD=... docker compose -f docker/compose/docker-compose.yml \
+  #     --profile toolchain build hmi_builder_image_x86 hmi_builder_image_arm64
+  #   docker push registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
+  #   docker push registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
+
+  hmi_builder_image_x86:
+    image: registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build
+    profiles: [ toolchain ]
+
+  hmi_builder_image_arm64:
+    image: registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.build.arm64
+      args:
+        # 기본은 Nexus(AGL_SDK_USER/PASSWORD). S3 에서 받으려면
+        # AGL_SDK_SOURCE=s3 + AWS_ACCESS_KEY_ID/SECRET 을 env 로 준다.
+        AGL_SDK_SOURCE: ${AGL_SDK_SOURCE:-nexus}
+        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
+        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-}
+        AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+        AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-northeast-2}
+    profiles: [ toolchain ]
+
+  # ─────────────────────────────────────────────
   # Build services (source → binary)
   # ─────────────────────────────────────────────
 
   # x86_64 Flutter Linux build (GTK bundle)
   # Run: docker compose run --rm adsw_monitor_builder_x86
   adsw_monitor_builder_x86:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build
-    image: adsw_monitor_builder:x86_64
+    image: registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
     # Run as the host user so artifacts written into bind-mounted source
     # directories (./adsw_monitor/.dart_tool, build/, etc.) are owned by
     # the invoking user instead of root. Override via USER_UID/USER_GID
@@ -22,18 +65,12 @@ services:
     volumes:
       - ../../adsw_monitor:/workspace/app
       - ../../output:/workspace/output
-    profiles: [build]
+    profiles: [ build ]
 
   # arm64 AOT build (AGL Yocto SDK)
   # Run: docker compose run --rm adsw_monitor_builder_arm64
   adsw_monitor_builder_arm64:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build.arm64
-      args:
-        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
-        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
-    image: adsw_monitor_builder:arm64
+    image: registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
       HOME: /tmp
@@ -42,7 +79,7 @@ services:
     volumes:
       - ../../adsw_monitor:/workspace/app
       - ../../output:/workspace/output
-    profiles: [build]
+    profiles: [ build ]
 
   # ─────────────────────────────────────────────
   # Runtime services (runtime images)
@@ -60,9 +97,9 @@ services:
 
     # Wayland socket mount (AGL/Linux environment)
     volumes:
-      - /run/user/1000:/run/user/1000          # Wayland socket
-      - /tmp/.X11-unix:/tmp/.X11-unix          # X11 fallback
-      - ../../adsw_monitor/config/config.json:/app/config/config.json  # rosbridge config override
+      - /run/user/1000:/run/user/1000 # Wayland socket
+      - /tmp/.X11-unix:/tmp/.X11-unix # X11 fallback
+      - ../../adsw_monitor/config/config.json:/app/config/config.json # rosbridge config override
       - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
 
     environment:
@@ -80,7 +117,7 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
     restart: unless-stopped
 
@@ -113,7 +150,7 @@ services:
 
     network_mode: host
 
-    profiles: [test]
+    profiles: [ test ]
 
   # arm64 runtime image (flutter-auto based, for AGL targets)
   # Prereq: output/adsw_monitor-release.tar.gz must already be built.
@@ -159,10 +196,7 @@ services:
   # x86_64 Flutter Linux build (GTK bundle)
   # Run: docker compose --profile build run --rm ota_monitor_builder_x86
   ota_monitor_builder_x86:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build
-    image: ota_monitor_builder:x86_64
+    image: registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
       HOME: /tmp
@@ -171,18 +205,12 @@ services:
     volumes:
       - ../../ota_monitor:/workspace/app
       - ../../output:/workspace/output
-    profiles: [build]
+    profiles: [ build ]
 
   # arm64 AOT build (AGL Yocto SDK)
   # Run: docker compose --profile build run --rm ota_monitor_builder_arm64
   ota_monitor_builder_arm64:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build.arm64
-      args:
-        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
-        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
-    image: ota_monitor_builder:arm64
+    image: registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
       HOME: /tmp
@@ -191,7 +219,7 @@ services:
     volumes:
       - ../../ota_monitor:/workspace/app
       - ../../output:/workspace/output
-    profiles: [build]
+    profiles: [ build ]
 
   # ── Runtime services ────────────────────────────────────────────────────
 
@@ -225,7 +253,7 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
     restart: unless-stopped
 
@@ -258,7 +286,7 @@ services:
 
     network_mode: host
 
-    profiles: [test]
+    profiles: [ test ]
 
   # arm64 runtime image (flutter-auto based, for AGL targets)
   ota_monitor_arm64:
@@ -301,10 +329,7 @@ services:
   # x86_64 Flutter Linux build (GTK bundle)
   # Run: docker compose --profile build run --rm lfc_monitor_builder_x86
   lfc_monitor_builder_x86:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build
-    image: lfc_monitor_builder:x86_64
+    image: registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
       HOME: /tmp
@@ -313,18 +338,12 @@ services:
     volumes:
       - ../../lfc_monitor:/workspace/app
       - ../../output:/workspace/output
-    profiles: [build]
+    profiles: [ build ]
 
   # arm64 AOT build (AGL Yocto SDK)
   # Run: docker compose --profile build run --rm lfc_monitor_builder_arm64
   lfc_monitor_builder_arm64:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build.arm64
-      args:
-        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
-        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
-    image: lfc_monitor_builder:arm64
+    image: registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
       HOME: /tmp
@@ -333,7 +352,7 @@ services:
     volumes:
       - ../../lfc_monitor:/workspace/app
       - ../../output:/workspace/output
-    profiles: [build]
+    profiles: [ build ]
 
   # ── Runtime services ────────────────────────────────────────────────────
 
@@ -367,7 +386,7 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
     restart: unless-stopped
 
@@ -400,7 +419,7 @@ services:
 
     network_mode: host
 
-    profiles: [test]
+    profiles: [ test ]
 
   # arm64 runtime image (flutter-auto based, for AGL targets)
   lfc_monitor_arm64:
@@ -432,6 +451,137 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════
+  # vehicle_data_app — Vehicle Data HMI App.
+  # Same shape as ota_monitor: a pair of Flutter builders (x86_64 GTK and
+  # arm64 AGL Yocto AOT), a GTK runtime, a flutter-auto arm64 runtime, and
+  # an arm64 QEMU+Weston test runtime.
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Build services ──────────────────────────────────────────────────────
+
+  # x86_64 Flutter Linux build (GTK bundle)
+  # Run: docker compose --profile build run --rm vehicle_data_app_builder_x86
+  vehicle_data_app_builder_x86:
+    image: registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
+    volumes:
+      - ../../vehicle_data_app:/workspace/app
+      - ../../output:/workspace/output
+    profiles: [ build ]
+
+  # arm64 AOT build (AGL Yocto SDK)
+  # Run: docker compose --profile build run --rm vehicle_data_app_builder_arm64
+  vehicle_data_app_builder_arm64:
+    image: registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
+    volumes:
+      - ../../vehicle_data_app:/workspace/app
+      - ../../output:/workspace/output
+    profiles: [ build ]
+
+  # ── Runtime services ────────────────────────────────────────────────────
+
+  # x86_64 runtime image (GTK-based, for development/testing)
+  vehicle_data_app:
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile
+      args:
+        APP_NAME: vehicle_data_app
+    image: vehicle_data_app:x86_64
+    container_name: vehicle_data_app
+
+    volumes:
+      - /run/user/1000:/run/user/1000
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ../../vehicle_data_app/config/config.json:/app/config/config.json
+      - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
+
+    environment:
+      - DISPLAY=${DISPLAY:-:2}
+      - XAUTHORITY=/root/.Xauthority
+      - XDG_RUNTIME_DIR=/run/user/1000
+
+    network_mode: host
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+    restart: unless-stopped
+
+  # arm64 test image (QEMU emulation + headless Weston)
+  vehicle_data_app_arm64_test:
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64.test
+      args:
+        APP_NAME: vehicle_data_app
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: vehicle_data_app:arm64-test
+    container_name: vehicle_data_app_arm64_test
+
+    volumes:
+      - ../../vehicle_data_app/config/config.json:/etc/vehicle_data_app/config.json
+
+    environment:
+      - APP_NAME=vehicle_data_app
+      - APP_VERSION=3.32.2
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - VNC_PORT=${VNC_PORT:-0}
+
+    security_opt:
+      - seccomp:unconfined
+
+    network_mode: host
+
+    profiles: [ test ]
+
+  # arm64 runtime image (flutter-auto based, for AGL targets)
+  vehicle_data_app_arm64:
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64
+      args:
+        APP_NAME: vehicle_data_app
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: vehicle_data_app:arm64
+    container_name: vehicle_data_app_arm64
+
+    volumes:
+      - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
+      - /dev/dri:/dev/dri
+      - /run/user/1001:/run/user/1001
+      - ../../vehicle_data_app/config/config.json:/usr/share/flutter/vehicle_data_app/3.32.2/release/data/flutter_assets/assets/config/config.json
+
+    environment:
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - APP_NAME=vehicle_data_app
+      - APP_VERSION=3.32.2
+
+    network_mode: host
+
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
   # hmi_launcher — launcher shell that embeds ota_monitor + adsw_monitor
   # as path dependencies. The builder mounts all three app directories
   # side-by-side under /workspace/apps so pubspec `path:` references
@@ -445,10 +595,7 @@ services:
   # x86_64 Flutter Linux build (GTK bundle)
   # Run: docker compose --profile build run --rm hmi_launcher_builder_x86
   hmi_launcher_builder_x86:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build
-    image: hmi_launcher_builder:x86_64
+    image: registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
       HOME: /tmp
@@ -461,24 +608,20 @@ services:
       # pubspec path dep since the embedded lfc panel (b8034e6) — without this
       # mount `flutter pub get` fails resolving ../lfc_monitor in-container.
       - ../../lfc_monitor:/workspace/apps/lfc_monitor
-      # pubspec path dep since the embedded rviz2_monitor panel (F010)
-      - ../../rviz2_monitor:/workspace/apps/rviz2_monitor
+      # pubspec path dep since the embedded rviz2_panel panel (F010)
+      - ../../rviz2_panel:/workspace/apps/rviz2_panel
+      # pubspec path dep for vehicle_data_app
+      - ../../vehicle_data_app:/workspace/apps/vehicle_data_app
       - ../../output:/workspace/output
     command:
       - "--app-path=/workspace/apps/hmi_launcher"
       - "--output-dir=/workspace/output"
-    profiles: [build]
+    profiles: [ build ]
 
   # arm64 AOT build (AGL Yocto SDK)
   # Run: docker compose --profile build run --rm hmi_launcher_builder_arm64
   hmi_launcher_builder_arm64:
-    build:
-      context: ../..
-      dockerfile: docker/dockerfile/Dockerfile.build.arm64
-      args:
-        AGL_SDK_USER: ${AGL_SDK_USER:-ossdev}
-        AGL_SDK_PASSWORD: ${AGL_SDK_PASSWORD:-ossdev1234}
-    image: hmi_launcher_builder:arm64
+    image: registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     environment:
       HOME: /tmp
@@ -490,13 +633,15 @@ services:
       - ../../adsw_monitor:/workspace/apps/adsw_monitor
       # pubspec path dep since the embedded lfc panel (b8034e6) — see x86 note.
       - ../../lfc_monitor:/workspace/apps/lfc_monitor
-      # pubspec path dep since the embedded rviz2_monitor panel (F010)
-      - ../../rviz2_monitor:/workspace/apps/rviz2_monitor
+      # pubspec path dep since the embedded rviz2_panel panel (F010)
+      - ../../rviz2_panel:/workspace/apps/rviz2_panel
+      # pubspec path dep for vehicle_data_app
+      - ../../vehicle_data_app:/workspace/apps/vehicle_data_app
       - ../../output:/workspace/output
     command:
       - "--app-path=/workspace/apps/hmi_launcher"
       - "--output-dir=/workspace/output"
-    profiles: [build]
+    profiles: [ build ]
 
   # ── Runtime services ────────────────────────────────────────────────────
 
@@ -532,7 +677,7 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
     restart: unless-stopped
 
@@ -566,7 +711,7 @@ services:
 
     network_mode: host
 
-    profiles: [test]
+    profiles: [ test ]
 
   # arm64 runtime image (flutter-auto based, for AGL targets)
   hmi_launcher_arm64:
@@ -631,7 +776,7 @@ services:
                apt-get install -y --no-install-recommends ros-humble-rosbridge-suite &&
                source /opt/ros/humble/setup.bash &&
                ros2 run rosbridge_server rosbridge_websocket"
-    profiles: [ota-real-stack]
+    profiles: [ ota-real-stack ]
     restart: unless-stopped
 
   ota_manager_mock:
@@ -652,6 +797,6 @@ services:
                  echo '[WARN] /mmf_install/setup.bash missing — set MMF_WS before starting compose (e.g. export MMF_WS=/path/to/ws)' >&2;
                fi &&
                python3 /mock/ota_manager_mock.py"
-    depends_on: [rosbridge]
-    profiles: [ota-real-stack]
+    depends_on: [ rosbridge ]
+    profiles: [ ota-real-stack ]
     restart: unless-stopped

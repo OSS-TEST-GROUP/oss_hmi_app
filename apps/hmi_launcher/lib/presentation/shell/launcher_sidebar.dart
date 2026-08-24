@@ -66,7 +66,6 @@ class LauncherSidebar extends StatelessWidget {
               isActive: selectedAppId == app.id,
               onTap: () => onAppSelected(app.id),
             ),
-          _AddButton(onTap: () {}),
           const Spacer(),
           _RailFoot(connected: connected, hostLabel: hostLabel),
         ],
@@ -143,54 +142,6 @@ class _RailItemState extends State<_RailItem> {
                     color:
                         widget.isActive ? LauncherTokens.t1 : LauncherTokens.t2,
                   ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AddButton extends StatefulWidget {
-  const _AddButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  State<_AddButton> createState() => _AddButtonState();
-}
-
-class _AddButtonState extends State<_AddButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = _hover ? LauncherTokens.t1 : LauncherTokens.tHint;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Container(
-          key: const Key('sidebar_add_button'),
-          margin: const EdgeInsets.only(top: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          decoration: BoxDecoration(
-            color: _hover ? const Color(0xFFF0EFEC) : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.add, size: 14, color: fg),
-              const SizedBox(width: 10),
-              Text(
-                'Add app',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: fg,
                 ),
               ),
             ],

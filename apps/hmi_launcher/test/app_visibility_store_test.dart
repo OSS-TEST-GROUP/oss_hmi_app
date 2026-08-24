@@ -177,6 +177,20 @@ void main() {
       expect(AppVisibilityStore.kDefaultDisabled, contains('ota_monitor'));
     });
 
+    // rviz2_panel 은 2026-08-24 부터 기본 노출 — 보드에서 상시 쓰는 화면이라
+    // 숨겨 두면 첫 진입에 Manage Apps 를 거쳐야 했다.
+    test('신규 설치에서 rviz2_panel 은 노출된다', () async {
+      expect(AppVisibilityStore.kDefaultDisabled,
+          isNot(contains('rviz2_panel')));
+      final store = AppVisibilityStore(
+        readRaw: () => null, // no file yet
+        writeRaw: (s) async {},
+        initialDisabled: Set.from(AppVisibilityStore.kDefaultDisabled),
+      );
+      await store.load();
+      expect(store.isEnabled('rviz2_panel'), isTrue);
+    });
+
     test('fresh install (no state file) → ota_monitor disabled, rest enabled',
         () async {
       final store = AppVisibilityStore(

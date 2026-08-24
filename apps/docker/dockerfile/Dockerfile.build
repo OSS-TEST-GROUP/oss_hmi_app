@@ -18,7 +18,13 @@
 
 FROM ubuntu:22.04
 
-ARG FLUTTER_VERSION=3.41.8
+# ⚠️ **AGL SDK / 보드와 같은 버전이어야 한다** (2026-08-18 확정).
+# arm64 AOT 는 create_aot_with_yocto_sdk.py 가 PATH 앞에 AGL SDK 의 Flutter
+# (3.32.5 / Dart 3.8.1 — 보드 /usr/share/flutter/3.32.5 와 동일)를 끼워 넣고 돌린다.
+# 여기서 다른 버전을 쓰면 **두 SDK 가 서로 다른 의존성 해를 내서** pubspec.lock 이
+# 빌드마다 30 줄씩 왔다 갔다 하고(analyzer 10.2.0 ↔ 8.1.1), 그 더러워진 워크트리가
+# 이미지 빌드의 재현성 가드에 엉뚱한 자리에서 걸린다.
+ARG FLUTTER_VERSION=3.32.5
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV FLUTTER_ROOT=/opt/flutter

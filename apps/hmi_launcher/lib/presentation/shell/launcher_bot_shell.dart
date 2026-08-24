@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:rviz2_panel/main.dart' as rviz2;
 
 import '../../domain/app_manifest.dart';
 import '../../domain/app_visibility_store.dart';
+import '../../domain/dds_domain_store.dart';
+import '../../domain/mmf_restarter.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
 import '../../domain/timezone_store.dart';
@@ -22,6 +26,7 @@ import '../panels/lfc_embedded_panel.dart';
 import '../panels/manage_apps_panel.dart';
 import '../panels/ota_embedded_panel.dart';
 import '../panels/rviz2_embedded_panel.dart';
+import '../panels/vehicle_data_embedded_panel.dart';
 import 'launcher_app_area.dart';
 
 /// Probes whether the v_agentos daemon is reachable, deciding launcher-bot
@@ -44,6 +49,8 @@ class LauncherBotShell extends StatefulWidget {
     required this.lfcTheme,
     required this.onAppThemeChanged,
     required this.timezoneStore,
+    required this.ddsDomainStore,
+    this.mmfRestarter,
     this.onServiceModeChanged,
     this.onRunningAppIdsChanged,
     this.initialAppId,
@@ -60,6 +67,13 @@ class LauncherBotShell extends StatefulWidget {
 
   /// Display timezone (greeting + chat timestamps). Defaults to Korea (KST).
   final TimezoneStore timezoneStore;
+
+  /// MMF/ROS DDS 도메인 설정 (기본 42). Settings 에서 바꾸면 도메인 파일에 기록되어
+  /// MMF 서비스가 **다음 기동 때** 그 도메인으로 올라온다.
+  final DdsDomainStore ddsDomainStore;
+
+  /// 도메인 저장 직후 **같은 호스트의** MMF 컨테이너를 재시작한다(없으면 재시작 생략).
+  final MmfRestarter? mmfRestarter;
 
   final Uri rosUrl;
   final String rosStatus;
@@ -233,8 +247,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   ///
   /// Priority: AGENT_PORT env var → 50051.
   static int _resolveAgentPort() {
-    const portStr =
-        String.fromEnvironment('AGENT_PORT', defaultValue: '50051');
+    const portStr = String.fromEnvironment('AGENT_PORT', defaultValue: '50051');
     return int.tryParse(portStr.trim()) ?? 50051;
   }
 
@@ -242,7 +255,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   /// itself when the daemon answers — without it the bot has no LLM and no
   /// STT, so it stays hidden rather than degrading to a keyword launcher.
   Future<void> _probeAgentAvailability(String host, int port) async {
-    final probe = widget.botAvailabilityProbe ?? AgentSubmitAiService.canConnect;
+    final probe =
+        widget.botAvailabilityProbe ?? AgentSubmitAiService.canConnect;
     final reachable = await probe(host: host, port: port);
     if (!mounted || !reachable) return;
     setState(() {
@@ -309,6 +323,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _selectOpenedApp(String appId) {
+    _hideRviz2IfLeaving(appId);
     _flushUsageFocus();
     if (!_openedAppIds.contains(appId)) {
       _openedAppIds.add(appId);
@@ -318,6 +333,20 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
     _selectedAppId = appId;
     _startUsageFocus(_selectedAppId);
     _notifyRunningAppIdsChanged();
+  }
+
+  /// rviz2_panel 에서 **다른 앱으로 떠날 때** rviz2 서페이스를 내린다.
+  ///
+  /// rviz2 는 런처(BG) 위에 뜨는 별도 wayland 클라이언트라, 내리지 않으면 새로 고른 앱
+  /// 화면이 그 뒤에 가린다(보드 실측). 패널 위젯의 dispose 에 걸 수 없다 — 이 셸은
+  /// IndexedStack 으로 패널을 **살려 둔 채** 인덱스만 바꾸기 때문이다(그래서 dispose 가
+  /// 아예 호출되지 않는다 — 실측: 패널 config 로드 로그가 최초 1회만 찍힌다).
+  /// 컨테이너는 그대로 두므로 rviz2 로 돌아와 'View rviz2' 로 다시 띄운다.
+  void _hideRviz2IfLeaving(String? nextAppId) {
+    const rvizPanelId = 'rviz2_panel';
+    if (_selectedAppId != rvizPanelId || nextAppId == rvizPanelId) return;
+    if (!Get.isRegistered<rviz2.Rviz2Controller>()) return;
+    unawaited(Get.find<rviz2.Rviz2Controller>().hideRviz2());
   }
 
   void _notifyRunningAppIdsChanged() {
@@ -340,6 +369,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
 
   void _goHome() {
     if (_selectedAppId == null) return;
+    _hideRviz2IfLeaving(null);
     _flushUsageFocus();
     setState(() => _selectedAppId = null);
   }
@@ -367,8 +397,7 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
   }
 
   void _startUsageFocus(String? appId) {
-    if (appId == null ||
-        !_visibleApps.any((app) => app.id == appId)) {
+    if (appId == null || !_visibleApps.any((app) => app.id == appId)) {
       _usageFocusAppId = null;
       _usageFocusStartedAt = null;
       return;
@@ -625,6 +654,8 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       lfcTheme: widget.lfcTheme,
                       aiSdkAvailable: _aiSdkAvailable,
                       timezoneStore: widget.timezoneStore,
+                      ddsDomainStore: widget.ddsDomainStore,
+                      mmfRestarter: widget.mmfRestarter,
                       onAppThemeChanged: widget.onAppThemeChanged,
                       onServiceModeChanged: widget.onServiceModeChanged,
                     ),
@@ -654,6 +685,8 @@ class _AppStage extends StatelessWidget {
     required this.lfcTheme,
     required this.aiSdkAvailable,
     required this.timezoneStore,
+    required this.ddsDomainStore,
+    this.mmfRestarter,
     required this.onAppThemeChanged,
     this.onServiceModeChanged,
     this.panelBuilder,
@@ -665,6 +698,8 @@ class _AppStage extends StatelessWidget {
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
   final TimezoneStore timezoneStore;
+  final DdsDomainStore ddsDomainStore;
+  final MmfRestarter? mmfRestarter;
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
@@ -721,6 +756,8 @@ class _AppStage extends StatelessWidget {
         lfcTheme: lfcTheme,
         aiSdkAvailable: aiSdkAvailable,
         timezoneStore: timezoneStore,
+        ddsDomainStore: ddsDomainStore,
+        mmfRestarter: mmfRestarter,
         onAppThemeChanged: onAppThemeChanged,
         onServiceModeChanged: onServiceModeChanged,
       );
@@ -738,9 +775,15 @@ class _AppStage extends StatelessWidget {
         return AdswEmbeddedPanel(key: key);
       case 'lfc_monitor':
         return LfcEmbeddedPanel(key: key, rosUrl: rosUrl);
-      case 'rviz2_monitor':
+      case 'rviz2_panel':
         // Direct-docker control (no rosUrl) — see Rviz2EmbeddedPanel.
-        return Rviz2EmbeddedPanel(key: key);
+        // ROS_DOMAIN_ID 프리필은 Settings 의 DDS domain 을 따른다(단일 출처).
+        return Rviz2EmbeddedPanel(
+          key: key,
+          domainId: '${ddsDomainStore.domain}',
+        );
+      case 'vehicle_data_app':
+        return VehicleDataEmbeddedPanel(key: key);
       default:
         return AppPlaceholderPanel(key: key, app: app);
     }
@@ -857,6 +900,8 @@ class _SettingsPage extends StatefulWidget {
     required this.lfcTheme,
     required this.aiSdkAvailable,
     required this.timezoneStore,
+    required this.ddsDomainStore,
+    this.mmfRestarter,
     required this.onAppThemeChanged,
     this.onServiceModeChanged,
   });
@@ -871,6 +916,8 @@ class _SettingsPage extends StatefulWidget {
   final String lfcTheme;
   final bool aiSdkAvailable;
   final TimezoneStore timezoneStore;
+  final DdsDomainStore ddsDomainStore;
+  final MmfRestarter? mmfRestarter;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final Future<bool> Function(int modeValue)? onServiceModeChanged;
 
@@ -882,7 +929,10 @@ class _SettingsPageState extends State<_SettingsPage> {
   late final TextEditingController _bridgeIpController;
   late final TextEditingController _portController;
   late final TextEditingController _vehicleProfileController;
+  late final TextEditingController _ddsDomainController;
   String? _errorText;
+  String? _domainErrorText;
+  bool _applyingDomain = false;
   bool _applying = false;
 
   // Lifecycle service mode (0 = NORMAL, 1 = OTA). Replaces lfc_monitor's own
@@ -905,10 +955,116 @@ class _SettingsPageState extends State<_SettingsPage> {
     if (!mounted) return;
     final label = _serviceModeValue == 1 ? 'OTA_MODE' : 'NORMAL';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok
-          ? 'Service Mode $label 적용 요청'
-          : 'Lifecycle Monitor를 먼저 열어 연결하세요'),
+      content: Text(
+          ok ? 'Service Mode $label 적용 요청' : 'Lifecycle Monitor를 먼저 열어 연결하세요'),
     ));
+  }
+
+  /// DDS 도메인 적용 — 런처 설정 + MMF 도메인 파일에 기록한다.
+  ///
+  /// 도메인은 프로세스 시작 시점에만 읽히므로 **여기서 실행 중 서비스가 바뀌지는
+  /// 않는다**. 무엇이 언제 반영되는지 스낵바로 정확히 알린다(조용히 성공한 척 X).
+  Future<void> _applyDdsDomain() async {
+    final raw = _ddsDomainController.text.trim();
+    final value = int.tryParse(raw);
+    if (value == null || value < kMinDdsDomain || value > kMaxDdsDomain) {
+      setState(() => _domainErrorText =
+          'DDS domain must be an integer in $kMinDdsDomain–$kMaxDdsDomain');
+      return;
+    }
+    setState(() {
+      _domainErrorText = null;
+      _applyingDomain = true;
+    });
+    final store = widget.ddsDomainStore;
+    final ok = await store.select(value);
+    if (!mounted) return;
+    setState(() => _applyingDomain = false);
+    final wrote = store.lastEnvWriteOk == true;
+
+    // 저장이 됐고 도메인 파일까지 썼으면, **같은 호스트의** MMF 컨테이너를 재시작해
+    // 새 도메인으로 올린다(다른 호스트는 그 호스트에서 재기동해야 반영).
+    var restartNote = '';
+    if (ok && wrote && widget.mmfRestarter != null) {
+      final outcomes = await widget.mmfRestarter!.applyDomain(value);
+      List<String> named(RestartOutcome o) => outcomes.entries
+          .where((e) => e.value == o)
+          .map((e) => e.key)
+          .toList();
+      final restarted = named(RestartOutcome.restarted);
+      final needRecreate = named(RestartOutcome.needsRecreate);
+      final failed = named(RestartOutcome.failed);
+      if (restarted.isNotEmpty) {
+        restartNote = ' · 재시작: ${restarted.join(", ")}';
+      }
+      if (needRecreate.isNotEmpty) {
+        // docker restart 는 생성 당시 env 를 재사용하므로 도메인을 못 바꾼다 —
+        // 재생성이 필요하다는 사실을 그대로 알린다(실측 근거는 MmfRestarter 참조).
+        restartNote += ' · 재생성 필요(${needRecreate.join(", ")}): '
+            '${MmfRestarter.kRecreateHint}';
+      }
+      if (failed.isNotEmpty) {
+        restartNote += ' · 재시작 실패: ${failed.join(", ")}';
+      }
+    }
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(!ok
+          ? 'DDS domain 적용 실패 (범위 $kMinDdsDomain–$kMaxDdsDomain)'
+          : wrote
+              ? 'DDS domain $value 저장 — 다른 호스트 서비스는 다음 기동 때 반영'
+                  '$restartNote'
+              : 'DDS domain $value 저장 (런처 전용) — 도메인 파일 쓰기 실패: '
+                  '${store.lastEnvError ?? "권한/경로 확인"}'),
+    ));
+  }
+
+  Widget _buildDdsDomainControl() {
+    final store = widget.ddsDomainStore;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SettingField(
+          label: 'DDS domain ($kMinDdsDomain–$kMaxDdsDomain)',
+          controller: _ddsDomainController,
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'MMF(core·ext-ros2·ext-agl)와 Autoware·rviz2 가 같은 도메인이어야 통신합니다. '
+          '기본 $kDefaultDdsDomain. 저장 위치: ${store.envFilePath}',
+          style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+        ),
+        if (_domainErrorText != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _domainErrorText!,
+            style: const TextStyle(
+              color: Color(0xFFDC2626),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            key: const Key('settings_dds_domain_apply'),
+            onPressed: _applyingDomain ? null : _applyDdsDomain,
+            icon: _applyingDomain
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.hub_outlined),
+            label: Text(_applyingDomain ? 'Saving' : 'Save domain'),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildServiceModeControl() {
@@ -959,6 +1115,8 @@ class _SettingsPageState extends State<_SettingsPage> {
       text: widget.rosUrl.hasPort ? '${widget.rosUrl.port}' : '9090',
     );
     _vehicleProfileController = TextEditingController(text: 'AGL demo target');
+    _ddsDomainController =
+        TextEditingController(text: '${widget.ddsDomainStore.domain}');
   }
 
   @override
@@ -975,6 +1133,7 @@ class _SettingsPageState extends State<_SettingsPage> {
   void dispose() {
     _bridgeIpController.dispose();
     _portController.dispose();
+    _ddsDomainController.dispose();
     _vehicleProfileController.dispose();
     super.dispose();
   }
@@ -1009,52 +1168,64 @@ class _SettingsPageState extends State<_SettingsPage> {
           children: [
             Expanded(
               flex: 6,
-              child: _SettingsPanel(
-                title: 'Connection',
+              child: Column(
                 children: [
-                  _SettingField(
-                    label: 'Bridge IP address',
-                    controller: _bridgeIpController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _SettingField(
-                    label: 'Port',
-                    controller: _portController,
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 12),
-                  _SettingField(
-                    label: 'Vehicle profile',
-                    controller: _vehicleProfileController,
-                  ),
-                  if (_errorText != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _errorText!,
-                      style: const TextStyle(
-                        color: Color(0xFFDC2626),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                  _SettingsPanel(
+                    title: 'Connection',
+                    children: [
+                      _SettingField(
+                        label: 'Bridge IP address',
+                        controller: _bridgeIpController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      _SettingField(
+                        label: 'Port',
+                        controller: _portController,
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 12),
+                      _SettingField(
+                        label: 'Vehicle profile',
+                        controller: _vehicleProfileController,
+                      ),
+                      if (_errorText != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          _errorText!,
+                          style: const TextStyle(
+                            color: Color(0xFFDC2626),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          onPressed: _applying ? null : _apply,
+                          icon: _applying
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.sync),
+                          label: Text(_applying ? 'Applying' : 'Apply'),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton.icon(
-                      onPressed: _applying ? null : _apply,
-                      icon: _applying
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync),
-                      label: Text(_applying ? 'Applying' : 'Apply'),
-                    ),
+                  // MMF(core/ext-ros2/ext-agl) + Autoware + rviz2 가 만나는 DDS 도메인.
+                  // 저장하면 도메인 파일에 기록되고 각 서비스는 다음 기동 때 반영한다.
+                  _SettingsPanel(
+                    title: 'DDS Domain',
+                    children: [_buildDdsDomainControl()],
                   ),
                 ],
               ),
