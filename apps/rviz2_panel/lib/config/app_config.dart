@@ -18,6 +18,9 @@ class AppConfig {
     required this.pollIntervalSec,
     required this.dockerRunArgs,
     this.defaultDomainId = kFallbackDomainId,
+    this.rvizConfigPath = '',
+    this.rmwImplementation = '',
+    this.domainIdFromUser = false,
   });
 
   /// Docker container name (used for docker run --name, docker stop, inspect).
@@ -37,6 +40,18 @@ class AppConfig {
 
   /// How often (seconds) [refreshStatus] polls docker inspect.
   final int pollIntervalSec;
+
+  /// `-e RVIZ_CONFIG=<path>` 기본값 (entrypoint 가 `rviz2 -d <path>` 로 넘긴다).
+  /// 빈 문자열이면 넘기지 않는다(이미지 기본 레이아웃 사용).
+  final String rvizConfigPath;
+
+  /// `-e RMW_IMPLEMENTATION=<impl>` 기본값. 빈 문자열이면 넘기지 않는다.
+  final String rmwImplementation;
+
+  /// [defaultDomainId] 가 **사용자 저장값**인지. true 면 임베디드 패널이 런처
+  /// Settings 의 DDS 도메인으로 덮어쓰지 않는다 — 패널에서 명시적으로 고른 값이
+  /// 런처 기본값보다 우선한다는 뜻이다.
+  final bool domainIdFromUser;
 
   /// rviz2 컨테이너에 넣을 ROS_DOMAIN_ID 기본값 (Run Options 프리필).
   /// hmi_launcher 에 임베드될 때는 런처 Settings 의 "DDS domain" 값이 내려온다 —
@@ -60,6 +75,8 @@ class AppConfig {
         homeAppId: 'hmi_launcher',
         pollIntervalSec: 3,
         defaultDomainId: domainId ?? kFallbackDomainId,
+        rvizConfigPath: '',
+        rmwImplementation: '',
         dockerRunArgs: const [
           '--net=host',
           '--ipc=host',
@@ -76,7 +93,10 @@ class AppConfig {
   /// 파일/env 로 읽어온 설정에 **런처 Settings 의 DDS 도메인만** 덧씌운다.
   /// 임베디드 패널(hmi_launcher)은 설정 파일이 있으면 그 값을 쓰되, 도메인은 런처
   /// Settings 가 단일 소스이므로 이 메서드로 주입한다. null 이면 그대로 둔다.
-  AppConfig withDomainId(String? domainId) => domainId == null
+  /// 사용자가 패널에서 도메인을 저장해 두었으면([domainIdFromUser]) 런처 값으로
+  /// 덮어쓰지 않는다 — "패널에서 모든 옵션을 정할 수 있다"는 계약을 지키기 위해서다.
+  AppConfig withDomainId(String? domainId) => (domainId == null ||
+          domainIdFromUser)
       ? this
       : AppConfig(
           containerName: containerName,
@@ -87,6 +107,8 @@ class AppConfig {
           pollIntervalSec: pollIntervalSec,
           dockerRunArgs: dockerRunArgs,
           defaultDomainId: domainId,
+          rvizConfigPath: rvizConfigPath,
+          rmwImplementation: rmwImplementation,
         );
 
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
@@ -101,5 +123,54 @@ class AppConfig {
                 ?.map((e) => e.toString())
                 .toList() ??
             AppConfig.defaults().dockerRunArgs,
+        defaultDomainId:
+            (j['defaultDomainId'] ?? j['domainId'])?.toString() ??
+                kFallbackDomainId,
+        rvizConfigPath: (j['rvizConfigPath'] as String?) ?? '',
+        rmwImplementation: (j['rmwImplementation'] as String?) ?? '',
+        domainIdFromUser:
+            j['defaultDomainId'] != null || j['domainId'] != null,
+      );
+
+  /// 사용자 설정 파일로 저장할 형태. [fromJson] 과 왕복 가능해야 한다.
+  Map<String, dynamic> toJson() => {
+        'containerName': containerName,
+        'image': image,
+        'aglOutput': aglOutput,
+        'rvizAppId': rvizAppId,
+        'homeAppId': homeAppId,
+        'pollIntervalSec': pollIntervalSec,
+        'dockerRunArgs': dockerRunArgs,
+        'defaultDomainId': defaultDomainId,
+        'rvizConfigPath': rvizConfigPath,
+        'rmwImplementation': rmwImplementation,
+      };
+
+  /// 필드 단위 수정본을 만든다(설정 화면의 저장 경로).
+  AppConfig copyWith({
+    String? containerName,
+    String? image,
+    String? aglOutput,
+    String? rvizAppId,
+    String? homeAppId,
+    int? pollIntervalSec,
+    List<String>? dockerRunArgs,
+    String? defaultDomainId,
+    String? rvizConfigPath,
+    String? rmwImplementation,
+    bool? domainIdFromUser,
+  }) =>
+      AppConfig(
+        containerName: containerName ?? this.containerName,
+        image: image ?? this.image,
+        aglOutput: aglOutput ?? this.aglOutput,
+        rvizAppId: rvizAppId ?? this.rvizAppId,
+        homeAppId: homeAppId ?? this.homeAppId,
+        pollIntervalSec: pollIntervalSec ?? this.pollIntervalSec,
+        dockerRunArgs: dockerRunArgs ?? this.dockerRunArgs,
+        defaultDomainId: defaultDomainId ?? this.defaultDomainId,
+        rvizConfigPath: rvizConfigPath ?? this.rvizConfigPath,
+        rmwImplementation: rmwImplementation ?? this.rmwImplementation,
+        domainIdFromUser: domainIdFromUser ?? this.domainIdFromUser,
       );
 }

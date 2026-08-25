@@ -2,15 +2,26 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'app_config.dart';
+import 'user_config_store.dart';
 
 /// Config file search order (direct-docker variant):
+///   0. **사용자 저장본** `$XDG_CONFIG_HOME/rviz2_panel/config.json` — 화면에서 바꾼 값
 ///   1. CLI arg `--config <path>`
 ///   2. env var `RVIZ2_MONITOR_CONFIG`
 ///   3. `./config/config.json` next to the working dir
 ///   4. `~/.config/rviz2_panel/config.json`
-///   5. `/etc/rviz2_panel/config.json` (system-wide)
+///   5. `/etc/rviz2_panel/config.json` (system-wide, adsw 가 `:ro` 로 마운트)
 /// then fall back to [AppConfig.defaults].
+///
+/// 0 번이 맨 앞인 이유: 사이트 기본값(5)은 읽기 전용이라 화면에서 고칠 수 없다.
+/// 사용자가 저장한 값이 있으면 그것이 이긴다(없으면 종전 순서 그대로).
 Future<AppConfig> loadConfig(List<String> args) async {
+  final user = await UserConfigStore().load();
+  if (user != null) {
+    stdout.writeln('[rviz2_panel] config: ${UserConfigStore.defaultPath()} (사용자 저장본)');
+    return user;
+  }
+
   final candidates = <String?>[
     _argValue(args, '--config'),
     Platform.environment['RVIZ2_MONITOR_CONFIG'],

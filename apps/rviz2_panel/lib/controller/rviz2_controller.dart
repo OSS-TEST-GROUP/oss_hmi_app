@@ -36,7 +36,14 @@ import '../generated/agl_shell.pbgrpc.dart';
 class Rviz2Controller extends GetxController {
   Rviz2Controller({required this.cfg});
 
-  final AppConfig cfg;
+  /// 설정 화면에서 저장한 값을 **즉시** 반영한다(다음 Start 부터 적용).
+  /// 컨트롤러는 permanent 로 등록돼 있어 재생성되지 않으므로 필드를 갈아끼운다.
+  void applyConfig(AppConfig next) {
+    cfg = next;
+    update();
+  }
+
+  AppConfig cfg;
 
   // ─── Public observable state ────────────────────────────────────────────
 

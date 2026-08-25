@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../config/app_config.dart';
+import '../config/config_loader.dart';
+import '../config/docker_args_format.dart';
+import '../config/user_config_store.dart';
 import '../controller/rviz2_controller.dart';
 import '../data/rviz2_data.dart';
 
@@ -79,6 +82,20 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   final TextEditingController _rmwCtrl =
       TextEditingController(text: kAutowareRmw);
 
+  // ── 패널 설정(영구 저장) 폼 ──────────────────────────────────────────────
+  // Run Options 는 이번 기동에만 쓰이는 값이고, 아래 필드들은 저장하면 다음 실행에도
+  // 유지된다($XDG_CONFIG_HOME/rviz2_panel/config.json).
+  late final TextEditingController _imageCtrl;
+  late final TextEditingController _containerCtrl;
+  late final TextEditingController _outputCtrl;
+  late final TextEditingController _rvizAppIdCtrl;
+  late final TextEditingController _homeAppIdCtrl;
+  late final TextEditingController _pollCtrl;
+  late final TextEditingController _dockerArgsCtrl;
+  final UserConfigStore _userCfg = UserConfigStore();
+  bool _savingCfg = false;
+  String? _cfgMsg;
+
   // Log auto-scroll.
   final ScrollController _logScrollCtrl = ScrollController();
 
@@ -88,6 +105,24 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
 
     // 런처 Settings 의 DDS domain 이 cfg 로 내려온다(단독 실행 시 kFallbackDomainId).
     _domainIdCtrl = TextEditingController(text: widget.cfg.defaultDomainId);
+
+    // 저장된 값이 있으면 Run Options 도 그것으로 시작한다(없으면 Autoware 프리셋).
+    if (widget.cfg.rvizConfigPath.isNotEmpty) {
+      _rvizConfigCtrl.text = widget.cfg.rvizConfigPath;
+    }
+    if (widget.cfg.rmwImplementation.isNotEmpty) {
+      _rmwCtrl.text = widget.cfg.rmwImplementation;
+    }
+
+    _imageCtrl = TextEditingController(text: widget.cfg.image);
+    _containerCtrl = TextEditingController(text: widget.cfg.containerName);
+    _outputCtrl = TextEditingController(text: widget.cfg.aglOutput);
+    _rvizAppIdCtrl = TextEditingController(text: widget.cfg.rvizAppId);
+    _homeAppIdCtrl = TextEditingController(text: widget.cfg.homeAppId);
+    _pollCtrl =
+        TextEditingController(text: '${widget.cfg.pollIntervalSec}');
+    _dockerArgsCtrl =
+        TextEditingController(text: dockerArgsToText(widget.cfg.dockerRunArgs));
 
     _ctrl = Get.isRegistered<Rviz2Controller>()
         ? Get.find<Rviz2Controller>()
@@ -119,6 +154,13 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
     _rvizConfigCtrl.dispose();
     _domainIdCtrl.dispose();
     _rmwCtrl.dispose();
+    _imageCtrl.dispose();
+    _containerCtrl.dispose();
+    _outputCtrl.dispose();
+    _rvizAppIdCtrl.dispose();
+    _homeAppIdCtrl.dispose();
+    _pollCtrl.dispose();
+    _dockerArgsCtrl.dispose();
     _logScrollCtrl.dispose();
     super.dispose();
   }
@@ -127,31 +169,37 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   /// null 이면 **내용 높이에 맞춰 자동**(카드 두 장이 나란히 = 약 200px). 사용자가 핸들을
   /// 끌면 그 값이 들어가 고정된다. 더블클릭으로 자동으로 되돌린다.
   /// (고정 기본값 300 을 쓰면 카드가 200 인 경우 100px 빈 공간이 남았다 — 실측)
-  double? _topHeight;
-  static const double _kTopMin = 150;
+  /// 좌(제어·옵션·설정) : 우(docker logs) 폭 비율. null 이면 기본값 [_kLeftDefault].
+  /// 가로 화면에서 가운데 핸들을 끌어 조절한다(더블탭 = 기본값 복귀).
+  double? _leftFraction;
+  static const double _kLeftDefault = 0.75; // 3 : 1
+  static const double _kLeftMin = 0.35;
+  static const double _kLeftMax = 0.85;
 
   /// 상단/로그 경계의 드래그 핸들. 위로 끌면 로그가 커지고 아래로 끌면 상단이 커진다.
-  Widget _buildLogResizeHandle(
-      BuildContext context, double maxTop, double currentTop) {
+  /// 좌우 폭 조절 핸들. 끌면 [_leftFraction] 을 바꾸고, 더블탭하면 기본 3:1 로 되돌린다.
+  /// (예전에는 상하 높이 조절 핸들이었다 — 로그가 아래 전체 폭을 차지하던 레이아웃)
+  Widget _buildSideResizeHandle(BuildContext context, double usable) {
     final outline = Theme.of(context).colorScheme.outline;
     return MouseRegion(
-      cursor: SystemMouseCursors.resizeUpDown,
+      cursor: SystemMouseCursors.resizeLeftRight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (d) => setState(() {
-          // 자동(null) 상태에서 처음 끌면 현재 렌더 높이를 기준으로 이어받는다.
-          _topHeight =
-              ((_topHeight ?? currentTop) + d.delta.dy).clamp(_kTopMin, maxTop);
+        onHorizontalDragUpdate: (d) => setState(() {
+          if (usable <= 0) return;
+          _leftFraction =
+              ((_leftFraction ?? _kLeftDefault) + d.delta.dx / usable)
+                  .clamp(_kLeftMin, _kLeftMax);
         }),
-        onDoubleTap: () => setState(() => _topHeight = null), // 자동으로 복귀
+        onDoubleTap: () => setState(() => _leftFraction = null),
         child: Tooltip(
-          message: '드래그로 로그 영역 높이 조절 (더블클릭 = 자동 높이)',
+          message: '드래그로 좌우 폭 조절 (더블탭 = 기본 3:1)',
           child: SizedBox(
-            height: 18,
+            width: 18,
             child: Center(
               child: Container(
-                width: 56,
-                height: 4,
+                width: 4,
+                height: 56,
                 decoration: BoxDecoration(
                   color: outline.withValues(alpha: 0.45),
                   borderRadius: BorderRadius.circular(2),
@@ -190,40 +238,33 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
           const gap = SizedBox(width: 12, height: 12);
 
           if (wide) {
-            // 위: 제어 + 실행 옵션(좌우) / 아래: docker logs(전체 폭).
-            // 사이의 핸들을 끌어 **로그 영역 높이를 조절**한다 — 상단 높이(_topHeight)를
-            // 바꾸고 로그는 Expanded 로 남은 공간을 채우므로 중간에 빈 틈이 생기지 않는다.
-            final maxTop = (c.maxHeight - 180).clamp(_kTopMin, c.maxHeight);
-            final fixedTop = _topHeight?.clamp(_kTopMin, maxTop);
-            // 상단 내용(카드 2장 + 에러 배너)
-            final topContent = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 48, child: _buildStatusCard(context)),
-                    const SizedBox(width: 12),
-                    Expanded(flex: 52, child: _buildOptionsCard(context)),
-                  ],
-                ),
-                _buildErrorBanner(context),
-              ],
-            );
+            // 좌: RViz2 Control + Run Options + 패널 설정 / 우: docker logs.
+            // 가운데 핸들을 끌어 **좌우 폭 비율**을 조절한다(기본 3:1, 더블탭 복귀).
+            // 좌측은 카드가 길어 세로 스크롤을 두고, 로그가 남은 폭을 채운다.
+            const handleW = 18.0;
+            final frac =
+                (_leftFraction ?? _kLeftDefault).clamp(_kLeftMin, _kLeftMax);
+            final usable =
+                (c.maxWidth - 24 - handleW).clamp(0.0, double.infinity);
+
             return Padding(
               padding: const EdgeInsets.all(12),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 자동: 내용 높이만 차지(빈 공간 없음) / 지정: 그 높이로 고정 + 스크롤
-                  if (fixedTop == null)
-                    topContent
-                  else
-                    SizedBox(
-                      height: fixedTop,
-                      child: SingleChildScrollView(child: topContent),
+                  SizedBox(
+                    width: usable * frac,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(child: leftPanel),
+                        ),
+                        _buildErrorBanner(context),
+                      ],
                     ),
-                  _buildLogResizeHandle(context, maxTop, fixedTop ?? 200),
+                  ),
+                  _buildSideResizeHandle(context, usable),
                   Expanded(child: rightPanel),
                 ],
               ),
@@ -278,9 +319,12 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
       children: [
         _buildStatusCard(context),
         const SizedBox(height: 12),
+        // ⚠️ Expanded/Spacer 를 쓰지 않는다 — 이 묶음은 ListView(좁은 화면)와
+        //    SingleChildScrollView(넓은 화면) 안에 들어가 높이가 무한이다.
+        //    스크롤과 에러 배너 배치는 호출부가 맡는다.
+        _buildSettingsCard(context),
+        const SizedBox(height: 12),
         _buildOptionsCard(context),
-        const Spacer(),
-        _buildErrorBanner(context),
       ],
     );
   }
@@ -574,6 +618,205 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                           const TextStyle(fontSize: 13, fontFamily: 'monospace'),
                     ),
                   ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── 패널 설정: 저장 / 되돌리기 ───────────────────────────────────────────
+
+  /// 화면의 모든 값을 하나의 [AppConfig] 로 모은다.
+  AppConfig _formConfig() => widget.cfg.copyWith(
+        image: _imageCtrl.text.trim(),
+        containerName: _containerCtrl.text.trim(),
+        aglOutput: _outputCtrl.text.trim(),
+        rvizAppId: _rvizAppIdCtrl.text.trim(),
+        homeAppId: _homeAppIdCtrl.text.trim(),
+        pollIntervalSec:
+            int.tryParse(_pollCtrl.text.trim()) ?? widget.cfg.pollIntervalSec,
+        dockerRunArgs: dockerArgsFromText(_dockerArgsCtrl.text),
+        defaultDomainId: _domainIdCtrl.text.trim(),
+        rvizConfigPath: _rvizConfigCtrl.text.trim(),
+        rmwImplementation: _rmwCtrl.text.trim(),
+        // 저장 시점부터 이 도메인은 사용자가 고른 값이다 → 런처 Settings 로
+        // 덮어쓰지 않는다(AppConfig.withDomainId).
+        domainIdFromUser: true,
+      );
+
+  /// 현재 값을 사용자 설정 파일에 쓰고, 실행 중인 컨트롤러에도 즉시 반영한다.
+  Future<void> _saveSettings() async {
+    setState(() {
+      _savingCfg = true;
+      _cfgMsg = null;
+    });
+    final cfg = _formConfig();
+    final err = await _userCfg.save(cfg);
+    if (err == null) _ctrl.applyConfig(cfg);
+    if (!mounted) return;
+    setState(() {
+      _savingCfg = false;
+      _cfgMsg = err == null
+          ? '저장됨 → ${_userCfg.path} (다음 Start 부터 적용)'
+          : '저장 실패: $err';
+    });
+  }
+
+  /// 저장본을 치우고 사이트 기본값(/etc → 코드 기본값)으로 되돌린다.
+  Future<void> _resetSettings() async {
+    setState(() {
+      _savingCfg = true;
+      _cfgMsg = null;
+    });
+    final err = await _userCfg.reset();
+    final base = await loadConfig(const <String>[]);
+    if (err == null) _ctrl.applyConfig(base);
+    if (!mounted) return;
+    setState(() {
+      _savingCfg = false;
+      if (err == null) {
+        _imageCtrl.text = base.image;
+        _containerCtrl.text = base.containerName;
+        _outputCtrl.text = base.aglOutput;
+        _rvizAppIdCtrl.text = base.rvizAppId;
+        _homeAppIdCtrl.text = base.homeAppId;
+        _pollCtrl.text = '${base.pollIntervalSec}';
+        _dockerArgsCtrl.text = dockerArgsToText(base.dockerRunArgs);
+        _domainIdCtrl.text = base.defaultDomainId;
+        _rvizConfigCtrl.text = base.rvizConfigPath.isEmpty
+            ? kAutowareRvizConfig
+            : base.rvizConfigPath;
+        _rmwCtrl.text =
+            base.rmwImplementation.isEmpty ? kAutowareRmw : base.rmwImplementation;
+        _cfgMsg = '기본값으로 되돌림 (저장본은 .bak 으로 보관)';
+      } else {
+        _cfgMsg = '되돌리기 실패: $err';
+      }
+    });
+  }
+
+  /// 컨테이너 기동에 쓰이는 **모든 옵션**을 편집·저장하는 카드.
+  /// Run Options(위 카드)가 이번 기동에만 쓰이는 값이라면, 여기 값은 저장하면
+  /// 재기동 후에도 유지된다 — 저장 위치는 쓰기 가능한 XDG 설정 디렉토리다.
+  Widget _buildSettingsCard(BuildContext context) {
+    // 각 필드 아래에 **무엇을 바꾸는 값인지** 한 줄 설명을 붙인다 — 이름만으로는
+    // rvizAppId/aglOutput 처럼 뜻이 드러나지 않는 것들이 있다.
+    Widget field(String label, TextEditingController c,
+            {String? hint, String? help, int maxLines = 1}) =>
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: c,
+                maxLines: maxLines,
+                decoration: InputDecoration(
+                  labelText: label,
+                  hintText: hint,
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+              ),
+              if (help != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3, left: 2),
+                  child: Text(help,
+                      style: const TextStyle(
+                          color: Color(0xFF6B7280), fontSize: 11)),
+                ),
+            ],
+          ),
+        );
+
+    return Card(
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.settings_outlined, size: 20),
+                SizedBox(width: 8),
+                Text('패널 설정 (영구 저장)',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '저장하면 ${_userCfg.path} 에 기록되어 재기동 후에도 유지됩니다. '
+              '비워 두면 사이트 기본값(/etc/rviz2_panel/config.json)을 씁니다.',
+              style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+            ),
+            const SizedBox(height: 12),
+            field('image', _imageCtrl,
+                hint: 'registry.obigo.com/oss/rviz2-agl:latest',
+                help: 'Start 가 띄울 rviz2 컨테이너 이미지. 태그를 바꾸면 다음 Start 부터 적용된다.'),
+            field('containerName', _containerCtrl,
+                hint: 'rviz2',
+                help: 'docker run --name · stop · logs 의 대상 이름. 패널이 이 이름으로 상태를 조회한다.'),
+            Row(children: [
+              Expanded(
+                  child: field('aglOutput', _outputCtrl,
+                      hint: 'DP-1',
+                      help: 'rviz2 를 띄울 화면(agl-shell output). 보드는 DP-1.')),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: field('pollIntervalSec', _pollCtrl,
+                      hint: '3', help: '컨테이너 상태를 다시 확인하는 주기(초).')),
+            ]),
+            Row(children: [
+              Expanded(
+                  child: field('rvizAppId', _rvizAppIdCtrl,
+                      hint: 'wlroots',
+                      help: 'rviz2 창의 app_id. cage 가 만드는 이름이라 보통 그대로 둔다.')),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: field('homeAppId', _homeAppIdCtrl,
+                      hint: 'hmi_launcher',
+                      help: '홈 버튼으로 돌아갈 런처의 app_id.')),
+            ]),
+            field('dockerRunArgs', _dockerArgsCtrl,
+                hint: '--net=host',
+                help: 'docker run 에 그대로 넘길 인자. **한 줄에 하나**, 값이 있으면 같은 줄에 쓴다 '
+                    '(예: --user 1001:1001).',
+                maxLines: 8),
+            if (_cfgMsg != null) ...[
+              Text(_cfgMsg!,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _cfgMsg!.contains('실패')
+                          ? const Color(0xFFDC2626)
+                          : const Color(0xFF059669))),
+              const SizedBox(height: 8),
+            ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  key: const Key('panel_settings_reset'),
+                  onPressed: _savingCfg ? null : _resetSettings,
+                  icon: const Icon(Icons.restart_alt, size: 18),
+                  label: const Text('기본값으로'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  key: const Key('panel_settings_save'),
+                  onPressed: _savingCfg ? null : _saveSettings,
+                  icon: _savingCfg
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.save_outlined, size: 18),
+                  label: Text(_savingCfg ? '저장 중' : '저장'),
                 ),
               ],
             ),
