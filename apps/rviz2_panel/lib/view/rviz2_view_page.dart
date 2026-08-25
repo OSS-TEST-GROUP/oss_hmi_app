@@ -691,7 +691,7 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             : base.rvizConfigPath;
         _rmwCtrl.text =
             base.rmwImplementation.isEmpty ? kAutowareRmw : base.rmwImplementation;
-        _cfgMsg = '기본값으로 되돌림 (저장본은 .bak 으로 보관)';
+        _cfgMsg = '기기 기본값으로 되돌림 (변경분은 .bak 으로 보관)';
       } else {
         _cfgMsg = '되돌리기 실패: $err';
       }
@@ -752,7 +752,7 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             const SizedBox(height: 4),
             Text(
               '저장하면 ${_userCfg.path} 에 기록되어 재기동 후에도 유지됩니다. '
-              '비워 두면 사이트 기본값(/etc/rviz2_panel/config.json)을 씁니다.',
+              '"기본값으로" 를 누르면 ${_userCfg.defPath} (기기 기본값)로 돌아갑니다.',
               style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
             ),
             const SizedBox(height: 12),
