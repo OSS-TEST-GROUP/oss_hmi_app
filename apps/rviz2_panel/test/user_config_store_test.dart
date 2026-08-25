@@ -14,7 +14,10 @@ void main() {
 
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('rviz2_panel_cfg');
-    store = UserConfigStore(path: '${tmp.path}/rviz2_panel/config.json');
+    store = UserConfigStore(
+      path: '${tmp.path}/rviz2_panel/config.json',
+      defaultPath: '${tmp.path}/rviz2_panel/config_def.json',
+    );
   });
 
   tearDown(() async {
@@ -85,5 +88,27 @@ void main() {
     final raw = await File(store.path).readAsString();
     expect(raw, contains('\n  "image"'));
     expect(jsonDecode(raw), isA<Map<String, dynamic>>());
+  });
+
+  test('기본값 파일은 없을 때만 만들고, 있으면 손대지 않는다', () async {
+    final seeded = AppConfig.defaults().copyWith(image: 'seed:1');
+    expect(await store.seedDefault(seeded), isNull);
+    expect((await store.loadDefault())!.image, 'seed:1');
+
+    // 두 번째 seed 는 무시된다 — 운영자가 고쳐 둔 기본값을 덮지 않기 위해서다.
+    await store.seedDefault(AppConfig.defaults().copyWith(image: 'seed:2'));
+    expect((await store.loadDefault())!.image, 'seed:1');
+  });
+
+  test('사용자 변경분이 기본값보다 우선하고, 되돌리면 기본값으로 간다', () async {
+    await store.seedDefault(AppConfig.defaults().copyWith(image: 'def:1'));
+    await store.save(AppConfig.defaults().copyWith(image: 'user:1'));
+
+    expect((await store.load())!.image, 'user:1');
+    expect((await store.loadDefault())!.image, 'def:1');
+
+    await store.reset();
+    expect(await store.load(), isNull);            // 변경분 사라짐
+    expect((await store.loadDefault())!.image, 'def:1'); // 기본값은 남는다
   });
 }
