@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:grpc/grpc.dart';
 import 'package:vehicle_data_app/src/generated/VISSv3.0.pbgrpc.dart';
 import 'dart:async';
@@ -28,6 +29,12 @@ class GrpcClient {
   final _events = StreamController<DataPackages>.broadcast();
   Stream<DataPackages> get events => _events.stream;
 
+  @visibleForTesting
+  void emitEvent(DataPackages data) => _events.add(data);
+
+  @visibleForTesting
+  void emitError(Object error) => _events.addError(error);
+
   Future<void> connect() async {
     if (_channel != null) return;
     _channel = ClientChannel(
@@ -36,7 +43,7 @@ class GrpcClient {
       options: const ChannelOptions(credentials: ChannelCredentials.insecure()),
     );
     _stub = VISSClient(_channel!);
-    print('[CLOUD] Connected to $host:$port');
+    debugPrint('[CLOUD] Connected to $host:$port');
     // await subscribe();
   }
 
@@ -86,7 +93,7 @@ class GrpcClient {
     // path = newPath;
     // if (_stub == null) {
     //   // 아직 연결 안 됐으면, 그냥 path만 기억해두고 끝
-    //   print('[CLOUD] Path set to $path (not connected yet)');
+    //   debugPrint('[CLOUD] Path set to $path (not connected yet)');
     //   return;
     // }
     // // 이미 subscribe 되어 있으면 다시 구독
@@ -97,11 +104,11 @@ class GrpcClient {
 
     path = newPath;
     if (_stub == null) {
-      print('[CLOUD] Path set to $path (not connected yet)');
+      debugPrint('[CLOUD] Path set to $path (not connected yet)');
       return;
     }
 
-    print('[CLOUD] Path changed to $path, fetching once via Get...');
+    debugPrint('[CLOUD] Path changed to $path, fetching once via Get...');
     await fetchLatest(requestId: 'cloud-get-repath');
   }
 
@@ -111,13 +118,13 @@ class GrpcClient {
     _channel = null;
     _stub = null;
     await _events.close();
-    print('[CLOUD] Disconnected');
+    debugPrint('[CLOUD] Disconnected');
     // final ch = _channel;
     // _channel = null;
     // _stub = null;
     // if (ch != null) {
     //   await ch.shutdown();
-    //   print('[CLOUD] Disconnected');
+    //   debugPrint('[CLOUD] Disconnected');
     // }
   }
 
@@ -134,10 +141,10 @@ class GrpcClient {
       metadata: metadata.isNotEmpty ? metadata : null,
     );
 
-    print('[CLOUD][GET] request path=$path reqId=$requestId');
+    debugPrint('[CLOUD][GET] request path=$path reqId=$requestId');
     final resp = await _stub!.getRequest(req, options: ctx);
 
-    print('[CLOUD][GET] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
+    debugPrint('[CLOUD][GET] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
 
     if (resp.hasSuccessResponse() && resp.successResponse.hasDataPack()) {
       final dp = resp.successResponse.dataPack;
@@ -145,10 +152,10 @@ class GrpcClient {
       _events.add(dp);
     } else if (resp.hasErrorResponse()) {
       final err = resp.errorResponse;
-      print('[CLOUD][GET][ERROR] ${err.number} ${err.reason} ${err.description}');
+      debugPrint('[CLOUD][GET][ERROR] ${err.number} ${err.reason} ${err.description}');
       _events.addError(err);
     } else {
-      print('[CLOUD][GET] No DataPack / No ErrorResponse');
+      debugPrint('[CLOUD][GET] No DataPack / No ErrorResponse');
     }
   }
 
@@ -157,7 +164,7 @@ class GrpcClient {
       throw StateError('Not connected. Call connect() first.');
     }
     if (_sub != null) {
-      print('[CLOUD] Already subscribed. Unsubscribe first.');
+      debugPrint('[CLOUD] Already subscribed. Unsubscribe first.');
       return;
     }
 
@@ -175,7 +182,7 @@ class GrpcClient {
               _subscriptionId = msg.response.subscriptionId;
               final rid = msg.response.requestId;
               final ts = msg.response.ts;
-              print('[CLOUD][ACK] subId=$_subscriptionId reqId=$rid ts=$ts');
+              debugPrint('[CLOUD][ACK] subId=$_subscriptionId reqId=$rid ts=$ts');
             }
             break;
           case SubscribeResponseType.EVENT:
@@ -183,32 +190,32 @@ class GrpcClient {
               final dp = msg.event.successResponse.dataPack;
               _events.add(dp);
               // final ts = msg.event.ts;
-              // print('[CLOUD][EVENT] subId=${msg.event.subscriptionId} ts=$ts itemsitems=${dp.data.length}');
+              // debugPrint('[CLOUD][EVENT] subId=${msg.event.subscriptionId} ts=$ts itemsitems=${dp.data.length}');
               // for (final pkg in dp.data) {
               //   final p = pkg.path;
               //   for (final point in pkg.dp) {
-              //     print(' - $p = ${point.value} @ ${point.ts}');
+              //     debugPrint(' - $p = ${point.value} @ ${point.ts}');
               //   }
               // }
             } else if (msg.hasEvent() && msg.event.hasErrorResponse()) {
               final err = msg.event.errorResponse;
-              print('[CLOUD][EVENT][ERROR] ${err.number} ${err.reason} ${err.description}');
+              debugPrint('[CLOUD][EVENT][ERROR] ${err.number} ${err.reason} ${err.description}');
               _events.addError(err);
             }
             break;
         }
       },
       onError: (e, st) {
-        print('[CLOUD][STREAM][ERROR] $e');
+        debugPrint('[CLOUD][STREAM][ERROR] $e');
       },
       onDone: () {
-        print('[CLOUD][STREAM][DONE]');
+        debugPrint('[CLOUD][STREAM][DONE]');
         _cleanupStreamBindings();
       },
       cancelOnError: true,
     );
 
-    print('[CLOUD] Subscribe requested: path=$path');
+    debugPrint('[CLOUD] Subscribe requested: path=$path');
   }
 
   Future<void> unsubscribe({String requestId = 'cloud-unsub-1'}) async {
@@ -221,9 +228,9 @@ class GrpcClient {
         ..subscriptionId = subId
         ..requestId = requestId;
       final resp = await _stub!.unsubscribeRequest(ureq);
-      print('[CLOUD][UNSUB] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
+      debugPrint('[CLOUD][UNSUB] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
     } catch (e) {
-      print('[CLOUD][UNSUB][ERROR] $e');
+      debugPrint('[CLOUD][UNSUB][ERROR] $e');
     } finally {
       await _sub?.cancel();
       _cleanupStreamBindings();
@@ -242,18 +249,18 @@ class GrpcClient {
       ..path = vssPath
       ..requestId = requestId;
     final resp = await _stub!.getRequest(req);
-    print('[CLOUD][GET] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
+    debugPrint('[CLOUD][GET] status=${resp.status} reqId=${resp.requestId} ts=${resp.ts}');
     if (resp.hasSuccessResponse() && resp.successResponse.hasDataPack()) {
       final dp = resp.successResponse.dataPack;
       _events.add(dp);
       for (final pkg in dp.data) {
         for (final p in pkg.dp) {
-          print(' - ${pkg.path} = ${p.value} @ ${p.ts}');
+          debugPrint(' - ${pkg.path} = ${p.value} @ ${p.ts}');
         }
       }
     } else if (resp.hasErrorResponse()) {
       final err = resp.errorResponse;
-      print('[CLOUD][GET][ERROR] ${err.number} ${err.reason} ${err.description}');
+      debugPrint('[CLOUD][GET][ERROR] ${err.number} ${err.reason} ${err.description}');
       _events.addError(err);
     }
   }

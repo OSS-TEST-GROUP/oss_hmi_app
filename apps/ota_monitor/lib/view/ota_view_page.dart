@@ -478,7 +478,12 @@ class _ClientGroupTile extends StatelessWidget {
           color: p.surfaceAlt.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(4),
         ),
-        child: ExpansionTile(
+        // flutter 3.41.8: ListTile(ExpansionTile 헤더)이 배경색 있는 상위(Container
+        // decoration) 위에 있으면 "ink splash may be invisible" assertion 이 뜬다.
+        // 투명 Material 로 감싸 ListTile 이 자신의 Material 조상을 갖게 한다(외형 불변).
+        child: Material(
+          type: MaterialType.transparency,
+          child: ExpansionTile(
           initiallyExpanded: true,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
           childrenPadding: const EdgeInsets.only(left: 8, right: 4, bottom: 4),
@@ -517,6 +522,7 @@ class _ClientGroupTile extends StatelessWidget {
                 onTap: () => onAppTap(app['name'] as String),
               ),
           ],
+          ),
         ),
       ),
     );

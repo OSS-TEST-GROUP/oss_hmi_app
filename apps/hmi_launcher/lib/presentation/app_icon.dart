@@ -13,6 +13,10 @@ abstract final class LauncherAppIcons {
         return Icons.system_update_alt;
       case 'adsw_monitor':
         return Icons.sensors_outlined;
+      // diag_monitor 는 adsw_monitor 에서 분리된 미들웨어 진단 앱.
+      // adsw 의 sensors_outlined(전파)와 형태가 구분되도록 심박 모니터 아이콘.
+      case 'diag_monitor':
+        return Icons.monitor_heart_outlined;
       case 'lfc_monitor':
         return Icons.account_tree_outlined;
       // rviz2_panel 은 케이스가 없어 기본값 Icons.apps_outlined 로 떨어졌고, 그것이

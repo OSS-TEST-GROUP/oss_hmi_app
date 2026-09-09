@@ -45,11 +45,10 @@ class RosKeeper {
 
     _ros = _rosFactory(cfg.rosUrl.toString());
 
-    _statusTopic = Topic(
-      ros: _ros!,
-      name: cfg.statusTopic,
-      type: 'std_msgs/String',
-      reconnectOnClose: true,
+    _statusTopic = _topicFactory(
+      _ros!,
+      cfg.statusTopic,
+      'std_msgs/String',
     );
 
     _statusSub = _ros!.statusStream.listen(
@@ -68,7 +67,7 @@ class RosKeeper {
     );
 
     _reconnectPoll?.cancel();
-    _reconnectPoll = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _reconnectPoll = _timerFactory(const Duration(seconds: 2), (_) async {
       final r = _ros;
       if (_stopping || r == null) return;
       //if (r.status == Status.connected) return;
@@ -131,11 +130,10 @@ class RosKeeper {
 
     _ros = _rosFactory(cfg.rosUrl.toString());
 
-    _statusTopic = Topic(
-      ros: _ros!,
-      name: cfg.statusTopic,
-      type: 'std_msgs/String',
-      reconnectOnClose: true,
+    _statusTopic = _topicFactory(
+      _ros!,
+      cfg.statusTopic,
+      'std_msgs/String',
     );
 
     _statusSub = _ros!.statusStream.listen(

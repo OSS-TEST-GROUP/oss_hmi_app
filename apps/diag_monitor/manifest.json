@@ -1,0 +1,30 @@
+{
+  "id": "diag_monitor",
+  "name": "Diagnostic Monitor",
+  "icon": "🩺",
+  "version": "1.0.0",
+  "category": "monitoring",
+  "description": "Middleware diagnostics",
+  "color": "#C084FC",
+  "prompts": [
+    "진단 실행해줘",
+    "진단 열어줘",
+    "진단 보여줘",
+    "진단 정보 보여줘",
+    "진단 모니터 실행해줘",
+    "진단 모니터 열어줘",
+    "진단 모니터 보여줘",
+    "Diagnostic 실행해줘",
+    "Diagnostic 열어줘",
+    "Diagnostic 보여줘",
+    "Diagnostic Monitor 실행해줘",
+    "Diagnostic Monitor 열어줘",
+    "Diagnostic Monitor 보여줘",
+    "diag 실행해줘",
+    "diag 열어줘",
+    "diag 보여줘"
+  ],
+  "entry": "diag_monitor/main.dart",
+  "permissions": ["vss", "can_bus"],
+  "min_launcher": "4.0.0"
+}

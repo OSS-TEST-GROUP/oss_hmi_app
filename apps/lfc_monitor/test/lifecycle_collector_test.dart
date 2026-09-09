@@ -29,12 +29,16 @@ void main() {
     Get.testMode = true;
     Get.reset();
     mockRos = MockRos();
-    handlers = {};
+    // 지역 변수로 캡처한다 — 바깥 `handlers` 를 캡처하면 다음 테스트가 재대입한
+    // 맵에 **이전 테스트의 collector**(500ms watchdog 이 살아 있다)가 재바인딩하며
+    // 덮어쓴다. 자세한 근거는 lifecycle_collector_extra_test.dart 의 setUp 주석 참조.
+    final localHandlers = <String, Future<void> Function(Map<String, dynamic>)>{};
+    handlers = localHandlers;
 
     Topic topicFactory(Ros ros, String name, String type) {
       final t = MockTopic();
       when(() => t.subscribe(any())).thenAnswer((inv) async {
-        handlers[name] =
+        localHandlers[name] =
             inv.positionalArguments[0] as Future<void> Function(Map<String, dynamic>);
       });
       when(() => t.publish(any())).thenAnswer((_) async {});
@@ -51,6 +55,8 @@ void main() {
   });
 
   tearDown(() {
+    // watchdog 을 멈추기 위해 명시적으로 폐기한다.
+    Get.delete<LifecycleCollector>(force: true);
     Get.reset();
   });
 

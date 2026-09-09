@@ -146,6 +146,136 @@ ssh beyhpc@172.16.10.151 'docker exec -e ROS_DOMAIN_ID=42 autoware-perception ba
 
 ---
 
+## 3-1. 맵이 보이지 않을 때 — 토픽 점검과 차선 중심선 정렬
+
+위 §3-4 의 좌표는 특정 시나리오용 하드코딩이다. **다른 맵**을 쓰거나 좌표를 잃었을 때
+맵에서 직접 유효한 초기 포즈를 뽑는 방법과, 어디까지 정상인지 가르는 점검 순서를 적는다.
+
+### 왜 "로드는 됐는데 안 보이는가"
+
+autoware.rviz 의 조합이 원인이다 (실측 2026-09-09):
+
+| 설정 | 값 |
+|---|---|
+| `Global Options → Fixed Frame` | `map` |
+| 뷰 컨트롤러 `Target Frame` | **`base_link`** |
+
+`/tf`(`map → base_link`)가 없으면 카메라를 `base_link` 기준으로 놓을 수 없어 **원점(0,0,0)에
+갇힌다**. 그런데 lanelet2 맵 기하는 `map` 프레임에서 **y ≈ 73,700 m** 에 있다 — 맵은 로드돼
+있고 데이터도 도착하지만 **화면 밖**이다. 초기 포즈를 주는 순간 카메라가 차량으로 이동해
+맵이 나타난다.
+
+### 토픽 점검 순서 (위에서 아래로)
+
+```bash
+# 0) 측정은 Autoware 와 **같은 호스트**에서 해라
+#    원격에서 ros2 CLI 를 쓰면 임시 참가자의 discovery 가 덜 수렴해 실제보다 적게 나온다
+#    (실측: 81 에서 조회 21개 vs 151 로컬 129개 — 같은 도메인·같은 시점)
+D='docker exec -e ROS_DOMAIN_ID=42 autoware-perception bash -lc'
+
+# 1) 도메인이 같은가 — 다르면 아래가 전부 무의미하다
+for c in oss-mmf-core oss-mmf-ext-ros2 autoware-perception; do
+  echo "$c: $(docker inspect $c --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    | grep -oP '(?<=^ROS_DOMAIN_ID=).*')"
+done
+
+# 2) 발행자가 있는가
+$D 'source /opt/ros/humble/setup.bash; ros2 topic info /map/vector_map_marker'
+#    → Publisher count: 1 이어야 한다. 0 이면 Autoware(perception)가 안 떴다
+
+# 3) 데이터가 실제로 오는가 — **QoS 플래그가 필수**다
+$D 'source /opt/ros/humble/setup.bash; ros2 topic echo --once \
+     --qos-durability transient_local --qos-reliability reliable \
+     /map/vector_map_marker | wc -l'
+#    → 수만 라인. 맵은 latch(TRANSIENT_LOCAL)로 한 번만 발행되므로 이 두 플래그가 없으면
+#      **0 라인**이 나오고 "데이터가 없다"고 오진한다(실측으로 두 번 헛짚었다)
+
+# 4) TF 가 도는가 — 여기가 대개의 원인이다
+$D 'source /opt/ros/humble/setup.bash; ros2 topic hz /tf'
+#    → 40 Hz 정도. "없음"이면 초기 포즈 미설정 (아래로)
+
+# 5) Autoware 상태
+$D 'source /opt/ros/humble/setup.bash; ros2 topic echo --once --field state /autoware/state'
+#    → 1 = INITIALIZING (초기 포즈 대기)  /  2 = WAITING_FOR_ROUTE (정상)
+
+# 6) 변환이 풀리는가 — rviz2 컨테이너에서 확인하는 게 가장 정확하다
+docker exec -e ROS_DOMAIN_ID=42 rviz2 bash -lc \
+  'source /opt/ros/humble/setup.bash; ros2 run tf2_ros tf2_echo map base_link'
+#    → Translation 이 차량 위치로 나오면 rviz2 가 그릴 수 있는 상태다
+```
+
+### 차선 중심선에서 초기 포즈 뽑기
+
+**핵심은 어느 마커를 쓰는가**다. `/map/vector_map_marker` 는 여러 namespace 를 담고 있고,
+그중 진행방향을 담은 것은 `center_lane_line` 뿐이다.
+
+| namespace | 쓸 수 있나 |
+|---|---|
+| **`center_lane_line`** | ✅ 차선 중심선 — 위치와 **진행방향**을 모두 준다 |
+| `stop_lines`, `crosswalk_lanelets`, `detection_area_stopline` | ❌ 도로를 **가로지르는** 선이라 방향이 90° 틀어진다 |
+| `left_lane_bound`, `right_lane_bound` | △ 방향은 맞지만 차선 가장자리다 |
+
+```bash
+# ① 맵 마커를 latch QoS 로 저장 (§3 의 D 사용)
+$D 'source /opt/ros/humble/setup.bash; ros2 topic echo --once \
+     --qos-durability transient_local --qos-reliability reliable \
+     /map/vector_map_marker > /tmp/vm.yaml'
+
+# ② center_lane_line 에서 점 추출
+$D 'python3 - <<PY
+import re, math
+txt = open("/tmp/vm.yaml").read()
+seg = txt[txt.index("ns: center_lane_line"):]
+pts = re.findall(r"- x: ([-0-9.e+]+)\s*\n\s*y: ([-0-9.e+]+)\s*\n\s*z: ([-0-9.e+]+)", seg)
+pts = [tuple(map(float, p)) for p in pts if abs(float(p[0])) > 1 or abs(float(p[1])) > 1]
+# ⚠ LINE_LIST 라 거의 같은 좌표가 **짝으로** 나온다 → 한 칸 건너뛴 점을 써야
+#    의미 있는 변위가 생긴다 (인접 점을 쓰면 dx,dy ≈ 0 → yaw 가 쓰레기값)
+p0, p2 = pts[0], pts[2]
+yaw = math.atan2(p2[1]-p0[1], p2[0]-p0[0])
+print("x=%.3f y=%.3f z=%.4f  yaw=%.4f (%.1f deg)  qz=%.6f qw=%.6f"
+      % (p0[0], p0[1], p0[2], yaw, math.degrees(yaw),
+         math.sin(yaw/2), math.cos(yaw/2)))
+PY'
+```
+
+`z` 는 **그 점의 z 를 그대로** 쓴다(노면 고도). `0.0` 으로 두면 차량이 노면 아래로 들어가
+시야가 지면에 묻힌다.
+
+### 발행과 검증
+
+```bash
+# --once 는 첫 샘플을 유실할 수 있다 → -t 5 로 여러 번 보낸다
+$D 'source /opt/ros/humble/setup.bash; ros2 topic pub -t 5 /initialpose3d \
+  geometry_msgs/msg/PoseWithCovarianceStamped \
+  "{header: {frame_id: map},
+    pose: {pose: {position: {x: 3810.344, y: 73819.515, z: 19.1805},
+                  orientation: {x: 0.0, y: 0.0, z: 0.240959, w: 0.970535}},
+           covariance: [0.25,0,0,0,0,0, 0,0.25,0,0,0,0, 0,0,0.25,0,0,0,
+                        0,0,0,0.06853,0,0, 0,0,0,0,0.06853,0, 0,0,0,0,0,0.06853]}}"'
+```
+
+검증 (실측 2026-09-09, 위 좌표 그대로):
+
+| 항목 | 발행 전 | 발행 후 |
+|---|---|---|
+| `/tf` | 없음 | **40 Hz** |
+| `/autoware/state` | 1 (INITIALIZING) | **2 (WAITING_FOR_ROUTE)** |
+| `kinematic_state` 위치 | — | x=3810.344 y=73819.515 z=19.1805 (발행값 일치) |
+| 81 rviz2 의 `map→base_link` | 못 품 | Translation [3810.344, 73819.515, 19.180], yaw **27.886°** |
+
+### 누가 무엇을 받는가 (한 번 확인해 둘 값)
+
+```
+/initialpose    → /default_adapi/helpers/autoware_initial_pose_adaptor  (변환 후 재발행)
+/initialpose3d  → /simulation/simple_planning_simulator                 ← ego 를 옮기는 주체
+```
+
+rviz2 툴바의 **2D Pose Estimate** 는 기본이 `/initialpose` 지만, 이 이미지의 entrypoint 가
+`/initialpose3d` 로 재배선해 둔다(고도까지 반영돼 즉시 이동). 그래서 GUI 로 찍어도 같은
+경로를 탄다 — 다만 맵이 화면 밖이면 **먼저 줌아웃**해야 찍을 지점이 보인다.
+
+---
+
 ## 4. 좌표 (1920×1080 기준)
 
 PC 는 모니터 1번(`+0+1080`)에 창을 풀스크린으로 올린 뒤 **로컬 좌표 + y 오프셋 1080** 으로 클릭한다.

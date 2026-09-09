@@ -14,6 +14,7 @@ class LauncherConfig {
 
   final String otaTheme;
   final String adswTheme;
+  final String diagTheme;
   final String lfcTheme;
 
   LauncherConfig({
@@ -23,6 +24,7 @@ class LauncherConfig {
     this.heartbeatIntervalSec = 1,
     this.otaTheme = 'light',
     this.adswTheme = 'light',
+    this.diagTheme = 'light',
     this.lfcTheme = 'light',
   });
 
@@ -42,6 +44,10 @@ class LauncherConfig {
         heartbeatIntervalSec: _asPositiveInt(j['heartbeatIntervalSec'], 1),
         otaTheme: _asThemeName(j['otaTheme']),
         adswTheme: _asThemeName(j['adswTheme']),
+        // diag_monitor 는 adsw_monitor 에서 분리된 앱이다. 분리 이전에 저장된
+        // 설정에는 diagTheme 가 없으므로 adswTheme 을 물려받아 기존 외관을
+        // 유지한다(진단 화면이 adsw 탭이던 시절의 테마).
+        diagTheme: _asThemeName(j['diagTheme'] ?? j['adswTheme']),
         lfcTheme: _asThemeName(j['lfcTheme']),
       );
 

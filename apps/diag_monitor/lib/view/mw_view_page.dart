@@ -2,11 +2,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:adsw_monitor/controller/mw_collector.dart';
-import 'package:adsw_monitor/theme/adsw_palette.dart';
-import 'package:adsw_monitor/widget/data_view_widget.dart';
-import 'package:adsw_monitor/widget/key_value_item.dart';
-//import 'package:adsw_monitor/data/mw_data.dart';
+import 'package:diag_monitor/controller/mw_collector.dart';
+import 'package:diag_monitor/theme/diag_palette.dart';
+import 'package:diag_monitor/widget/data_view_widget.dart';
+import 'package:diag_monitor/widget/key_value_item.dart';
+//import 'package:diag_monitor/data/mw_data.dart';
 import 'package:roslibdart/roslibdart.dart';
 
 class MwViewPage extends StatefulWidget {
@@ -94,7 +94,7 @@ class MwViewPageState extends State<MwViewPage>
   }
 
   Future<void> _showSecurityAlert(String text) async {
-    final palette = AdswPaletteScope.of(context);
+    final palette = DiagPaletteScope.of(context);
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -121,7 +121,7 @@ class MwViewPageState extends State<MwViewPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final palette = AdswPaletteScope.of(context);
+    final palette = DiagPaletteScope.of(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),

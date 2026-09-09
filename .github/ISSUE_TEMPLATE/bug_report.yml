@@ -26,6 +26,7 @@ body:
       description: 문제가 발생한 앱이나 영역을 선택하세요. / Select the app or area where the problem occurs.
       options:
         - adsw_monitor
+        - diag_monitor
         - hmi_launcher
         - lfc_monitor
         - ota_monitor

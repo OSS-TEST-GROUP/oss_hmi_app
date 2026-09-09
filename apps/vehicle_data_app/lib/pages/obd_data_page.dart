@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:csv/csv.dart';
 import 'package:vehicle_data_app/widgets/data_card.dart';
 
 class ObdDataPage extends StatefulWidget {
@@ -13,11 +12,6 @@ class _ObdDataPageState extends State<ObdDataPage> with AutomaticKeepAliveClient
 
   @override
   bool get wantKeepAlive => true;
-
-  bool _flDoor = false;
-  bool _frDoor = false;
-  bool _rlDoor = false;
-  bool _rrDoor = false;
 
   @override
   Widget build(BuildContext context) {
@@ -50,13 +44,13 @@ class _ObdDataPageState extends State<ObdDataPage> with AutomaticKeepAliveClient
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0,3),
           ),
         ],
       ),
-      child: Row(
+      child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text('데이터 파일', style:TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
@@ -76,17 +70,17 @@ class _ObdDataPageState extends State<ObdDataPage> with AutomaticKeepAliveClient
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0,3),
           ),
         ],
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('파워트레인', style:TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const Divider(thickness: 0.5, color: Colors.grey),
+          Divider(thickness: 0.5, color: Colors.grey),
           DataCard(label: 'Engine RPM', value: 'value'),
           DataCard(label: 'AcceleratorPedalPosition', value: 'value'),
           DataCard(label: 'FuelLevel', value: 'value'),
@@ -106,17 +100,17 @@ class _ObdDataPageState extends State<ObdDataPage> with AutomaticKeepAliveClient
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0,3),
           ),
         ],
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('주행 상태', style:TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const Divider(thickness: 0.5, color: Colors.grey),
+          Divider(thickness: 0.5, color: Colors.grey),
           DataCard(label: 'VehicleSpeed', value: 'value'),
           DataCard(label: 'TimeSinceStart', value: 'value'),
         ],
@@ -134,17 +128,17 @@ class _ObdDataPageState extends State<ObdDataPage> with AutomaticKeepAliveClient
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0,3),
           ),
         ],
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('위치 정보', style:TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const Divider(thickness: 0.5, color: Colors.grey),
+          Divider(thickness: 0.5, color: Colors.grey),
           DataCard(label: 'Latitude', value: 'value'),
           DataCard(label: 'Longitude', value: 'value'),
         ],

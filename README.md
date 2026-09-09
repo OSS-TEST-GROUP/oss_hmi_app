@@ -11,15 +11,18 @@
 
 | 디렉토리 | 이름(런처 카드) | 역할 | 문서 |
 |---|---|---|---|
-| [apps/hmi_launcher](apps/hmi_launcher) | Launcher | 런처 셸 + Settings/Manage Apps + AI 런처봇. 모니터 3종 임베드 | [README](apps/hmi_launcher/README.md) · [Settings 사용법](apps/hmi_launcher/SETTINGS_USAGE.md) |
-| [apps/adsw_monitor](apps/adsw_monitor) | AD SW (📡) | 자율주행(Autoware) 상태 대시보드 | [README](apps/adsw_monitor/README.md) · [사용법](apps/adsw_monitor/USAGE.md) |
+| [apps/hmi_launcher](apps/hmi_launcher) | Launcher | 런처 셸 + Settings/Manage Apps + AI 런처봇. 패널 6종 임베드 | [README](apps/hmi_launcher/README.md) · [Settings 사용법](apps/hmi_launcher/SETTINGS_USAGE.md) |
+| [apps/adsw_monitor](apps/adsw_monitor) | ADSW Monitor (📡) | 자율주행(Autoware) 상태 대시보드 | [README](apps/adsw_monitor/README.md) · [사용법](apps/adsw_monitor/USAGE.md) |
+| [apps/diag_monitor](apps/diag_monitor) | Diagnostic Monitor (🩺) | MMF 미들웨어 진단(diagnosticmgr) 대시보드 | [README](apps/diag_monitor/README.md) · [사용법](apps/diag_monitor/USAGE.md) |
 | [apps/lfc_monitor](apps/lfc_monitor) | Lifecycle Monitor (🔄) | 서비스/컨테이너 헬스 모니터·제어 | [README](apps/lfc_monitor/README.md) · [사용법](apps/lfc_monitor/USAGE.md) |
 | [apps/ota_monitor](apps/ota_monitor) | OTA Monitor (📦) | OTA 업데이트 관측·조작 (기본 숨김) | [README](apps/ota_monitor/README.md) · [사용법](apps/ota_monitor/USAGE.md) |
+| [apps/rviz2_panel](apps/rviz2_panel) | RViz2 Panel (🤖) | RViz2 컨테이너 상태 모니터링·제어 | [README](apps/rviz2_panel/README.md) |
 | [apps/oss_launcher_bot](apps/oss_launcher_bot) | Launcher Bot (🤖) | AI 어시스턴트 (standalone; 런처에 내장) | [README](apps/oss_launcher_bot/README.md) |
-| [apps/vehicle_data_test](apps/vehicle_data_test) | Vehicle Data (🚗) | 차량 데이터 API 테스트 시뮬레이터 | [README](apps/vehicle_data_test/README.md) |
+| [apps/vehicle_data_app](apps/vehicle_data_app) | Vehicle Data (🚗) | 차량 데이터 API 수신 대시보드 (런처 임베드) | [README](apps/vehicle_data_app/README.md) |
+| [apps/vehicle_data_test](apps/vehicle_data_test) | Vehicle Data (🚗) | 차량 데이터 API 테스트 시뮬레이터 (단독) | [README](apps/vehicle_data_test/README.md) |
 
-> **hmi_launcher** 는 ota_monitor·adsw_monitor·lfc_monitor 를 path-dep 로 **임베드**한다(별도 컨테이너 불필요).
-> Launcher Bot·Vehicle Data 는 docker 파이프라인이 없고 Flutter 로 직접 빌드한다.
+> **hmi_launcher** 는 ota_monitor·adsw_monitor·diag_monitor·lfc_monitor·rviz2_panel·vehicle_data_app 을 path-dep 로 **임베드**한다(별도 컨테이너 불필요).
+> Launcher Bot·Vehicle Data Test 는 standalone 전용 실행이 가능하다.
 
 ## 빠른 시작
 
@@ -30,10 +33,12 @@
 ## 문서 인덱스
 
 ### 앱 사용 가이드 (운영자용)
-- [adsw_monitor/USAGE.md](apps/adsw_monitor/USAGE.md) — AD SW 모니터
+- [adsw_monitor/USAGE.md](apps/adsw_monitor/USAGE.md) — ADSW Monitor
+- [diag_monitor/USAGE.md](apps/diag_monitor/USAGE.md) — 미들웨어 진단 모니터
 - [lfc_monitor/USAGE.md](apps/lfc_monitor/USAGE.md) — Lifecycle 모니터 (제어 포함)
 - [ota_monitor/USAGE.md](apps/ota_monitor/USAGE.md) — OTA 모니터
 - [hmi_launcher/SETTINGS_USAGE.md](apps/hmi_launcher/SETTINGS_USAGE.md) — Settings / Manage Apps
+- [rviz2_panel/README.md](apps/rviz2_panel/README.md) — RViz2 Panel
 
 ### 빌드·배포
 - [apps/docker/docs/DOCKER_GUIDE.md](apps/docker/docs/DOCKER_GUIDE.md) — x86/arm64 빌드·실행, registry push, **멀티아치(§7)**
@@ -48,12 +53,16 @@
 ```
 oss_hmi_app/
 ├── apps/
-│   ├── hmi_launcher/        # 런처 셸 (모니터 임베드)
+│   ├── hmi_launcher/        # 런처 셸 (모니터·패널 임베드)
 │   ├── adsw_monitor/        # AD SW
+│   ├── diag_monitor/        # 미들웨어 진단
 │   ├── lfc_monitor/         # Lifecycle Monitor
 │   ├── ota_monitor/         # OTA Monitor
+│   ├── rviz2_panel/         # RViz2 Panel
+│   ├── rviz2_port/          # RViz2 컨테이너 이식
 │   ├── oss_launcher_bot/    # Launcher Bot (AI)
-│   ├── vehicle_data_test/   # Vehicle Data
+│   ├── vehicle_data_app/    # Vehicle Data App (런처 임베드)
+│   ├── vehicle_data_test/   # Vehicle Data Test (단독 시뮬레이터)
 │   └── docker/              # dockerfile/ · compose/ · script/ · docs/(DOCKER_GUIDE)
 └── docs/                    # build-install-run / board-autostart 가이드
 ```

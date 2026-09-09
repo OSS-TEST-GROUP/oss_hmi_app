@@ -307,15 +307,27 @@ class LifecycleCollector extends GetxController {
 
   Future<void> _onCommandResponse(LifecycleEventKind kind, Map<String, dynamic> msg) async {
     final ret = (msg['ret_code'] as num?)?.toInt() ?? -1;
+    // 대상 이름은 응답에 없다 — 우리가 보낸 요청과 짝지어 되찾는다.
+    // 짝이 없으면 우리 요청이 아니다(외부 발신자/유령 참가자) → 그 사실을 표시.
+    final target = _takeCtrlRequest(kind);
+    final unsolicited = target == null;
     _pushEvent(LifecycleEvent(
       timestamp: DateTime.now(),
-      serviceName: '(${kind.name})',
+      serviceName: target ?? '(unsolicited)',
       from: ServiceState.unknown,
       to: ServiceState.unknown,
       kind: kind,
-      detail: ret == 0 ? 'SUCCESS' : 'FAILED (ret=$ret)',
+      detail: ret == 0
+          ? 'SUCCESS'
+          : unsolicited
+              ? 'FAILED (ret=$ret) — 이 모니터가 보낸 요청 없음'
+              : 'FAILED (ret=$ret)',
     ));
-    if (ret != 0) lastError.value = '${kind.name}: ret=$ret';
+    // 우리가 요청하지 않은 실패는 조작 결과가 아니므로 배너를 덮어쓰지 않는다.
+    // (도메인을 공유하는 다른 발신자의 응답이 화면 상단 오류를 계속 점유하던 문제)
+    if (ret != 0 && !unsolicited) {
+      lastError.value = '${kind.name}($target): ret=$ret';
+    }
   }
 
   /// dds_bridge multi-source diagnostic (std_msgs/String).
@@ -654,8 +666,56 @@ class LifecycleCollector extends GetxController {
     }
     try {
       t.publish(payload);
+      _recordCtrlRequest(label, payload);
     } catch (e) {
       lastError.value = '$label failed: $e';
     }
+  }
+
+  // ─── ctrl request ↔ response 상관관계 ──────────────────────────────────
+  //
+  // `CtrlResponse` 는 `ret_code` **한 필드뿐**이다 (idl/dds/lifecycle/
+  // LifecycleCtrlRequest.idl). 대상 이름도, 요청 식별자도 실려 오지 않는다.
+  // 그래서 예전엔 Events 행이 `ctrl start svc  FAILED (ret=1)` 로만 찍혔고
+  // **어느 서비스가 실패했는지 알 길이 없었다**.
+  //
+  // 프로토콜을 바꾸지 않고(= 컨테이너 업데이트만으로 배포 가능) 이름을 되찾는
+  // 방법: 우리가 방금 무엇을 요청했는지는 우리가 안다. 종류별 FIFO 에 이름을
+  // 넣어 두고 응답이 오면 하나 꺼낸다.
+  //
+  // 꺼낼 게 없다면 그 응답은 **우리 요청에서 나온 게 아니다.** 그 경우를
+  // `(unsolicited)` 로 드러낸다 — 조용히 아무 이름이나 붙이는 것보다, 외부
+  // 발신자/유령 참가자가 있다는 사실 자체가 운영자에게 필요한 정보다.
+  static const Map<String, LifecycleEventKind> _ctrlLabelKind = {
+    'ctrlStartService': LifecycleEventKind.ctrlStartServiceResponse,
+    'ctrlStopService': LifecycleEventKind.ctrlStopServiceResponse,
+    'ctrlSetServiceMode': LifecycleEventKind.ctrlSetServiceModeResponse,
+    'ctrlSetServiceMode(all)': LifecycleEventKind.ctrlSetServiceModeResponse,
+    'ctrlStartContainer': LifecycleEventKind.ctrlStartContainerResponse,
+    'ctrlStopContainer': LifecycleEventKind.ctrlStopContainerResponse,
+    'ctrlSetRecoveryPolicy': LifecycleEventKind.ctrlSetRecoveryPolicyResponse,
+  };
+
+  final Map<LifecycleEventKind, List<String>> _ctrlInflight = {};
+
+  void _recordCtrlRequest(String label, Map<String, dynamic> payload) {
+    final kind = _ctrlLabelKind[label];
+    if (kind == null) return; // ctrl/* 요청이 아닌 발행 (poll 등)
+    final names = (payload['service_list'] ?? payload['container_list']) as List?;
+    final joined = (names == null || names.isEmpty)
+        ? '(empty list)' // lifecycle_mgr 가 무조건 FAILED 로 답하는 요청 — 그대로 보이게 둔다
+        : names.join(', ');
+    final q = _ctrlInflight.putIfAbsent(kind, () => <String>[]);
+    // 응답이 유실돼도 큐가 무한정 자라지 않게 상한을 둔다. 넘치면 가장 오래된
+    // 것부터 버린다 — 오래된 항목일수록 이미 응답이 유실됐을 가능성이 높다.
+    if (q.length >= 16) q.removeAt(0);
+    q.add(joined);
+  }
+
+  /// 이 종류의 가장 오래된 in-flight 요청 대상을 꺼낸다. 없으면 null.
+  String? _takeCtrlRequest(LifecycleEventKind kind) {
+    final q = _ctrlInflight[kind];
+    if (q == null || q.isEmpty) return null;
+    return q.removeAt(0);
   }
 }

@@ -12,14 +12,12 @@ import 'package:roslibdart/roslibdart.dart';
 import 'ros_keeper.dart';
 
 import 'package:adsw_monitor/view/adsw_view_page.dart';
-import 'package:adsw_monitor/view/mw_view_page.dart';
 import 'package:adsw_monitor/view/web_prompt_bootstrap.dart';
 import 'package:adsw_monitor/view/log_overlay.dart';
 import 'package:adsw_monitor/theme/adsw_palette.dart';
 
 // L009: Export view widgets for launcher embedding
 export 'view/adsw_view_page.dart' show AdswViewPage;
-export 'view/mw_view_page.dart' show MwViewPage;
 
 late AppConfig appConfig;
 late RosKeeper rosKeeper;
@@ -103,30 +101,18 @@ class AdswMonitorHomePage extends StatefulWidget {
     super.key,
     required this.title,
     this.adswPageBuilder,
-    this.mwPageBuilder,
   });
   final String title;
 
   final Widget Function()? adswPageBuilder;
-  final Widget Function()? mwPageBuilder;
 
   @override
   State<AdswMonitorHomePage> createState() => _AdswMonitorHomePageState();
 }
 
-class _AdswMonitorHomePageState extends State<AdswMonitorHomePage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
+class _AdswMonitorHomePageState extends State<AdswMonitorHomePage> {
   @override
   void dispose() {
-    _tabController.dispose();
     rosKeeper.stop();
     super.dispose();
   }
@@ -141,87 +127,40 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage>
 
   Widget _buildHeader() {
     final palette = AdswPaletteScope.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 22),
-          decoration: BoxDecoration(
-            color: palette.canvas,
-            border: Border(bottom: BorderSide(color: palette.line, width: 1)),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 22),
+      decoration: BoxDecoration(
+        color: palette.canvas,
+        border: Border(bottom: BorderSide(color: palette.line, width: 1)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 20),
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Icon(
+              Icons.directions_car,
+              color: palette.primary,
+              size: 24,
+            ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  // IconButton(
-                  //   icon: Icon(Icons.arrow_back),
-                  //   color: Colors.white,
-                  //   iconSize: 30,
-                  //   onPressed: () {
-                  //     quitApp();
-                  //   },
-                  // ),
-                  const SizedBox(width: 20),
-                  Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: palette.surface,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Icon(
-                      Icons.directions_car,
-                      color: palette.primary,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Text(
-                    'AD SW Monitor',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w500,
-                      color: palette.text,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                width: constraints.maxWidth * 0.4,
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: palette.surface,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: SizedBox(
-                  height: 65,
-                  child: TabBar(
-                    dividerColor: Colors.transparent,
-                    controller: _tabController,
-                    indicator: BoxDecoration(
-                      color: palette.primary,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    labelColor: palette.primaryText,
-                    unselectedLabelColor: palette.muted,
-                    labelStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    tabs: const [
-                      Tab(text: 'AD SW Info'),
-                      Tab(text: 'Diagnostic Info'),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          const SizedBox(width: 20),
+          Text(
+            'ADSW Monitor',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w500,
+              color: palette.text,
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -247,13 +186,7 @@ class _AdswMonitorHomePageState extends State<AdswMonitorHomePage>
           children: [
             _buildHeader(),
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  widget.adswPageBuilder?.call() ?? const AdswViewPage(),
-                  widget.mwPageBuilder?.call() ?? const MwViewPage(),
-                ],
-              ),
+              child: widget.adswPageBuilder?.call() ?? const AdswViewPage(),
             ),
           ],
         ),

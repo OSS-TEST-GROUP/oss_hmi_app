@@ -47,7 +47,7 @@ void main() {
 
       final adsw = registry.findById('adsw_monitor');
       expect(adsw, isNotNull);
-      expect(adsw!.name, 'AD SW');
+      expect(adsw!.name, 'ADSW Monitor');
       expect(adsw.prompts, contains('AD SW 열어줘'));
     });
 

@@ -1,0 +1,200 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:diag_monitor/logging/rolling_file_logger.dart';
+
+
+class LogController extends GetxController {
+  final RxList<String> lines = <String>[].obs;
+  final int maxLines;
+  LogController({this.maxLines = 800});
+
+  RollingFileLogger? _fileLogger;
+
+  Future<void> enableFileLogging({
+    required String dirPath,
+    String fileName = 'diag_monitor.log',
+    int maxBytes = 10 * 1024 * 1024,
+    int maxFiles = 5,
+  })async {
+    if (kIsWeb) return;
+    _fileLogger ??= RollingFileLogger(
+      dirPath: dirPath,
+      fileName: fileName,
+      maxBytes: maxBytes,
+      maxFiles: maxFiles,
+    );
+    await _fileLogger!.start();
+  }
+
+  void add(String s) 
+  {
+    lines.add(s);
+    if (lines.length > maxLines) {
+      lines.removeRange(0, lines.length - maxLines);
+
+
+    }
+    _fileLogger?.addLine(s);
+  }
+
+  void clear() => lines.clear();
+
+  @override
+  void onClose() {
+    _fileLogger?.stop();
+    super.onClose();
+  }
+}
+
+void runWithLogCapture(
+  FutureOr<void> Function() body, {
+  void Function(Object error, StackTrace st)? onError,
+}) {
+  if (!Get.isRegistered<LogController>()) {
+    Get.put(LogController(), permanent: true);
+  }
+
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // if (!Get.isRegistered<LogController>()) {
+      //   Get.put(LogController(), permanent: true);
+      // }
+
+      final log = Get.find<LogController>();
+      await log.enableFileLogging(dirPath: '/tmp/diag_monitor_logs');
+      
+      await body();
+    },
+    (e, st) {
+      if (Get.isRegistered<LogController>()) {
+        final log = Get.find<LogController>();
+        log.add('[ZONE ERROR] $e');
+        log.add(st.toString());
+      }
+      onError?.call(e, st);
+    },
+    zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        //parent.print(zone, line);
+        if (Get.isRegistered<LogController>()) {
+          Get.find<LogController>().add(line);
+        }
+      },
+    ),
+  );
+}
+
+class LogBottomSheet extends StatefulWidget {
+  const LogBottomSheet({super.key});
+
+  @override
+  State<LogBottomSheet> createState() => _LogBottomSheetState();
+}
+
+class _LogBottomSheetState extends State<LogBottomSheet> {
+  final ScrollController _listCtrl = ScrollController();
+  bool _autoFollow = true;
+
+  @override
+  void dispose() {
+    _listCtrl.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    if (!_listCtrl.hasClients) return;
+    _listCtrl.jumpTo(_listCtrl.position.maxScrollExtent);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final log = Get.find<LogController>();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.25,
+      maxChildSize: 0.95,
+      builder: (context, sheetScrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF0B1220),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                    const Expanded(
+                      child: Text('Debug Log',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                    ),
+                    IconButton(
+                      tooltip: _autoFollow ? 'Auto-follow: ON' : 'Auto-follow: OFF',
+                      onPressed: () => setState(() => _autoFollow = !_autoFollow),
+                      icon: Icon(_autoFollow ? Icons.south : Icons.south_outlined, size: 18),
+                    ),
+                    IconButton(
+                      tooltip: 'Jump bottom',
+                      onPressed: _scrollToBottom,
+                      icon: const Icon(Icons.arrow_downward, size: 18),
+                    ),
+                    IconButton(
+                      tooltip: 'Clear',
+                      onPressed: () => log.clear(),
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Obx(() {
+                  final items = log.lines;
+
+                  if (_autoFollow) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _scrollToBottom();
+                    });
+                  }
+
+                  if (items.isEmpty) {
+                    return const Center(
+                      child: Text('No logs yet...', style: TextStyle(color: Colors.white54)),
+                    );
+                  }
+
+                  return ListView.builder(
+                    controller: _listCtrl,
+                    itemCount: items.length,
+                    itemBuilder: (_, i) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Text(
+                        items[i],
+                        style: const TextStyle(fontSize: 15, color: Colors.white70),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}

@@ -1,6 +1,6 @@
-import 'package:adsw_monitor/controller/mw_collector.dart';
-import 'package:adsw_monitor/widget/data_view_widget.dart';
-import 'package:adsw_monitor/widget/key_value_item.dart';
+import 'package:diag_monitor/controller/mw_collector.dart';
+import 'package:diag_monitor/widget/data_view_widget.dart';
+import 'package:diag_monitor/widget/key_value_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';

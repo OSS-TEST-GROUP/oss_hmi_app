@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vehicle_data_app/widgets/data_card.dart';
 import 'package:vehicle_data_app/services/data_cache.dart';
-import 'package:vehicle_data_app/widgets/info_card.dart';
 
 class CanDataPage extends StatefulWidget {
   const CanDataPage({super.key});
@@ -74,15 +73,15 @@ class _CanDataPageState extends State<CanDataPage>
         String valueOf(String key) => _formatValue(data[key]);
         String labelOf(String key) => _labelMap[key] ?? key.split('.').last;
 
-        String vehicle_id = valueOf('VehicleModelID');
-        String user_id = valueOf('UserID');
+        String vehicleId = valueOf('VehicleModelID');
+        String userId = valueOf('UserID');
         String time = valueOf('Timestamp');
 
         return SingleChildScrollView(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('VEHICLE ID: $vehicle_id / USER ID: $user_id / TIMESTAMP: $time'),
+              Text('VEHICLE ID: $vehicleId / USER ID: $userId / TIMESTAMP: $time'),
               const SizedBox(height: 10,),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,9 +211,9 @@ class _CanDataPageState extends State<CanDataPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('위치 및 자세',
+          const Text('위치 및 자세',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          Divider(thickness: 0.5, color: Colors.grey),
+          const Divider(thickness: 0.5, color: Colors.grey),
           DataCard(
             label: labelOf('Vehicle.CurrentLocation.Latitude'), 
             value: valueOf('Vehicle.CurrentLocation.Latitude'),
@@ -322,9 +321,9 @@ class _CanDataPageState extends State<CanDataPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('환경 및 연료',
+          const Text('환경 및 연료',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          Divider(thickness: 0.5, color: Colors.grey),
+          const Divider(thickness: 0.5, color: Colors.grey),
           Row(
             children: [
               Expanded(
@@ -354,9 +353,9 @@ class _CanDataPageState extends State<CanDataPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('주행 이력',
+          const Text('주행 이력',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          Divider(thickness: 0.5, color: Colors.grey),
+          const Divider(thickness: 0.5, color: Colors.grey),
           DataCard(
             label: labelOf('Vehicle.StartTime'), 
             value: valueOf('Vehicle.StartTime'),
@@ -380,7 +379,7 @@ class _CanDataPageState extends State<CanDataPage>
       borderRadius: BorderRadius.circular(12),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.1),
+          color: Colors.black.withValues(alpha: 0.1),
           blurRadius: 8,
           offset: const Offset(0, 3),
         ),

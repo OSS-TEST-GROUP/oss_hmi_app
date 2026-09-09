@@ -4,8 +4,8 @@
 Settings·Manage Apps·(옵션)AI 런처봇을 제공한다. rosbridge 로 MMF 백엔드와 통신.
 
 ## 개요
-- **임베드 앱**: `ota_monitor` · `adsw_monitor` · `lfc_monitor` 를 path-dep 로 컴파일 포함(별도 컨테이너 불필요). OTA Monitor 는 기본 숨김(Manage Apps 에서 활성).
-- **Settings / Manage Apps**: 연결(rosbridge)·앱 테마·시간대·앱 표시/숨김. → [SETTINGS_USAGE.md](SETTINGS_USAGE.md)
+- **임베드 앱**: `ota_monitor` · `adsw_monitor` · `diag_monitor` · `lfc_monitor` · `rviz2_panel` · `vehicle_data_app` 을 path-dep 로 컴파일 포함(별도 컨테이너 불필요). OTA Monitor 는 기본 숨김(Manage Apps 에서 활성).
+- **Settings / Manage Apps**: 연결(rosbridge)·DDS/ROS 도메인 설정(두 평면 분리 및 원격 전파)·Service Mode(NORMAL/OTA) 일괄 전환·앱 테마·시간대·앱 표시/숨김. → [SETTINGS_USAGE.md](SETTINGS_USAGE.md)
 - **AI 런처봇**: v_agentos 데몬 연결 시 활성(상단바 Standard↔AI SDK). 끄려면 `LAUNCHER_BOT_ENABLED=0`.
 - 앱 발견: `HMI_APPS_ROOT` 또는 `/usr/share/flutter/hmi_launcher/<ver>/apps` 의 `<app>/manifest.json` 스캔.
 
@@ -33,11 +33,11 @@ docker compose -f docker/compose/docker-compose.yml up hmi_launcher
 - **멀티아치 registry push/pull**: DOCKER_GUIDE §6~§7 (또는 `docker/script/build_multiarch.sh`)
 
 ## 설정 (launcher_config.json)
-- `rosbridge.url`(기본 `ws://localhost:9090`), `statusTopic`, `rosReconnectIntervalSec`, `heartbeatIntervalSec`, `otaTheme`/`adswTheme`/`lfcTheme`
+- `rosbridge.url`(기본 `ws://localhost:9090`), `statusTopic`, `rosReconnectIntervalSec`, `heartbeatIntervalSec`, `otaTheme`/`adswTheme`/`diagTheme`/`lfcTheme`
 - 읽기 경로: `HMI_LAUNCHER_CONFIG` → `$XDG_CONFIG_HOME/hmi_launcher/` → `~/.config/hmi_launcher/` → `/var/lib/hmi_launcher/`
-- 런타임 편집(Settings): rosbridge URL·앱 테마·시간대 즉시 반영·저장
+- 런타임 편집(Settings): rosbridge URL·DDS/ROS 도메인·Service Mode·앱 테마·시간대 즉시 반영·저장
 
 ## 문서
 - 설정 사용법: [SETTINGS_USAGE.md](SETTINGS_USAGE.md)
-- 임베드 앱 사용법: [../adsw_monitor/USAGE.md](../adsw_monitor/USAGE.md) · [../lfc_monitor/USAGE.md](../lfc_monitor/USAGE.md) · [../ota_monitor/USAGE.md](../ota_monitor/USAGE.md)
+- 임베드 앱 사용법: [../adsw_monitor/USAGE.md](../adsw_monitor/USAGE.md) · [../diag_monitor/USAGE.md](../diag_monitor/USAGE.md) · [../lfc_monitor/USAGE.md](../lfc_monitor/USAGE.md) · [../ota_monitor/USAGE.md](../ota_monitor/USAGE.md) · [../rviz2_panel/README.md](../rviz2_panel/README.md) · [../vehicle_data_app/README.md](../vehicle_data_app/README.md)
 - 빌드/배포 상세: [docker/docs/DOCKER_GUIDE.md](docker/docs/DOCKER_GUIDE.md)

@@ -1,29 +1,7 @@
-
-// // class MockRos extends Mock implements Ros {}
-
-// // void main() {
-// //   testWidgets('Tab switching works with stubbed pages', (WidgetTester tester) async {
-// //     final ros = MockRos();
-
-// //     await tester.pumpWidget(TestableHomePage(ros: ros));
-
-// //     // AD SW Info is visible initially
-// //     expect(find.byKey(const Key('FakeAdswViewPage')), findsOneWidget);
-// //     expect(find.byKey(const Key('FakeMwViewPage')), findsNothing);
-
-// //     // Tap second tab
-// //     await tester.tap(find.text('Diagnostic Info'));
-// //     await tester.pumpAndSettle();
-
-// //     // Diagnostic tab should now be shown
-// //     expect(find.byKey(const Key('FakeAdswViewPage')), findsNothing);
-// //     expect(find.byKey(const Key('FakeMwViewPage')), findsOneWidget);
-// //   });
-// // }
-
 import 'package:adsw_monitor/config/app_config.dart';
 import 'package:adsw_monitor/main.dart';
 import 'package:adsw_monitor/ros_keeper.dart';
+import 'package:adsw_monitor/view/log_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roslibdart/roslibdart.dart';
@@ -51,7 +29,7 @@ class TestRosKeeper extends RosKeeper {
   Ros get ros => mockRos;
 }
 
-/// Fake 페이지: 탭 콘텐츠 대신 간단한 위젯만 렌더링
+/// Fake 페이지: AD SW 뷰 대신 간단한 위젯만 렌더링
 class FakeAdswViewPage extends StatelessWidget {
   const FakeAdswViewPage({super.key});
   @override
@@ -59,22 +37,16 @@ class FakeAdswViewPage extends StatelessWidget {
       const SizedBox(key: Key('FakeAdswViewPage'));
 }
 
-class FakeMwViewPage extends StatelessWidget {
-  const FakeMwViewPage({super.key});
-  @override
-  Widget build(BuildContext context) =>
-      const SizedBox(key: Key('FakeMwViewPage'));
-}
-
 void main() {
   setUp(() {
     Get.reset();
+    Get.put(LogController());
   });
 
   // 바인딩 초기화
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('AdswMonitorHomePage tab switching works with stubbed pages',
+  testWidgets('AdswMonitorHomePage renders the AD SW view and log FAB',
       (WidgetTester tester) async {
     // 🔹 테스트용 윈도우 사이즈를 넓게 잡아줘서 Row가 안 넘치게 함
     tester.view.physicalSize = const Size(1400, 900);
@@ -94,26 +66,36 @@ void main() {
         home: AdswMonitorHomePage(
           title: 'Test Home',
           adswPageBuilder: () => const FakeAdswViewPage(),
-          mwPageBuilder: () => const FakeMwViewPage(),
         ),
       ),
     );
 
     await tester.pumpAndSettle();
 
-    // 처음에는 AD SW Info 탭이 보여야 함
+    // 단일 뷰 — AD SW 페이지가 탭 없이 바로 보여야 함
     expect(find.byKey(const Key('FakeAdswViewPage')), findsOneWidget);
-    expect(find.byKey(const Key('FakeMwViewPage')), findsNothing);
+    expect(find.text('ADSW Monitor'), findsOneWidget);
+    expect(find.byType(TabBar), findsNothing);
 
-    expect(find.text('AD SW Info'), findsOneWidget);
-    expect(find.text('Diagnostic Info'), findsOneWidget);
-
-    // Diagnostic 탭 누르기
-    await tester.tap(find.text('Diagnostic Info'));
+    // Tap Log FAB
+    final fab = find.byTooltip('Logs');
+    expect(fab, findsOneWidget);
+    await tester.tap(fab);
     await tester.pumpAndSettle();
+    expect(find.text('Debug Log'), findsOneWidget);
+  });
 
-    expect(find.byKey(const Key('FakeAdswViewPage')), findsNothing);
-    expect(find.byKey(const Key('FakeMwViewPage')), findsOneWidget);
+  testWidgets('AdswMonitorApp build returns ValueListenableBuilder', (tester) async {
+    const app = AdswMonitorApp();
+    await tester.pumpWidget(
+      Builder(
+        builder: (context) {
+          final widget = app.build(context);
+          expect(widget, isNotNull);
+          return const SizedBox();
+        },
+      ),
+    );
   });
 
   test('startRosWithUri creates AppConfig, RosKeeper and registers Ros (put case)',

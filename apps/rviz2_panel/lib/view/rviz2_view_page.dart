@@ -25,9 +25,14 @@ class Rviz2ViewPage extends StatefulWidget {
     super.key,
     required this.cfg,
     this.embedded = false,
+    this.userConfigStore,
   });
 
   final AppConfig cfg;
+
+  /// 설정 저장소 주입점 — 테스트에서 임시 디렉토리를 가리키게 하기 위해 둔다.
+  /// null 이면 실제 경로($XDG_CONFIG_HOME/rviz2_panel)를 쓴다.
+  final UserConfigStore? userConfigStore;
 
   /// True when hosted inside hmi_launcher. Controls minor layout tweaks
   /// (e.g. no window-level title bar in standalone mode).
@@ -83,8 +88,9 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
       TextEditingController(text: kAutowareRmw);
 
   // ── 패널 설정(영구 저장) 폼 ──────────────────────────────────────────────
-  // Run Options 는 이번 기동에만 쓰이는 값이고, 아래 필드들은 저장하면 다음 실행에도
-  // 유지된다($XDG_CONFIG_HOME/rviz2_panel/config.json).
+  // 아래 필드들은 "저장" 버튼으로, Run Options 세 값은 **Start 를 누를 때**
+  // 같은 파일에 기록된다($XDG_CONFIG_HOME/rviz2_panel/config.json) — 저장 시점만
+  // 다르고 목적지는 하나다. 근거는 _persistRunOptions 주석 참조.
   late final TextEditingController _imageCtrl;
   late final TextEditingController _containerCtrl;
   late final TextEditingController _outputCtrl;
@@ -92,7 +98,7 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
   late final TextEditingController _homeAppIdCtrl;
   late final TextEditingController _pollCtrl;
   late final TextEditingController _dockerArgsCtrl;
-  final UserConfigStore _userCfg = UserConfigStore();
+  late final UserConfigStore _userCfg = widget.userConfigStore ?? UserConfigStore();
   bool _savingCfg = false;
   String? _cfgMsg;
 
@@ -535,7 +541,9 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
             ),
             const SizedBox(height: 6),
             Text(
-              '다음 Start 에 적용됩니다. 아래 값은 Autoware (151) 프리셋 기준입니다 — '
+              'Start 를 누르면 적용되고 **저장**됩니다 — 앱을 다시 띄워도 이 값이 '
+              '유지됩니다. 저장된 ROS_DOMAIN_ID 는 런처 Settings 값으로 덮이지 '
+              '않습니다(되돌리려면 아래 "기기 기본값으로"). 프리셋 기준값 — '
               'ROS_DOMAIN_ID $kAutowareDomainId · $kAutowareRmw · autoware.rviz',
               style: TextStyle(fontSize: 11, color: outline),
             ),
@@ -565,8 +573,10 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
                 Expanded(
                   flex: 2,
                   child: Tooltip(
-                    message: 'Autoware 와 같아야 한다. adsw 파티션 = 42, '
-                        'oss-mmf-ext-ros2 = 0. 비우면 0.',
+                    message: 'Autoware 와 같아야 한다 — 두 쪽이 다르면 맵/토픽이 '
+                        '전혀 보이지 않는다.\n'
+                        'Start 시 저장되어 앱 재시작 후에도 유지된다.\n'
+                        '비우면 -e ROS_DOMAIN_ID 를 넣지 않는다(이미지 기본값).',
                     child: TextField(
                       controller: _domainIdCtrl,
                       decoration: const InputDecoration(
@@ -926,9 +936,38 @@ class _Rviz2ViewPageState extends State<Rviz2ViewPage> {
     if (rvizConfig.isNotEmpty) {
       extraEnv['RVIZ_CONFIG'] = rvizConfig;
     }
+    // Run Options 를 **파일에 남긴다** — 그러지 않으면 앱을 다시 띄울 때
+    // config.json 에 없는 값이라 프리필이 이전 값으로 돌아가고, 사용자가 방금
+    // 고른 도메인으로 다시 Start 하려면 매번 타이핑해야 했다(사용자 지적).
+    //
+    // 저장 시점을 "Start" 로 잡은 이유: 이 세 값은 `docker run` 인자이므로
+    // **실제로 그 값으로 띄운 순간**이 기억할 가치가 생기는 시점이다. 타이핑
+    // 도중(onChanged)에 쓰면 반쯤 지운 값이 저장된다.
+    //
+    // ⚠️ 부수 효과가 하나 있다: 저장되면 `domainIdFromUser` 가 켜져
+    // **런처 Settings 의 도메인이 더 이상 이 패널을 덮어쓰지 않는다**
+    // (AppConfig.withDomainId). 패널에서 고른 값이 이기는 것이 의도다 —
+    // 되돌리려면 아래 "기기 기본값으로" 로 저장분을 치운다.
+    unawaited(_persistRunOptions());
     // 기동 직후에도 패널 사각형에 띄운다 — 전체 화면이면 런처가 가려져 사이드바
     // 탭도, 'View rviz2' 도 누를 수 없다(보드 실측).
     _ctrl.start(extraEnv: extraEnv, rect: _panelRect());
+  }
+
+  /// Start 시 Run Options 를 사용자 설정 파일에 반영한다.
+  ///
+  /// 실패해도 기동을 막지 않는다 — rviz2 는 이미 뜬 값으로 돌고 있고, 못 쓴 것은
+  /// "다음 실행에 기억되지 않는다"는 편의 손실일 뿐이다. 대신 사유를 화면에 남긴다.
+  Future<void> _persistRunOptions() async {
+    final cfg = _formConfig();
+    final err = await _userCfg.save(cfg);
+    if (err == null) _ctrl.applyConfig(cfg);
+    if (!mounted) return;
+    setState(() {
+      _cfgMsg = err == null
+          ? 'Run Options 저장됨 → ${_userCfg.path}'
+          : 'Run Options 저장 실패(기동은 계속): $err';
+    });
   }
 }
 

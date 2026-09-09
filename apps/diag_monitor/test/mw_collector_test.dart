@@ -1,6 +1,6 @@
 // import 'package:flutter_test/flutter_test.dart';
 // import 'package:roslibdart/roslibdart.dart';
-// import 'package:adsw_monitor/controller/mw_collector.dart';
+// import 'package:diag_monitor/controller/mw_collector.dart';
 // import 'package:mocktail/mocktail.dart';
 // import 'package:get/get.dart';
 
@@ -78,7 +78,7 @@ import 'package:get/get.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:roslibdart/roslibdart.dart';
 
-import 'package:adsw_monitor/controller/mw_collector.dart';
+import 'package:diag_monitor/controller/mw_collector.dart';
 
 class MockRos extends Mock implements Ros {}
 
@@ -97,6 +97,7 @@ void main() {
   // subscribe에 전달되는 핸들러를 잡아두기 위한 변수
   dynamic infoListHandler; // Future<void> Function(Map<String, dynamic>)
   dynamic infoRespHandler; // Future<void> Function(Map<String, dynamic>)
+  dynamic notificationHandler; // Future<void> Function(Map<String, dynamic>)
 
   setUp(() {
     // GetX 초기화
@@ -107,6 +108,7 @@ void main() {
     // 테스트 간 핸들러 캡처 누수 방지(이전 테스트의 bind 핸들러를 재사용하지 않도록).
     infoListHandler = null;
     infoRespHandler = null;
+    notificationHandler = null;
 
     infoReqTopic = MockTopic();
     infoListReqTopic = MockTopic();
@@ -115,7 +117,9 @@ void main() {
     // 소스가 DiagnosticNotification 도 구독함 → 별도 mock + 스텁 필요.
     final infoNotificationTopic = MockTopic();
     when(() => infoNotificationTopic.subscribe(any()))
-        .thenAnswer((_) async {});
+        .thenAnswer((invocation) async {
+      notificationHandler = invocation.positionalArguments[0];
+    });
     when(() => infoNotificationTopic.unsubscribe())
         .thenAnswer((_) => Future<void>.value());
 
@@ -344,6 +348,140 @@ void main() {
         collector.diagnostics.any((e) => e['name'] == 'UnknownDiag'),
         isFalse,
       );
+    });
+
+    test('onInfoListResponse handles empty list and null gracefully', () async {
+      collector.onInit();
+      await waitForBind();
+
+      // Empty response
+      await infoListHandler(<String, dynamic>{
+        'diag_codes': <dynamic>[],
+        'diag_names': <dynamic>[],
+      });
+      expect(collector.diagnostics, isEmpty);
+
+      // Malformed response
+      await infoListHandler(<String, dynamic>{});
+      expect(collector.diagnostics, isEmpty);
+    });
+
+    test('onInfoResponse parses nested map ret_code and status, and fallback ret_text', () async {
+      collector.onInit();
+      await waitForBind();
+
+      await infoListHandler(<String, dynamic>{
+        'diag_codes': [20, 21],
+        'diag_names': ['SensorA', 'SensorB'],
+      });
+
+      // Nested map ret_code & status
+      await infoRespHandler(<String, dynamic>{
+        'diag_code': 20,
+        'ret_code': {'ret_code': 2},
+        'status': {'diag_status': 1},
+        'message': 'OK',
+      });
+
+      final item20 = collector.diagnostics.firstWhere((e) => e['code'] == 20);
+      expect(item20['ret_code'], 2);
+      expect(item20['ret_text'], 'FAIL');
+      expect(item20['status'], 1);
+      expect(item20['status_text'], 'PASS');
+
+      // Unknown ret_code and status
+      await infoRespHandler(<String, dynamic>{
+        'diag_code': 21,
+        'ret_code': 99,
+        'status': 99,
+        'message': 'Unknown',
+      });
+
+      final item21 = collector.diagnostics.firstWhere((e) => e['code'] == 21);
+      expect(item21['ret_code'], 99);
+      expect(item21['ret_text'], '99');
+      expect(item21['status'], 99);
+      expect(item21['status_text'], '99');
+    });
+
+    test('onNotification parses item, logs, and triggers security alert', () async {
+      collector.onInit();
+      await waitForBind();
+
+      // Send normal notification
+      await notificationHandler(<String, dynamic>{
+        'diag_code': 100,
+        'diag_name': 'BrakeSensor',
+        'status': 1,
+        'message': 'Brake normal',
+        'source_message_name': 'sensor_node',
+        'raw_data': 'raw123',
+      });
+
+      expect(collector.notificationLogs.length, 1);
+      expect(collector.notificationLogs.first.label, 'BrakeSensor (100)');
+      expect(collector.securityData.value, isNull);
+
+      // Send security notification
+      await notificationHandler(<String, dynamic>{
+        'diag_code': 101,
+        'diag_name': 'SecurityManager',
+        'status': 'FATAL',
+        'message': 'Intrusion detected',
+        'source_message_name': 'sec_node',
+        'raw_data': 'sec_raw',
+      });
+
+      expect(collector.notificationLogs.length, 2);
+      expect(collector.securityData.value, isNotNull);
+      expect(collector.securityData.value, contains('Intrusion detected'));
+
+      // Test different status string types and security keywords
+      await notificationHandler(<String, dynamic>{
+        'diag_code': 102,
+        'diag_name': 'Normal Sensor',
+        'status': 'WARNING',
+        'message': 'Warning from SecMgr',
+        'source_message_name': 'node',
+      });
+      expect(collector.notificationLogs.first.status, 3);
+      expect(collector.notificationLogs.first.statusText, 'WARNING');
+
+      await notificationHandler(<String, dynamic>{
+        'diag_code': 103,
+        'diag_name': 'Security Manager',
+        'status': {'value': 'PASS'},
+        'message': 'OK',
+      });
+      expect(collector.notificationLogs.first.status, 1);
+      expect(collector.notificationLogs.first.statusText, 'PASS');
+
+      await notificationHandler(<String, dynamic>{
+        'diag_code': 104,
+        'diag_name': 'Unknown status format',
+        'status': {'value': 2},
+        'message': 'custom raw',
+        'raw_data': 'security_mgr log',
+      });
+      expect(collector.notificationLogs.first.status, 2);
+      expect(collector.notificationLogs.first.statusText, 'FATAL');
+
+      // Test format security alert with empty/null sub fields
+      await notificationHandler(<String, dynamic>{
+        'diag_code': 105,
+        'diag_name': 'secmgr',
+        'status': 2,
+        'message': '',
+        'source_message_name': '',
+        'raw_data': '',
+      });
+      expect(collector.securityData.value, contains('secmgr (105)'));
+    });
+
+    test('refreshOnce handles advertise failure and exception gracefully', () async {
+      when(() => infoReqTopic.advertise()).thenThrow(Exception('advertise error'));
+      await collector.refreshOnce();
+      expect(collector.lastError.value, isNotEmpty);
     });
   });
 }

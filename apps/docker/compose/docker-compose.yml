@@ -187,6 +187,138 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════
+  # diag_monitor — adsw_monitor 에서 분리된 미들웨어 진단(diagnosticmgr) HMI.
+  # Same pipeline as adsw_monitor, reused by changing only APP_NAME
+  # (Dockerfiles take ARG APP_NAME.)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # ── Build services ──────────────────────────────────────────────────────
+
+  # x86_64 Flutter Linux build (GTK bundle)
+  # Run: docker compose --profile build run --rm diag_monitor_builder_x86
+  diag_monitor_builder_x86:
+    image: registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
+    volumes:
+      - ../../diag_monitor:/workspace/app
+      - ../../output:/workspace/output
+    profiles: [ build ]
+
+  # arm64 AOT build (AGL Yocto SDK)
+  # Run: docker compose --profile build run --rm diag_monitor_builder_arm64
+  diag_monitor_builder_arm64:
+    image: registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    environment:
+      HOME: /tmp
+      PUB_CACHE: /tmp/.pub-cache
+      XDG_CACHE_HOME: /tmp/.cache
+    volumes:
+      - ../../diag_monitor:/workspace/app
+      - ../../output:/workspace/output
+    profiles: [ build ]
+
+  # ── Runtime services ────────────────────────────────────────────────────
+
+  # x86_64 runtime image (GTK-based, for development/testing)
+  diag_monitor:
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile
+      args:
+        APP_NAME: diag_monitor
+    image: diag_monitor:x86_64
+    container_name: diag_monitor
+
+    # Wayland socket mount (AGL/Linux environment)
+    volumes:
+      - /run/user/1000:/run/user/1000
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ../../diag_monitor/config/config.json:/app/config/config.json
+      - /run/user/1000/gdm/Xauthority:/root/.Xauthority:ro
+
+    environment:
+      - DISPLAY=${DISPLAY:-:2}
+      - XAUTHORITY=/root/.Xauthority
+      - XDG_RUNTIME_DIR=/run/user/1000
+
+    network_mode: host
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+    restart: unless-stopped
+
+  # arm64 test image (QEMU emulation + headless Weston)
+  # Prereq: output/diag_monitor-arm64-release.tar.gz + output/agl-binaries/
+  diag_monitor_arm64_test:
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64.test
+      args:
+        APP_NAME: diag_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: diag_monitor:arm64-test
+    container_name: diag_monitor_arm64_test
+
+    volumes:
+      - ../../diag_monitor/config/config.json:/etc/diag_monitor/config.json
+
+    environment:
+      - APP_NAME=diag_monitor
+      - APP_VERSION=3.32.2
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - VNC_PORT=${VNC_PORT:-0}
+
+    security_opt:
+      - seccomp:unconfined
+
+    network_mode: host
+
+    profiles: [ test ]
+
+  # arm64 runtime image (flutter-auto based, for AGL targets)
+  diag_monitor_arm64:
+    build:
+      context: ../..
+      dockerfile: docker/dockerfile/Dockerfile.arm64
+      args:
+        APP_NAME: diag_monitor
+        APP_VERSION: 3.32.2
+      platforms:
+        - linux/arm64
+    image: diag_monitor:arm64
+    container_name: diag_monitor_arm64
+
+    volumes:
+      - /usr/bin/flutter-auto:/usr/bin/flutter-auto:ro
+      - /dev/dri:/dev/dri
+      - /run/user/1001:/run/user/1001
+      - ../../diag_monitor/config/config.json:/usr/share/flutter/diag_monitor/3.32.2/release/data/flutter_assets/assets/config/config.json
+
+    environment:
+      - WAYLAND_DISPLAY=wayland-0
+      - XDG_RUNTIME_DIR=/run/user/1001
+      - APP_NAME=diag_monitor
+      - APP_VERSION=3.32.2
+
+    network_mode: host
+
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════
   # ota_monitor — same pipeline as adsw_monitor, reused by changing only APP_NAME
   # (Dockerfiles take ARG APP_NAME.)
   # ═══════════════════════════════════════════════════════════════════════
@@ -582,10 +714,11 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════
-  # hmi_launcher — launcher shell that embeds ota_monitor + adsw_monitor
-  # as path dependencies. The builder mounts all three app directories
+  # hmi_launcher — launcher shell that embeds ota_monitor, adsw_monitor,
+  # diag_monitor, lfc_monitor, rviz2_panel and vehicle_data_app as path
+  # dependencies. The builder mounts every one of those app directories
   # side-by-side under /workspace/apps so pubspec `path:` references
-  # (`../ota_monitor`, `../adsw_monitor`) resolve correctly inside the
+  # (`../ota_monitor`, `../adsw_monitor`, …) resolve correctly inside the
   # container. Runtime images pass CONFIG_FILE=launcher_config.json so
   # the generic Dockerfiles pick up the launcher's config asset.
   # ═══════════════════════════════════════════════════════════════════════
@@ -605,6 +738,8 @@ services:
       - ../../hmi_launcher:/workspace/apps/hmi_launcher
       - ../../ota_monitor:/workspace/apps/ota_monitor
       - ../../adsw_monitor:/workspace/apps/adsw_monitor
+      # pubspec path dep since adsw_monitor 의 진단 탭이 diag_monitor 로 분리됨
+      - ../../diag_monitor:/workspace/apps/diag_monitor
       # pubspec path dep since the embedded lfc panel (b8034e6) — without this
       # mount `flutter pub get` fails resolving ../lfc_monitor in-container.
       - ../../lfc_monitor:/workspace/apps/lfc_monitor
@@ -631,6 +766,8 @@ services:
       - ../../hmi_launcher:/workspace/apps/hmi_launcher
       - ../../ota_monitor:/workspace/apps/ota_monitor
       - ../../adsw_monitor:/workspace/apps/adsw_monitor
+      # pubspec path dep since adsw_monitor 의 진단 탭이 diag_monitor 로 분리됨
+      - ../../diag_monitor:/workspace/apps/diag_monitor
       # pubspec path dep since the embedded lfc panel (b8034e6) — see x86 note.
       - ../../lfc_monitor:/workspace/apps/lfc_monitor
       # pubspec path dep since the embedded rviz2_panel panel (F010)

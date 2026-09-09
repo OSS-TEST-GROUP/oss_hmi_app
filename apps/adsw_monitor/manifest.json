@@ -1,10 +1,10 @@
 {
   "id": "adsw_monitor",
-  "name": "AD SW",
+  "name": "ADSW Monitor",
   "icon": "📡",
   "version": "1.0.0",
   "category": "monitoring",
-  "description": "Autonomous-driving status",
+  "description": "Autonomous-driving status message",
   "color": "#7FE5A1",
   "prompts": [
     "AD SW 실행해줘",

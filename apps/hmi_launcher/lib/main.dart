@@ -4,13 +4,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:adsw_monitor/theme/adsw_palette.dart' as adsw_theme;
+import 'package:diag_monitor/theme/diag_palette.dart' as diag_theme;
 import 'package:lfc_monitor/main.dart' as lfc;
 import 'package:lfc_monitor/theme/lfc_palette.dart' as lfc_theme;
 import 'package:ota_monitor/theme/app_palette.dart' as ota_theme;
 import 'package:roslibdart/roslibdart.dart';
 
 import 'domain/app_visibility_store.dart';
-import 'domain/dds_domain_store.dart';
+import 'domain/domain_store.dart';
 import 'domain/mmf_restarter.dart';
 import 'domain/timezone_store.dart';
 import 'domain/launcher_config.dart';
@@ -91,7 +92,8 @@ class HmiLauncherApp extends StatelessWidget {
     this.visibilityStore,
     this.botAvailabilityProbe,
     this.timezoneStore,
-    this.ddsDomainStore,
+    this.domainStore,
+    this.onDomainRemotePublish,
   });
 
   /// Allows tests to inject a fixture registry so the UI doesn't depend on
@@ -123,8 +125,13 @@ class HmiLauncherApp extends StatelessWidget {
   /// file-backed store defaulting to Korea (KST).
   final TimezoneStore? timezoneStore;
 
-  /// DDS 도메인 설정 저장소. 테스트는 in-memory 를 주입한다.
-  final DdsDomainStore? ddsDomainStore;
+  /// 통신 두 평면(DDS/ROS2) 도메인 설정 저장소. 테스트는 in-memory 를 주입한다.
+  final DomainStore? domainStore;
+
+  /// 원격 호스트(차량 컴퓨트)의 domain.env 갱신 요청. null 이면 rosbridge keeper 를
+  /// 쓴다. 테스트는 가짜를 주입해 "로컬 저장값과 같은 값이 나가는지" 를 본다.
+  final Future<DomainPublishResult> Function(int dds, int ros)?
+      onDomainRemotePublish;
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +161,8 @@ class HmiLauncherApp extends StatelessWidget {
         visibilityStore: visibilityStore,
         botAvailabilityProbe: botAvailabilityProbe,
         timezoneStore: timezoneStore,
-        ddsDomainStore: ddsDomainStore,
+        domainStore: domainStore,
+        onDomainRemotePublish: onDomainRemotePublish,
       ),
     );
   }
@@ -170,7 +178,8 @@ class LauncherHomePage extends StatefulWidget {
     this.visibilityStore,
     this.botAvailabilityProbe,
     this.timezoneStore,
-    this.ddsDomainStore,
+    this.domainStore,
+    this.onDomainRemotePublish,
   });
 
   final PluginRegistry? initialRegistry;
@@ -187,8 +196,13 @@ class LauncherHomePage extends StatefulWidget {
   /// Optional timezone store override (tests).
   final TimezoneStore? timezoneStore;
 
-  /// DDS 도메인 설정 저장소. 테스트는 in-memory 를 주입한다.
-  final DdsDomainStore? ddsDomainStore;
+  /// 통신 두 평면(DDS/ROS2) 도메인 설정 저장소. 테스트는 in-memory 를 주입한다.
+  final DomainStore? domainStore;
+
+  /// 원격 호스트(차량 컴퓨트)의 domain.env 갱신 요청. null 이면 rosbridge keeper 를
+  /// 쓴다. 테스트는 가짜를 주입해 "로컬 저장값과 같은 값이 나가는지" 를 본다.
+  final Future<DomainPublishResult> Function(int dds, int ros)?
+      onDomainRemotePublish;
 
   @override
   State<LauncherHomePage> createState() => _LauncherHomePageState();
@@ -198,7 +212,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
   late final PluginRegistry _registry;
   late final AppVisibilityStore _visibilityStore;
   late final TimezoneStore _timezoneStore;
-  late final DdsDomainStore _ddsDomainStore;
+  late final DomainStore _domainStore;
   late LauncherConfig _launcherConfig;
   String _rosStatus = 'Loading';
   LauncherRosKeeper? _rosKeeper;
@@ -220,10 +234,11 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
     // Display timezone — defaults to Korea (KST). Tests inject in-memory.
     _timezoneStore = widget.timezoneStore ?? _resolveTimezoneStore();
     _timezoneStore.load(); // async, best-effort — UI starts on KST
-    // MMF/ROS DDS 도메인 — 기본 42 (Autoware adsw 파티션과 동일). Settings 에서 바꾸면
-    // 도메인 파일(MMF_DOMAIN_ENV_FILE)에 기록되어 MMF 는 다음 기동 때 반영한다.
-    _ddsDomainStore = widget.ddsDomainStore ?? _resolveDdsDomainStore();
-    _ddsDomainStore.load(); // async, best-effort — UI starts on 42
+    // 두 평면 도메인 — DDS(순수 Fast-DDS) / ROS2(rmw), 기본 둘 다 42 (Autoware adsw
+    // 파티션과 동일). Settings 에서 바꾸면 도메인 파일(MMF_DOMAIN_ENV_FILE)에 두 키가
+    // 기록되어 각 서비스는 다음 기동 때 반영한다.
+    _domainStore = widget.domainStore ?? _resolveDomainStore();
+    _domainStore.load(); // async, best-effort — UI starts on 42
     _launcherConfig = LauncherConfig.defaults();
     _loadConfigAndInitRos();
   }
@@ -242,7 +257,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
 
   /// 도메인 저장소 — 설정 JSON 은 XDG 아래, MMF 도메인 파일 경로는
   /// `MMF_DOMAIN_ENV_FILE` env 로 배포마다 바꿀 수 있다(기본 /opt/mmf/config/domain.env).
-  static DdsDomainStore _resolveDdsDomainStore() {
+  static DomainStore _resolveDomainStore() {
     final envFile = Platform.environment['MMF_DOMAIN_ENV_FILE'];
     final xdg = Platform.environment['XDG_CONFIG_HOME'];
     final home = Platform.environment['HOME'];
@@ -251,7 +266,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
         : (home != null && home.isNotEmpty)
             ? '$home/.config/hmi_launcher'
             : '/var/lib/hmi_launcher';
-    return DdsDomainStore.file(
+    return DomainStore.file(
       dir,
       envFilePath: (envFile != null && envFile.isNotEmpty) ? envFile : null,
     );
@@ -307,6 +322,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       heartbeatIntervalSec: _launcherConfig.heartbeatIntervalSec,
       otaTheme: _launcherConfig.otaTheme,
       adswTheme: _launcherConfig.adswTheme,
+      diagTheme: _launcherConfig.diagTheme,
       lfcTheme: _launcherConfig.lfcTheme,
     );
 
@@ -344,6 +360,8 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       otaTheme: appId == 'ota_monitor' ? normalized : _launcherConfig.otaTheme,
       adswTheme:
           appId == 'adsw_monitor' ? normalized : _launcherConfig.adswTheme,
+      diagTheme:
+          appId == 'diag_monitor' ? normalized : _launcherConfig.diagTheme,
       lfcTheme: appId == 'lfc_monitor' ? normalized : _launcherConfig.lfcTheme,
     );
 
@@ -357,6 +375,8 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
         ota_theme.Palette.fromName(config.otaTheme);
     adsw_theme.adswPaletteNotifier.value =
         adsw_theme.AdswPalette.fromName(config.adswTheme);
+    diag_theme.diagPaletteNotifier.value =
+        diag_theme.DiagPalette.fromName(config.diagTheme);
     lfc_theme.paletteNotifier.value =
         lfc_theme.LfcPalette.fromName(config.lfcTheme);
   }
@@ -390,7 +410,7 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       registry: _registry,
       visibilityStore: _visibilityStore,
       timezoneStore: _timezoneStore,
-      ddsDomainStore: _ddsDomainStore,
+      domainStore: _domainStore,
       // 도메인 저장 직후 같은 호스트의 MMF 컨테이너를 재시작한다. 런처 컨테이너는
       // docker.sock + docker CLI 를 갖고 있어(rviz2_panel 과 동일 경로) 가능하다.
       mmfRestarter: MmfRestarter(),
@@ -401,10 +421,17 @@ class _LauncherHomePageState extends State<LauncherHomePage> {
       onRosUrlChanged: _applyRosBridge,
       otaTheme: _launcherConfig.otaTheme,
       adswTheme: _launcherConfig.adswTheme,
+      diagTheme: _launcherConfig.diagTheme,
       lfcTheme: _launcherConfig.lfcTheme,
       onAppThemeChanged: _applyAppTheme,
       onServiceModeChanged: (modeValue) async =>
           lfc.applyGlobalServiceMode(modeValue),
+      // 다른 호스트(차량 컴퓨트)의 domain.env 는 그쪽 domain_agent 만 쓸 수 있다 —
+      // 런처는 rosbridge 로 요청만 보낸다. keeper 가 없으면(ROS 비활성) false.
+      onDomainRemotePublish: widget.onDomainRemotePublish ??
+          (dds, ros) async =>
+              await _rosKeeper?.publishDomainRequest(dds: dds, ros: ros) ??
+              DomainPublishResult.failed,
       onRunningAppIdsChanged: _handleRunningAppIdsChanged,
     );
   }
@@ -435,6 +462,7 @@ class _LauncherConfigStore {
       'heartbeatIntervalSec': config.heartbeatIntervalSec,
       'otaTheme': config.otaTheme,
       'adswTheme': config.adswTheme,
+      'diagTheme': config.diagTheme,
       'lfcTheme': config.lfcTheme,
     });
 

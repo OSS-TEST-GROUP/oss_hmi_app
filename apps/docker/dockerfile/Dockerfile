@@ -75,9 +75,11 @@ COPY ${APP_NAME}/config/${CONFIG_FILE} /app/config/${CONFIG_FILE}
 # (lines 41,84-88). OTA Monitor ships default-disabled via the launcher's
 # AppVisibilityStore.kDefaultDisabled, so no manifest change is needed for that.
 ENV HMI_APPS_ROOT=/apps
-RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/lfc_monitor /apps/rviz2_panel /apps/vehicle_data_app
+RUN mkdir -p /apps/ota_monitor /apps/adsw_monitor /apps/diag_monitor \
+             /apps/lfc_monitor /apps/rviz2_panel /apps/vehicle_data_app
 COPY ota_monitor/manifest.json /apps/ota_monitor/manifest.json
 COPY adsw_monitor/manifest.json /apps/adsw_monitor/manifest.json
+COPY diag_monitor/manifest.json /apps/diag_monitor/manifest.json
 COPY lfc_monitor/manifest.json /apps/lfc_monitor/manifest.json
 COPY rviz2_panel/manifest.json /apps/rviz2_panel/manifest.json
 COPY vehicle_data_app/manifest.json /apps/vehicle_data_app/manifest.json

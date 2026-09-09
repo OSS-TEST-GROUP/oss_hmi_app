@@ -1,2 +1,13 @@
 # 빌드 결과물 (Docker 빌드 산출물)
 apps/output/
+
+# 커버리지 / 정적분석 통합 리포트 산출물 (.github/scripts/ 의 스크립트가 만든다)
+/cov/
+/coverage-report/
+/an/
+/analyze-report/
+/an-all/
+/cov-all/
+/.metrics/
+/metrics-trend/
+apps/*/analyze.txt

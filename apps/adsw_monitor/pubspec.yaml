@@ -1,5 +1,5 @@
 name: adsw_monitor
-description: "AD SW & Middleware diagnostics monitor — adsw_manager status + DiagReport/notification viewer (AD SW Info / Middleware tabs) backed by rosbridge."
+description: "AD SW monitor — Autoware/adsw_manager status dashboard backed by rosbridge."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
