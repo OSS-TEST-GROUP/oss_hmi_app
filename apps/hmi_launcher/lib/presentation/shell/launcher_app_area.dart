@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/app_manifest.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
+import '../panels/diag_embedded_panel.dart';
 import '../panels/launcher_home_panel.dart';
 import '../panels/lfc_embedded_panel.dart';
 import '../panels/ota_embedded_panel.dart';
@@ -25,7 +26,7 @@ class LauncherAppArea extends StatelessWidget {
     required this.apps,
     required this.selectedAppId,
     required this.onAppLaunch,
-    this.ddsDomainId,
+    this.rosDomainId,
     this.panelBuilder,
   });
 
@@ -33,8 +34,9 @@ class LauncherAppArea extends StatelessWidget {
   final String? selectedAppId;
   final ValueChanged<AppManifest> onAppLaunch;
 
-  /// 런처 Settings 의 "DDS domain" — rviz2 패널의 ROS_DOMAIN_ID 프리필로 내려간다.
-  final String? ddsDomainId;
+  /// 런처 Settings 의 **ROS domain** — rviz2 패널의 `ROS_DOMAIN_ID` 프리필로 내려간다
+  /// (rviz2 는 ROS2 노드다 — DDS 평면 도메인과는 별개 값일 수 있다).
+  final String? rosDomainId;
 
   /// Optional override for the plugin-panel factory. When null, the
   /// built-in OTA / ADSW / placeholder routing is used.
@@ -89,10 +91,12 @@ class LauncherAppArea extends StatelessWidget {
         return OtaEmbeddedPanel(key: key);
       case 'adsw_monitor':
         return AdswEmbeddedPanel(key: key);
+      case 'diag_monitor':
+        return DiagEmbeddedPanel(key: key);
       case 'lfc_monitor':
         return LfcEmbeddedPanel(key: key);
       case 'rviz2_panel':
-        return Rviz2EmbeddedPanel(key: key, domainId: ddsDomainId);
+        return Rviz2EmbeddedPanel(key: key, domainId: rosDomainId);
       case 'vehicle_data_app':
         return VehicleDataEmbeddedPanel(key: key);
       default:

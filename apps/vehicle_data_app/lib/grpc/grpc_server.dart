@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:grpc/grpc.dart';
 import 'package:vehicle_data_app/src/generated/VISSv3.0.pbgrpc.dart';
 import 'package:vehicle_data_app/services/sim_bus.dart';
-import '../services/sim_bus.dart';
 import 'subscription_registry.dart';
 
 class VissService extends VISSServiceBase {
@@ -215,11 +214,11 @@ class GrpcServer {
     }
 
     try {
-      _server = await Server.create(
+      _server = Server.create(
         services: [VissService()],
         //interceptors: const <ServerInterceptor>[],
         codecRegistry: CodecRegistry(
-          codecs: [GzipCodec(), IdentityCodec()],
+          codecs: [const GzipCodec(), const IdentityCodec()],
         ),
       );
 

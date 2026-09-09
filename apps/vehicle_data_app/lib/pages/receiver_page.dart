@@ -140,12 +140,14 @@ class _ReceiverPageState extends State<ReceiverPage>
       });
     } catch (e) {
       debugPrint('[ReceiverPage] connect error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('연결 실패: $e')),
-      );
-      setState(() {
-        _isConnected = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('연결 실패: $e')),
+        );
+        setState(() {
+          _isConnected = false;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -167,9 +169,11 @@ class _ReceiverPageState extends State<ReceiverPage>
         await widget.cloud.changePath(newPath);
       } catch (e) {
         debugPrint('[ReceiverPage] changePath error: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('경로 변경 실패: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('경로 변경 실패: $e')),
+          );
+        }
       }
     }
   }
@@ -187,7 +191,7 @@ class _ReceiverPageState extends State<ReceiverPage>
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),

@@ -299,12 +299,34 @@ docker run --rm --entrypoint bash registry.obigo.com/oss/rviz2-agl:latest -c '
 
 ```bash
 cd apps/rviz2_port/docker/agl-display
-DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f Dockerfile.touch -t rviz2-agl:touch-amd64 .
-DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f Dockerfile.autoware \
-    --build-arg TOUCH_IMAGE=rviz2-agl:touch-amd64 -t rviz2-agl:amd64-autoware .
+DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f Dockerfile.all \
+    -t registry.obigo.com/oss/rviz2-agl:<snap>-amd64 .
 ```
-> x86 은 agl-compositor 가 없어 cage/homebar 경로가 그대로 동작하지 않는다 — 표출은
-> `run-rviz2-x86.sh`(호스트 X11 직행) 또는 nested weston 을 쓴다.
+
+**실행은 entrypoint 가 환경을 보고 자동으로 고른다** — 아키텍처가 아니라 표시 경로가 기준이다:
+
+| | 보드(AGL) | x86 PC |
+|---|---|---|
+| 판정 | `$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY` 소켓 있음 | 소켓 없고 `DISPLAY` 있음 |
+| 모드 | cage(wlroots 키오스크) + XWayland | **x11 직행** |
+| homebar · agl-shell 배치 | 수행 | **건너뜀**(컴포지터 부재) |
+| `--user 1001:1001` | 필수(cage 가 root 거부) | 불필요 |
+
+```bash
+# x86 PC — 스크립트 없이 이대로 뜬다 (실측 2026-09-09)
+docker run --rm --platform linux/amd64 --net=host \
+  -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix \
+  registry.obigo.com/oss/rviz2-agl:<snap>-amd64
+# → "▶ wayland 소켓 없음 → X11 직행 모드 (cage/homebar 건너뜀)"
+```
+
+> · 편의 스크립트 [`apps/docker/script/run-rviz2-x86.sh`](../../../docker/script/run-rviz2-x86.sh) 도 있다.
+>   `--entrypoint bash` 로 **entrypoint 를 우회**해 rviz2 를 직접 띄우고, GPU 자동 판정·`xhost +local:`·
+>   `domain.env` 도메인 승계를 함께 해준다. 위 `docker run` 은 entrypoint 의 x11 모드를 그대로 쓰는 경로다
+>   (오버레이·vehicle_info 파라미터 주입까지 타므로 보드와 같은 초기화를 원하면 이쪽).
+> · X 인증이 막히면 `xhost +local:docker` 또는 `-v <Xauthority>:/root/.Xauthority:ro`.
+> · x86 에서는 rviz2_panel 의 Start/Stop 은 되지만 **배치·홈버튼은 무효**다(agl-shell 없음).
+>   패널 쪽 설정은 `apps/docker/docs/DOCKER_GUIDE.md` §1-5 참조.
 
 ### 로컬 이미지를 build-arg 로 넘길 때 — 빌더별 차이
 
@@ -402,7 +424,7 @@ TAG=multiarch-verify ./docker/script/build_rviz2_multiarch.sh   # 검증용(:lat
 ## 런타임
 
 - **arm64 (Orin/AGL — 주 타겟)**: `./run-on-board.sh` (수동) 또는 ext-agl 등재(자동). 표출/홈전환은 agl-shell 스위처(F006, `docs/design/F006-switcher.md`) 가 `agl-shell-activator -a activate -p wlroots` 로 수행.
-- **amd64 (x86 dev/CI)**: `bash docker/script/run-rviz2-x86.sh` — 호스트 X11 에 rviz2 직접 실행(cage 우회). `GPU=nvidia|none`.
+- **amd64 (x86 dev/CI)**: 두 경로가 있다. ① `docker run -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix …` — entrypoint 가 wayland 소켓 부재를 보고 **x11 직행 모드**로 전환한다(cage/homebar 건너뜀, 오버레이 초기화는 그대로). ② `bash docker/script/run-rviz2-x86.sh` — entrypoint 를 우회해 rviz2 를 직접 실행하며 GPU 판정·`xhost`·도메인 승계를 대신 해준다. `GPU=nvidia|none`. 어느 쪽이든 rviz2_panel 로는 Start/Stop 만 되고 배치·홈버튼은 무효(agl-shell 부재).
 
 ## 설치 (보드 자동시작 — ext-agl)
 

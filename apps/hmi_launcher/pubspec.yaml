@@ -52,6 +52,8 @@ dependencies:
     path: ../ota_monitor
   adsw_monitor:
     path: ../adsw_monitor
+  diag_monitor:
+    path: ../diag_monitor
   lfc_monitor:
     path: ../lfc_monitor
   rviz2_panel:

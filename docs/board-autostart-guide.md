@@ -3,7 +3,7 @@
 > AGL HMI 보드(예: 172.16.10.81, Orin AGX)에서 재부팅 시 `hmi_launcher` 도커
 > 컨테이너가 자동으로 올라오게 하는 방법. 2026-07 실보드 검증 구성 기준.
 > MMF 백엔드 컨테이너(core/ext-ros2/ext-agl)의 자동시작은
-> `oss_multisw_framework/docs/board-autostart-guide.md` 참조 — 원리는 동일하다.
+> `oss_multisw_framework/docs/guide/board-autostart-guide.md` 참조 — 원리는 동일하다.
 
 ---
 

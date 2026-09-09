@@ -5,13 +5,21 @@ class SimulatorBus {
   SimulatorBus._();
   static final SimulatorBus instance = SimulatorBus._();
 
-  final _controller = StreamController<DataPackages>.broadcast();
-  Stream<DataPackages> get stream => _controller.stream;
+  StreamController<DataPackages> _controller = StreamController<DataPackages>.broadcast();
+  Stream<DataPackages> get stream {
+    if (_controller.isClosed) {
+      _controller = StreamController<DataPackages>.broadcast();
+    }
+    return _controller.stream;
+  }
 
   DataPackages? lastPack;
 
   void pushData(Map<String, dynamic> data) {
     lastPack = _mapToDataPackages(data);
+    if (_controller.isClosed) {
+      _controller = StreamController<DataPackages>.broadcast();
+    }
     _controller.add(_mapToDataPackages(data));
   }
 

@@ -1,0 +1,6 @@
+{
+  "rosbridge": {
+    "url": "ws://172.16.10.48:9090"
+  },
+  "statusTopic": "/app_status/diag_monitor"
+}

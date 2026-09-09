@@ -18,6 +18,10 @@
 #   IMAGE          이미지 (기본 registry.obigo.com/oss/oss-hmi-launcher:latest)
 #   ROSBRIDGE_URL  rosbridge WebSocket URL (기본 ws://localhost:9090)
 #   DISPLAY_ID     X 디스플레이 (기본 $DISPLAY, 없으면 :0)
+#
+# docker 소켓이 있으면 자동 마운트한다 — 런처 안의 rviz2_panel 이 rviz2 컨테이너를
+# Start/Stop 하는 데 필요하다. 단 x86 에는 agl-compositor 가 없어 **배치(View rviz2)와
+# 홈버튼은 동작하지 않는다**(agl-shell gRPC 부재) — rviz2 는 독립 X 윈도우로 뜬다.
 #   HMI_UID        런타임 uid (기본 현재 사용자 $(id -u))
 #   GPU            auto|nvidia|none (기본 auto — nvidia 감지 시 사용)
 #   LAUNCHER_BOT   0|1  (기본 0 — v_agentos 데몬 없으면 봇 숨김)
@@ -118,9 +122,24 @@ docker stop "$NAME" 2>/dev/null || true
 docker rm "$NAME" 2>/dev/null || true
 
 # ── 실행 ─────────────────────────────────────────────────────────────────────
+# ── docker 소켓 (rviz2_panel 이 rviz2 컨테이너를 Start/Stop 하려면 필요) ──────
+# 런처 안의 rviz2_panel 은 `docker run/stop/logs rviz2` 로 컨테이너를 제어한다.
+# 소켓이 없으면 Start 가 "Cannot connect to the Docker daemon" 으로 실패한다.
+# 보드(arm64)는 adsw 서비스 정의가 소켓과 docker gid 를 주는데 x86 경로엔 그 대응이
+# 없었다 — 여기서 흡수한다. 소켓이 없는 PC 에서는 건너뛰고 안내만 남긴다.
+DOCKER_ARGS=()
+if [ -S /var/run/docker.sock ]; then
+  DOCKER_ARGS=(-v /var/run/docker.sock:/var/run/docker.sock
+               --group-add "$(stat -c %g /var/run/docker.sock)")
+  echo "[run-hmi-x86] docker 소켓 마운트 — rviz2_panel 로 rviz2 컨테이너 제어 가능"
+else
+  echo "[run-hmi-x86] ⓘ /var/run/docker.sock 없음 → rviz2_panel 의 Start/Stop 은 동작하지 않습니다"
+fi
+
 docker run -d --name "$NAME" --restart "$RESTART" \
   --network host \
   "${GPU_ARGS[@]}" \
+  "${DOCKER_ARGS[@]}" \
   -e DISPLAY="$DISPLAY_ID" \
   -e XDG_RUNTIME_DIR="$RUNTIME_DIR" \
   -v /tmp/.X11-unix:/tmp/.X11-unix \

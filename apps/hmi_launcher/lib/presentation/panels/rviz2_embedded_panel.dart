@@ -17,9 +17,9 @@ import 'package:rviz2_panel/main.dart' as rviz2;
 class Rviz2EmbeddedPanel extends StatefulWidget {
   const Rviz2EmbeddedPanel({super.key, this.domainId});
 
-  /// 런처 Settings 의 "DDS domain" 값. rviz2 컨테이너의 ROS_DOMAIN_ID 프리필로
-  /// 내려간다 — MMF·Autoware·rviz2 가 같은 도메인이어야 통신하므로 설정을 한 곳에서
-  /// 관리한다. null 이면 설정 파일/기본값의 도메인을 그대로 쓴다.
+  /// 런처 Settings 의 **ROS domain** 값. rviz2 컨테이너의 `ROS_DOMAIN_ID` 프리필로
+  /// 내려간다 — rviz2·Autoware·rosbridge 가 같은 ROS2 도메인이어야 통신하므로 설정을
+  /// 한 곳에서 관리한다. null 이면 설정 파일/기본값의 도메인을 그대로 쓴다.
   final String? domainId;
 
   @override

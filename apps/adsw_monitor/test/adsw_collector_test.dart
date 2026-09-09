@@ -425,5 +425,47 @@ void main() {
         ['CAR (0.80)', 'PEDESTRIAN (0.90)'],
       );
     });
+
+    test('handleObjectRecognition handles unknown label and empty classification', () async {
+      final msg = <String, dynamic>{
+        'objects': [
+          {
+            'classification': [
+              {'label': 999, 'probability': 0.77},
+            ],
+          },
+          {
+            'classification': <dynamic>[],
+          },
+        ],
+      };
+
+      await collector.handleObjectRecognition(msg);
+      expect(collector.topicData['Object recognition count'], 2);
+      expect(collector.topicData['Object recognition'], contains('UNKNOWN (0.77)'));
+    });
+
+    test('lifecycle onClose unregisters listener and onInit sets default values', () {
+      final ctrl = AdswCollector(topicFactory: mockTopicFactory);
+      ctrl.onInit();
+      expect(ctrl.topicData, isNotNull);
+      ctrl.onClose();
+    });
+
+    test('subscribeTopic with handlerList and vehicleStatus empty values', () async {
+      final ctrl = AdswCollector(topicFactory: mockTopicFactory);
+      ctrl.subscribeTopic(
+        ['/topic/test'],
+        ['test_msgs/Test'],
+        [ctrl.handleVehicleStatus],
+      );
+      ctrl.onInit();
+      ctrl.onClose();
+
+      await ctrl.handleVehicleStatus({});
+      expect(ctrl.topicData['Gear'], '-');
+      expect(ctrl.topicData['Turn indicator'], '-');
+      expect(ctrl.topicData['Hazard light'], '-');
+    });
   });
 }

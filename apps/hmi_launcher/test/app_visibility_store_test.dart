@@ -165,16 +165,31 @@ void main() {
       expect(store.isEnabled('adsw_monitor'), isFalse);
       expect(store.isEnabled('lfc_monitor'), isFalse);
       // An app not explicitly disabled stays enabled.
-      expect(store.isEnabled('oss_launcher_bot'), isTrue);
+      expect(store.isEnabled('vehicle_data_app'), isTrue);
     });
   });
 
-  group('AppVisibilityStore — default-disabled apps (OTA Monitor)', () {
+  group('AppVisibilityStore — default-disabled apps (OTA Monitor, Launcher Bot)', () {
     // The production file factory seeds kDefaultDisabled; these tests use the
     // raw constructor with the same seed so no real filesystem is needed.
 
     test('kDefaultDisabled ships ota_monitor hidden', () {
       expect(AppVisibilityStore.kDefaultDisabled, contains('ota_monitor'));
+    });
+
+    // oss_launcher_bot(standalone Launcher Bot) 은 2026-09-01 부터 기본 숨김.
+    test('kDefaultDisabled ships oss_launcher_bot hidden', () {
+      expect(AppVisibilityStore.kDefaultDisabled, contains('oss_launcher_bot'));
+    });
+
+    test('신규 설치에서 oss_launcher_bot 은 숨겨진다', () async {
+      final store = AppVisibilityStore(
+        readRaw: () => null, // no file yet
+        writeRaw: (s) async {},
+        initialDisabled: Set.from(AppVisibilityStore.kDefaultDisabled),
+      );
+      await store.load();
+      expect(store.isEnabled('oss_launcher_bot'), isFalse);
     });
 
     // rviz2_panel 은 2026-08-24 부터 기본 노출 — 보드에서 상시 쓰는 화면이라

@@ -115,27 +115,33 @@ class _EventRow extends StatelessWidget {
         dotColor = palette.accent;
         break;
       case LifecycleEventKind.ctrlStartServiceResponse:
-        text = 'ctrl start svc  ${event.detail ?? ''}';
+        // 대상 이름은 collector 가 자기 요청과 짝지어 채운다 (CtrlResponse 엔 없음).
+        text = 'ctrl start svc  ${event.serviceName}  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
       case LifecycleEventKind.ctrlStopServiceResponse:
-        text = 'ctrl stop svc  ${event.detail ?? ''}';
+        // 대상 이름은 collector 가 자기 요청과 짝지어 채운다 (CtrlResponse 엔 없음).
+        text = 'ctrl stop svc  ${event.serviceName}  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
       case LifecycleEventKind.ctrlSetServiceModeResponse:
-        text = 'ctrl set mode  ${event.detail ?? ''}';
+        // 대상 이름은 collector 가 자기 요청과 짝지어 채운다 (CtrlResponse 엔 없음).
+        text = 'ctrl set mode  ${event.serviceName}  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
       case LifecycleEventKind.ctrlStartContainerResponse:
-        text = 'ctrl start ctr  ${event.detail ?? ''}';
+        // 대상 이름은 collector 가 자기 요청과 짝지어 채운다 (CtrlResponse 엔 없음).
+        text = 'ctrl start ctr  ${event.serviceName}  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
       case LifecycleEventKind.ctrlStopContainerResponse:
-        text = 'ctrl stop ctr  ${event.detail ?? ''}';
+        // 대상 이름은 collector 가 자기 요청과 짝지어 채운다 (CtrlResponse 엔 없음).
+        text = 'ctrl stop ctr  ${event.serviceName}  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
       case LifecycleEventKind.ctrlSetRecoveryPolicyResponse:
-        text = 'ctrl set recovery  ${event.detail ?? ''}';
+        // 대상 이름은 collector 가 자기 요청과 짝지어 채운다 (CtrlResponse 엔 없음).
+        text = 'ctrl set recovery  ${event.serviceName}  ${event.detail ?? ''}';
         dotColor = palette.accent;
         break;
     }

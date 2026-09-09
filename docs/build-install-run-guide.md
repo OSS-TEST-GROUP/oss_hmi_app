@@ -1,6 +1,6 @@
 # HMI 앱 빌드·설치·실행 가이드 (x86_64 / arm64)
 
-> hmi_launcher · adsw_monitor · lfc_monitor · ota_monitor 를 소스에서 빌드해
+> hmi_launcher · adsw_monitor · diag_monitor · lfc_monitor · ota_monitor 를 소스에서 빌드해
 > PC(x86_64) 또는 AGL 보드(arm64, 예: Orin AGX)에 설치·실행하는 전 과정.
 > 2026-07 실보드(172.16.10.162) 검증 절차 기준.
 > 단계별 세부·QEMU 테스트는 [apps/docker/docs/DOCKER_GUIDE.md](../apps/docker/docs/DOCKER_GUIDE.md),
@@ -13,10 +13,10 @@
 
 | 앱 | 역할 | 배포 형태 |
 |---|---|---|
-| **hmi_launcher** | 홈 런처 셸 — 앱 그리드 + **임베디드 패널**(OTA/lfc/adsw) + Manage Apps + 설정 | 보드 배포의 **주 이미지** |
-| adsw_monitor / lfc_monitor / ota_monitor | 각 모니터 앱 | 런처에 **path 의존성으로 임베드**됨(pubspec). 단독 이미지 빌드도 가능 |
+| **hmi_launcher** | 홈 런처 셸 — 앱 그리드 + **임베디드 패널**(OTA/ADSW/Diag/LFC/RViz2/VehicleData) + Manage Apps + 설정 | 보드 배포의 **주 이미지** |
+| adsw_monitor / diag_monitor / lfc_monitor / ota_monitor / rviz2_panel / vehicle_data_app | 각 앱/패널 | 런처에 **path 의존성으로 임베드**됨(pubspec). 단독 이미지 빌드도 가능 |
 
-즉 보드에는 보통 **hmi_launcher 이미지 하나**만 올리면 모니터 앱들이 패널로 포함된다.
+즉 보드에는 보통 **hmi_launcher 이미지 하나**만 올리면 모니터 및 제어 앱들이 패널로 포함된다.
 빌드는 전부 **compose 빌더 컨테이너**로 수행한다 (호스트 Flutter 불필요, 단 유닛테스트는
 호스트 `flutter test` 로도 가능).
 
@@ -29,7 +29,8 @@ cd apps/docker/compose
 
 # 1) 빌드 (Flutter Linux GTK 번들) — 앱별 빌더 서비스
 docker compose --profile build run --rm hmi_launcher_builder_x86
-#   (adsw_monitor_builder_x86 / lfc_monitor_builder_x86 / ota_monitor_builder_x86 동일 패턴)
+#   (adsw_monitor_builder_x86 / diag_monitor_builder_x86 / lfc_monitor_builder_x86 /
+#    ota_monitor_builder_x86 동일 패턴)
 
 # 2) 런타임 이미지 + 실행 (X11/NVIDIA 는 compose 서비스에 정의돼 있음)
 docker compose up -d hmi_launcher            # image: hmi_launcher:x86_64
@@ -47,7 +48,7 @@ docker compose --profile build run --rm hmi_launcher_builder_arm64
 # → apps/output/hmi_launcher-arm64-release.tar.gz
 ```
 - 빌더 이미지는 최초 1회 자동 빌드(AGL SDK 다운로드 — `AGL_SDK_USER/PASSWORD` env).
-- **hmi_launcher 빌더는 ota/adsw/lfc_monitor 디렉토리 마운트가 모두 필요**하다
+- **hmi_launcher 빌더는 ota/adsw/diag/lfc_monitor, rviz2_panel, vehicle_data_app 디렉토리 마운트가 모두 필요**하다
   (pubspec path 의존성 — compose 에 정의돼 있으므로 그대로 쓰면 됨).
 - 성공 판정: 로그 `** Complete **` + tar.gz 갱신 시각.
 

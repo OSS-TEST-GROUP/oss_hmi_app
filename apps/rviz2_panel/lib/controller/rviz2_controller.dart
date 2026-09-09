@@ -33,8 +33,18 @@ import '../generated/agl_shell.pbgrpc.dart';
 /// output into [logs].  A follow-up `docker logs -f` stream is started and
 /// kept alive while the container is running; lines are appended to [logs]
 /// (ring-buffered at [_logCapacity]).
+/// 서브프로세스 실행 시그니처. 기본값은 [Process.run] 이고, 테스트는 fake 를
+/// 주입해 docker/grpcurl 응답을 결정론적으로 흉내낸다(lfc 의 topicFactory,
+/// ota 의 keeperFactory, MMF 의 InjectDdsForTest 와 동일한 DI seam 관례).
+typedef ProcessRunner = Future<ProcessResult> Function(
+    String executable, List<String> arguments);
+
 class Rviz2Controller extends GetxController {
-  Rviz2Controller({required this.cfg});
+  Rviz2Controller({required this.cfg, ProcessRunner? run})
+      : _runner = run ?? Process.run;
+
+  /// 모든 서브프로세스 호출이 통과하는 지점. 주입 없으면 실제 [Process.run].
+  final ProcessRunner _runner;
 
   /// 설정 화면에서 저장한 값을 **즉시** 반영한다(다음 Start 부터 적용).
   /// 컨트롤러는 permanent 로 등록돼 있어 재생성되지 않으므로 필드를 갈아끼운다.
@@ -409,7 +419,7 @@ class Rviz2Controller extends GetxController {
   /// non-existent container returns 1 and is expected).
   Future<ProcessResult?> _run(String exe, List<String> args) async {
     try {
-      return await Process.run(exe, args);
+      return await _runner(exe, args);
     } catch (e) {
       lastError.value = 'Failed to run $exe: $e';
       return null;

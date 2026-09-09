@@ -7,8 +7,9 @@ import 'package:rviz2_panel/main.dart' as rviz2;
 
 import '../../domain/app_manifest.dart';
 import '../../domain/app_visibility_store.dart';
-import '../../domain/dds_domain_store.dart';
+import '../../domain/domain_store.dart';
 import '../../domain/mmf_restarter.dart';
+import '../../ros/launcher_ros_keeper.dart';
 import '../../domain/nlu_router.dart';
 import '../../domain/plugin_registry.dart';
 import '../../domain/timezone_store.dart';
@@ -22,6 +23,7 @@ import '../launcher_bot/launcher_bot_panel.dart';
 import '../theme/hex_color.dart';
 import '../panels/adsw_embedded_panel.dart';
 import '../panels/app_placeholder_panel.dart';
+import '../panels/diag_embedded_panel.dart';
 import '../panels/lfc_embedded_panel.dart';
 import '../panels/manage_apps_panel.dart';
 import '../panels/ota_embedded_panel.dart';
@@ -46,12 +48,14 @@ class LauncherBotShell extends StatefulWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.diagTheme,
     required this.lfcTheme,
     required this.onAppThemeChanged,
     required this.timezoneStore,
-    required this.ddsDomainStore,
+    required this.domainStore,
     this.mmfRestarter,
     this.onServiceModeChanged,
+    this.onDomainRemotePublish,
     this.onRunningAppIdsChanged,
     this.initialAppId,
     this.panelBuilder,
@@ -68,9 +72,9 @@ class LauncherBotShell extends StatefulWidget {
   /// Display timezone (greeting + chat timestamps). Defaults to Korea (KST).
   final TimezoneStore timezoneStore;
 
-  /// MMF/ROS DDS 도메인 설정 (기본 42). Settings 에서 바꾸면 도메인 파일에 기록되어
-  /// MMF 서비스가 **다음 기동 때** 그 도메인으로 올라온다.
-  final DdsDomainStore ddsDomainStore;
+  /// 통신 두 평면의 도메인 설정 — DDS(순수 Fast-DDS) / ROS2(rmw), 기본 둘 다 42.
+  /// Settings 에서 바꾸면 도메인 파일에 기록되어 각 서비스가 **다음 기동 때** 반영한다.
+  final DomainStore domainStore;
 
   /// 도메인 저장 직후 **같은 호스트의** MMF 컨테이너를 재시작한다(없으면 재시작 생략).
   final MmfRestarter? mmfRestarter;
@@ -80,6 +84,7 @@ class LauncherBotShell extends StatefulWidget {
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final String diagTheme;
   final String lfcTheme;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
 
@@ -87,6 +92,13 @@ class LauncherBotShell extends StatefulWidget {
   /// launcher Settings screen. Returns false when Lifecycle Monitor isn't
   /// active yet. Optional so tests can omit it.
   final Future<bool> Function(int modeValue)? onServiceModeChanged;
+
+  /// 원격 호스트(차량 컴퓨트)의 domain.env 갱신 요청. null 이면 로컬만 반영한다.
+  ///
+  /// 런처는 자기 호스트의 파일만 쓰므로, 다른 호스트에서 도는 MMF/Autoware 는
+  /// 이 경로(rosbridge → 그 호스트의 domain_agent)로만 따라온다.
+  final Future<DomainPublishResult> Function(int dds, int ros)?
+      onDomainRemotePublish;
 
   final ValueChanged<Set<String>>? onRunningAppIdsChanged;
   final String? initialAppId;
@@ -651,13 +663,15 @@ class _LauncherBotShellState extends State<LauncherBotShell> {
                       onRosUrlChanged: widget.onRosUrlChanged,
                       otaTheme: widget.otaTheme,
                       adswTheme: widget.adswTheme,
+                      diagTheme: widget.diagTheme,
                       lfcTheme: widget.lfcTheme,
                       aiSdkAvailable: _aiSdkAvailable,
                       timezoneStore: widget.timezoneStore,
-                      ddsDomainStore: widget.ddsDomainStore,
+                      domainStore: widget.domainStore,
                       mmfRestarter: widget.mmfRestarter,
                       onAppThemeChanged: widget.onAppThemeChanged,
                       onServiceModeChanged: widget.onServiceModeChanged,
+                      onDomainRemotePublish: widget.onDomainRemotePublish,
                     ),
                   ),
                 ],
@@ -682,13 +696,15 @@ class _AppStage extends StatelessWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.diagTheme,
     required this.lfcTheme,
     required this.aiSdkAvailable,
     required this.timezoneStore,
-    required this.ddsDomainStore,
+    required this.domainStore,
     this.mmfRestarter,
     required this.onAppThemeChanged,
     this.onServiceModeChanged,
+    this.onDomainRemotePublish,
     this.panelBuilder,
   });
 
@@ -698,17 +714,25 @@ class _AppStage extends StatelessWidget {
   final ValueChanged<AppManifest> onAppLaunch;
   final VoidCallback onSettingsLaunch;
   final TimezoneStore timezoneStore;
-  final DdsDomainStore ddsDomainStore;
+  final DomainStore domainStore;
   final MmfRestarter? mmfRestarter;
   final Uri rosUrl;
   final String rosStatus;
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final String diagTheme;
   final String lfcTheme;
   final bool aiSdkAvailable;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final Future<bool> Function(int modeValue)? onServiceModeChanged;
+
+  /// 원격 호스트(차량 컴퓨트)의 domain.env 갱신 요청. null 이면 로컬만 반영한다.
+  ///
+  /// 런처는 자기 호스트의 파일만 쓰므로, 다른 호스트에서 도는 MMF/Autoware 는
+  /// 이 경로(rosbridge → 그 호스트의 domain_agent)로만 따라온다.
+  final Future<DomainPublishResult> Function(int dds, int ros)?
+      onDomainRemotePublish;
   final AppPanelBuilder? panelBuilder;
 
   @override
@@ -753,13 +777,15 @@ class _AppStage extends StatelessWidget {
         onRosUrlChanged: onRosUrlChanged,
         otaTheme: otaTheme,
         adswTheme: adswTheme,
+        diagTheme: diagTheme,
         lfcTheme: lfcTheme,
         aiSdkAvailable: aiSdkAvailable,
         timezoneStore: timezoneStore,
-        ddsDomainStore: ddsDomainStore,
+        domainStore: domainStore,
         mmfRestarter: mmfRestarter,
         onAppThemeChanged: onAppThemeChanged,
         onServiceModeChanged: onServiceModeChanged,
+        onDomainRemotePublish: onDomainRemotePublish,
       );
     }
 
@@ -773,14 +799,17 @@ class _AppStage extends StatelessWidget {
         return OtaEmbeddedPanel(key: key, rosUrl: rosUrl);
       case 'adsw_monitor':
         return AdswEmbeddedPanel(key: key);
+      case 'diag_monitor':
+        return DiagEmbeddedPanel(key: key);
       case 'lfc_monitor':
         return LfcEmbeddedPanel(key: key, rosUrl: rosUrl);
       case 'rviz2_panel':
         // Direct-docker control (no rosUrl) — see Rviz2EmbeddedPanel.
-        // ROS_DOMAIN_ID 프리필은 Settings 의 DDS domain 을 따른다(단일 출처).
+        // rviz2 는 ROS2 노드이므로 프리필은 Settings 의 **ROS domain** 을 따른다
+        // (DDS domain 이 아니다 — 두 평면은 별개 값일 수 있다).
         return Rviz2EmbeddedPanel(
           key: key,
-          domainId: '${ddsDomainStore.domain}',
+          domainId: '${domainStore.rosDomain}',
         );
       case 'vehicle_data_app':
         return VehicleDataEmbeddedPanel(key: key);
@@ -897,13 +926,15 @@ class _SettingsPage extends StatefulWidget {
     required this.onRosUrlChanged,
     required this.otaTheme,
     required this.adswTheme,
+    required this.diagTheme,
     required this.lfcTheme,
     required this.aiSdkAvailable,
     required this.timezoneStore,
-    required this.ddsDomainStore,
+    required this.domainStore,
     this.mmfRestarter,
     required this.onAppThemeChanged,
     this.onServiceModeChanged,
+    this.onDomainRemotePublish,
   });
 
   static const appId = LauncherAppIcons.settingsAppId;
@@ -913,13 +944,21 @@ class _SettingsPage extends StatefulWidget {
   final Future<void> Function(Uri rosUrl) onRosUrlChanged;
   final String otaTheme;
   final String adswTheme;
+  final String diagTheme;
   final String lfcTheme;
   final bool aiSdkAvailable;
   final TimezoneStore timezoneStore;
-  final DdsDomainStore ddsDomainStore;
+  final DomainStore domainStore;
   final MmfRestarter? mmfRestarter;
   final Future<void> Function(String appId, String themeName) onAppThemeChanged;
   final Future<bool> Function(int modeValue)? onServiceModeChanged;
+
+  /// 원격 호스트(차량 컴퓨트)의 domain.env 갱신 요청. null 이면 로컬만 반영한다.
+  ///
+  /// 런처는 자기 호스트의 파일만 쓰므로, 다른 호스트에서 도는 MMF/Autoware 는
+  /// 이 경로(rosbridge → 그 호스트의 domain_agent)로만 따라온다.
+  final Future<DomainPublishResult> Function(int dds, int ros)?
+      onDomainRemotePublish;
 
   @override
   State<_SettingsPage> createState() => _SettingsPageState();
@@ -930,6 +969,7 @@ class _SettingsPageState extends State<_SettingsPage> {
   late final TextEditingController _portController;
   late final TextEditingController _vehicleProfileController;
   late final TextEditingController _ddsDomainController;
+  late final TextEditingController _rosDomainController;
   String? _errorText;
   String? _domainErrorText;
   bool _applyingDomain = false;
@@ -960,33 +1000,61 @@ class _SettingsPageState extends State<_SettingsPage> {
     ));
   }
 
-  /// DDS 도메인 적용 — 런처 설정 + MMF 도메인 파일에 기록한다.
+  /// 두 평면(DDS/ROS2) 도메인 적용 — 런처 설정 + MMF 도메인 파일에 기록한다.
   ///
   /// 도메인은 프로세스 시작 시점에만 읽히므로 **여기서 실행 중 서비스가 바뀌지는
   /// 않는다**. 무엇이 언제 반영되는지 스낵바로 정확히 알린다(조용히 성공한 척 X).
-  Future<void> _applyDdsDomain() async {
-    final raw = _ddsDomainController.text.trim();
-    final value = int.tryParse(raw);
-    if (value == null || value < kMinDdsDomain || value > kMaxDdsDomain) {
+  Future<void> _applyDomains() async {
+    final dds = int.tryParse(_ddsDomainController.text.trim());
+    final ros = int.tryParse(_rosDomainController.text.trim());
+    if (!DomainStore.isValidDomainId(dds) ||
+        !DomainStore.isValidDomainId(ros)) {
       setState(() => _domainErrorText =
-          'DDS domain must be an integer in $kMinDdsDomain–$kMaxDdsDomain');
+          'DDS/ROS domain must be integers in $kMinDomainId–$kMaxDomainId');
       return;
     }
     setState(() {
       _domainErrorText = null;
       _applyingDomain = true;
     });
-    final store = widget.ddsDomainStore;
-    final ok = await store.select(value);
-    if (!mounted) return;
-    setState(() => _applyingDomain = false);
+    final store = widget.domainStore;
+    final ok = await store.select(dds: dds, ros: ros);
     final wrote = store.lastEnvWriteOk == true;
+
+    // ⚠ 아래 부수효과(원격 요청·컨테이너 점검)는 **UI 생존과 무관하게** 수행한다.
+    // 이전에는 여기서 `if (!mounted) return;` 로 끊었는데, 화면이 사라지면 사용자가
+    // 요청한 도메인 전파가 조용히 누락됐다(CI 러너에서 실측: 원격 콜백 호출 0회).
+    // mounted 는 setState/스낵바 같은 **UI 갱신에만** 필요하다.
+
+    // 원격 호스트(차량 컴퓨트)의 domain.env 갱신 요청 — 저장 직후 가장 먼저 보낸다.
+    //
+    // 런처가 쓴 파일은 **이 호스트 것뿐**이다. Autoware·MMF core·ext-ros2 가 다른
+    // 호스트에 있으면 그쪽은 옛 값으로 남는다(실측 2026-09-04: 81 을 5/5 로 저장했으나
+    // 151 은 42/42). rosbridge 를 통해 그 호스트의 domain_agent 에 요청을 보낸다.
+    //
+    // 요청은 **도메인을 바꾸기 전** 도메인으로 나간다 — 지금 rosbridge 가 아직 옛 ROS
+    // 도메인에 있으므로 이 시점이 맞다. 반영에는 그쪽 컨테이너 재생성이 필요하다.
+    var remoteNote = '';
+    final remote = widget.onDomainRemotePublish;
+    if (ok && remote != null) {
+      switch (await remote(dds!, ros!)) {
+        case DomainPublishResult.acked:
+          // agent 가 그 값으로 파일에 썼음을 상태 토픽으로 확인했다.
+          remoteNote = ' · 원격 호스트 반영 확인(재생성 후 적용)';
+        case DomainPublishResult.unconfirmed:
+          // 발행은 했지만 확인 못 함 — "전송 성공" 으로 뭉개면 거짓 성공이 된다.
+          remoteNote = ' · 원격 호스트 응답 없음(domain_agent 확인 필요)';
+        case DomainPublishResult.failed:
+          remoteNote = ' · 원격 호스트 요청 실패(rosbridge 연결 확인)';
+      }
+    }
 
     // 저장이 됐고 도메인 파일까지 썼으면, **같은 호스트의** MMF 컨테이너를 재시작해
     // 새 도메인으로 올린다(다른 호스트는 그 호스트에서 재기동해야 반영).
     var restartNote = '';
     if (ok && wrote && widget.mmfRestarter != null) {
-      final outcomes = await widget.mmfRestarter!.applyDomain(value);
+      final outcomes =
+          await widget.mmfRestarter!.applyDomains(dds: dds!, ros: ros!);
       List<String> named(RestartOutcome o) => outcomes.entries
           .where((e) => e.value == o)
           .map((e) => e.key)
@@ -1008,34 +1076,55 @@ class _SettingsPageState extends State<_SettingsPage> {
       }
     }
     if (!mounted) return;
+    setState(() => _applyingDomain = false);
 
+    final applied = 'DDS $dds / ROS $ros';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(!ok
-          ? 'DDS domain 적용 실패 (범위 $kMinDdsDomain–$kMaxDdsDomain)'
+          ? 'Domain 적용 실패 (범위 $kMinDomainId–$kMaxDomainId)'
           : wrote
-              ? 'DDS domain $value 저장 — 다른 호스트 서비스는 다음 기동 때 반영'
-                  '$restartNote'
-              : 'DDS domain $value 저장 (런처 전용) — 도메인 파일 쓰기 실패: '
-                  '${store.lastEnvError ?? "권한/경로 확인"}'),
+              ? 'Domain $applied 저장 — 다른 호스트 서비스는 다음 기동 때 반영'
+                  '$restartNote$remoteNote'
+              : 'Domain $applied 저장 (런처 전용) — 도메인 파일 쓰기 실패: '
+                  '${store.lastEnvError ?? "권한/경로 확인"}$remoteNote'),
     ));
   }
 
-  Widget _buildDdsDomainControl() {
-    final store = widget.ddsDomainStore;
+  Widget _buildDomainControl() {
+    final store = widget.domainStore;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SettingField(
-          label: 'DDS domain ($kMinDdsDomain–$kMaxDdsDomain)',
+          label: 'DDS domain ($kMinDomainId–$kMaxDomainId)',
           controller: _ddsDomainController,
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 12),
+        _SettingField(
+          label: 'ROS domain ($kMinDomainId–$kMaxDomainId)',
+          controller: _rosDomainController,
           keyboardType: TextInputType.number,
         ),
         const SizedBox(height: 8),
         Text(
-          'MMF(core·ext-ros2·ext-agl)와 Autoware·rviz2 가 같은 도메인이어야 통신합니다. '
-          '기본 $kDefaultDdsDomain. 저장 위치: ${store.envFilePath}',
+          'DDS domain — 순수 Fast-DDS 버스(ota·lifecycle·diagnostics·adsw). '
+          'ROS domain — ROS2/rmw(rviz2·Autoware·rosbridge). '
+          '기본 둘 다 $kDefaultDdsDomain. 저장 위치: ${store.envFilePath}',
           style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
         ),
+        // 두 값을 갈라 놓으면 각 평면은 서로 직접 discovery 되지 않는다. 브릿지를
+        // 통해서만 오간다는 사실을 여기서 알린다 — 조용히 안 되는 일을 막는다.
+        if (_splitPreview(store))
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              '⚠️ 두 도메인이 다릅니다 — 평면 간 통신은 dds_bridge 를 경유합니다. '
+              '브릿지가 중계하지 않는 토픽은 넘어오지 않고, 이중 도메인 브릿지가 없는 '
+              '구버전 ext-ros2 에서는 MMF 데이터가 아예 오지 않습니다.',
+              style: TextStyle(color: Color(0xFFB45309), fontSize: 11),
+            ),
+          ),
         if (_domainErrorText != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -1051,8 +1140,8 @@ class _SettingsPageState extends State<_SettingsPage> {
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.icon(
-            key: const Key('settings_dds_domain_apply'),
-            onPressed: _applyingDomain ? null : _applyDdsDomain,
+            key: const Key('settings_domain_apply'),
+            onPressed: _applyingDomain ? null : _applyDomains,
             icon: _applyingDomain
                 ? const SizedBox(
                     width: 16,
@@ -1060,7 +1149,7 @@ class _SettingsPageState extends State<_SettingsPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.hub_outlined),
-            label: Text(_applyingDomain ? 'Saving' : 'Save domain'),
+            label: Text(_applyingDomain ? 'Saving' : 'Save domains'),
           ),
         ),
       ],
@@ -1116,7 +1205,24 @@ class _SettingsPageState extends State<_SettingsPage> {
     );
     _vehicleProfileController = TextEditingController(text: 'AGL demo target');
     _ddsDomainController =
-        TextEditingController(text: '${widget.ddsDomainStore.domain}');
+        TextEditingController(text: '${widget.domainStore.ddsDomain}');
+    _rosDomainController =
+        TextEditingController(text: '${widget.domainStore.rosDomain}');
+    // 두 값이 갈라지는 순간 경고를 띄우려면 입력 중에도 다시 그려야 한다.
+    _ddsDomainController.addListener(_onDomainTextChanged);
+    _rosDomainController.addListener(_onDomainTextChanged);
+  }
+
+  void _onDomainTextChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// 지금 화면에 입력된 두 값이 갈라져 있는지(저장 전 미리보기). 파싱이 안 되는
+  /// 중간 입력 상태에서는 저장된 값으로 판단한다.
+  bool _splitPreview(DomainStore store) {
+    final dds = int.tryParse(_ddsDomainController.text.trim()) ?? store.ddsDomain;
+    final ros = int.tryParse(_rosDomainController.text.trim()) ?? store.rosDomain;
+    return dds != ros;
   }
 
   @override
@@ -1133,7 +1239,10 @@ class _SettingsPageState extends State<_SettingsPage> {
   void dispose() {
     _bridgeIpController.dispose();
     _portController.dispose();
+    _ddsDomainController.removeListener(_onDomainTextChanged);
     _ddsDomainController.dispose();
+    _rosDomainController.removeListener(_onDomainTextChanged);
+    _rosDomainController.dispose();
     _vehicleProfileController.dispose();
     super.dispose();
   }
@@ -1221,11 +1330,12 @@ class _SettingsPageState extends State<_SettingsPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // MMF(core/ext-ros2/ext-agl) + Autoware + rviz2 가 만나는 DDS 도메인.
-                  // 저장하면 도메인 파일에 기록되고 각 서비스는 다음 기동 때 반영한다.
+                  // 두 평면: DDS(MMF core/ext-ros2/ext-agl 의 raw Fast-DDS)와
+                  // ROS2(Autoware/rviz2/rosbridge). 저장하면 도메인 파일에 기록되고
+                  // 각 서비스는 다음 기동 때 반영한다.
                   _SettingsPanel(
-                    title: 'DDS Domain',
-                    children: [_buildDdsDomainControl()],
+                    title: 'DDS / ROS Domain',
+                    children: [_buildDomainControl()],
                   ),
                 ],
               ),
@@ -1246,10 +1356,17 @@ class _SettingsPageState extends State<_SettingsPage> {
                       ),
                       const SizedBox(height: 12),
                       _ThemeSettingRow(
-                        label: 'AD SW',
+                        label: 'ADSW Monitor',
                         value: widget.adswTheme,
                         onChanged: (theme) =>
                             widget.onAppThemeChanged('adsw_monitor', theme),
+                      ),
+                      const SizedBox(height: 12),
+                      _ThemeSettingRow(
+                        label: 'Diagnostic Monitor',
+                        value: widget.diagTheme,
+                        onChanged: (theme) =>
+                            widget.onAppThemeChanged('diag_monitor', theme),
                       ),
                       const SizedBox(height: 12),
                       _ThemeSettingRow(

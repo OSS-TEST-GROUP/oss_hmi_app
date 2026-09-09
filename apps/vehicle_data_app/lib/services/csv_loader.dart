@@ -35,8 +35,15 @@ class CsvLoader {
     final fileName = f.name;
 
     final bytes = f.bytes ?? await File(f.path!).readAsBytes();
-    String text = utf8.decode(bytes);
+    return parseBytes(bytes, fileName: fileName);
+  }
 
+  static CsvTable parseBytes(List<int> bytes, {String? fileName}) {
+    String text = utf8.decode(bytes);
+    return parseString(text, fileName: fileName);
+  }
+
+  static CsvTable parseString(String text, {String? fileName}) {
     // 1) BOM 제거
     if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
       text = text.substring(1);
@@ -81,7 +88,7 @@ class CsvLoader {
       header,
       dataRows,
       fileName: fileName,
-      rawFirstLine: rawFirstLine, // ← 이제 여기로 들어감
+      rawFirstLine: rawFirstLine,
     );
   }
 }

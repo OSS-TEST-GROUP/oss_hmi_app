@@ -21,7 +21,17 @@ IMAGE="${IMAGE:-registry.obigo.com/oss/rviz2-agl:latest}"
 NAME="${NAME:-rviz2-agl-x86}"
 DISPLAY="${DISPLAY:-:0}"
 GPU="${GPU:-auto}"
-ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+
+# rviz2 는 ROS2 평면이므로 ROS_DOMAIN_ID 를 쓴다 (DDS 평면인 DDS_DOMAIN_ID 가 아니다).
+# 우선순위: ① 명시한 env  ② 도메인 파일(런처 Settings 가 기록)  ③ 기본값 42.
+# 기본 42 인 이유: Autoware adsw 파티션이 42 라, 0 이면 토픽이 하나도 안 보인다.
+MMF_DOMAIN_ENV_FILE="${MMF_DOMAIN_ENV_FILE:-/opt/mmf/config/domain.env}"
+_file_ros=""
+if [ -f "$MMF_DOMAIN_ENV_FILE" ]; then
+  _file_ros="$(sed -n 's/^[[:space:]]*ROS_DOMAIN_ID[[:space:]]*=[[:space:]]*\([0-9]\{1,3\}\).*/\1/p' \
+                 "$MMF_DOMAIN_ENV_FILE" | tail -1)"
+fi
+ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-${_file_ros:-42}}"
 
 # GPU flag resolution
 GPU_ARGS=()

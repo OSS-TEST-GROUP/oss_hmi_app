@@ -74,7 +74,7 @@ AGL_SDK_PASSWORD=... docker compose -f docker/compose/docker-compose.yml \
 # 3) push (태그는 compose 의 image: 와 같아야 한다)
 docker push registry.obigo.com/oss/oss-hmi-builder:x86-flutter3.32.5
 docker push registry.obigo.com/oss/oss-hmi-builder:agl20.0.3-flutter3.32.5
-# 4) compose 의 앱 빌더 image: 태그 10 곳 + pubspec.lock 재생성을 **같은 커밋에** 담는다
+# 4) compose 의 앱 빌더 image: 태그 12 곳 + pubspec.lock 재생성을 **같은 커밋에** 담는다
 ```
 
 **S3 에서 받으려면** `AGL_SDK_SOURCE=s3` 로 바꾸고 AWS 키를 준다:
@@ -226,6 +226,39 @@ GPU=nvidia bash docker/script/run-hmi-x86.sh   # nvidia-container-toolkit 필요
 | Xauthority | 불필요 | `xhost +local:` 로 대체(GDM 전용 경로 마운트 제거) |
 | GPU | `auto`(nvidia 감지) | 비-NVIDIA 는 mesa 소프트웨어 GL 폴백 |
 | 런처봇(AI) | `LAUNCHER_BOT_ENABLED=0` | 데몬 있으면 `LAUNCHER_BOT=1 AGENT_HOST=.. AGENT_PORT=..` |
+| **docker 소켓** | 자동 마운트(`/var/run/docker.sock` + docker gid) | 소켓 없으면 건너뛰고 안내 — **rviz2_panel 의 Start/Stop 이 이 소켓을 쓴다** |
+
+#### x86 에서 rviz2_panel 로 rviz2 컨테이너 띄우기
+
+되는 것과 안 되는 것이 갈린다 — **컨테이너 수명 관리는 되고, 화면 배치는 안 된다.**
+
+| 기능 | 보드(arm64) | x86 |
+|---|---|---|
+| Start / Stop / 상태 / docker logs | ✅ | ✅ (소켓 필요 — 위 표) |
+| rviz2 표출 | cage + 패널 영역 배치 | **독립 X 윈도우** (WM 이 배치) |
+| `View rviz2` / 홈버튼 | ✅ | ❌ — agl-compositor 가 없어 agl-shell gRPC 호출이 무효 |
+
+x86 에서는 패널 설정(영구 저장) 카드에서 **`dockerRunArgs` 를 X11 세트로 바꿔야 한다**.
+보드 기본값은 cage/wayland 전용이라 그대로 쓰면 rviz2 가 표시 경로를 못 찾는다:
+
+```
+--net=host
+-e DISPLAY=:0
+-v /tmp/.X11-unix:/tmp/.X11-unix
+-e LIBGL_ALWAYS_SOFTWARE=1
+```
+
+> · `--user 1001:1001` 은 cage 전용이므로 **빼도 된다**(x11 모드는 cage 를 건너뛴다).
+> · X 인증이 막히면(`Authorization required, but no authorization protocol specified`)
+>   호스트에서 `xhost +local:docker` 를 주거나 `-v <Xauthority>:/root/.Xauthority:ro` 를 추가한다.
+> · `image` 는 `…-amd64` 접미 태그를 직접 지정하는 편이 안전하다 — 멀티아치 `:latest` 는
+>   로컬 캐시 상태에 따라 arm64 가 잡혀 QEMU 로 느리게 돌 수 있다(실측 2026-09-09).
+> · 저장하면 `$XDG_CONFIG_HOME/rviz2_panel/config.json` 에 남아 재기동 후에도 유지된다.
+
+패널을 거치지 않고 rviz2 만 x86 에서 띄워볼 때는 [`docker/script/run-rviz2-x86.sh`](../script/run-rviz2-x86.sh)
+가 더 간단하다 — GPU 자동 판정(`GPU=nvidia|none`), `xhost +local:`, `domain.env` 도메인 승계를 해준다.
+단 이 스크립트는 `--entrypoint bash` 로 **entrypoint 를 우회**하므로 오버레이·vehicle_info 파라미터
+주입 같은 보드와 동일한 초기화는 타지 않는다. 그 초기화가 필요하면 위 `docker run` 경로를 쓴다.
 
 > compose(`docker-compose.yml`)의 x86 서비스는 NVIDIA + GDM 세션(uid 1000)을 전제로
 > 하드코딩돼 있어 다른 PC 에 그대로 쓰기 어렵다. 이식은 이 스크립트를 사용한다.
@@ -435,7 +468,7 @@ vncviewer localhost:5900
 > Docker 기본 seccomp이 차단하여 `thread::join failed: Resource deadlock avoided` 크래시 발생.
 
 > **앱 렌더링 지연**: VNC 연결 후 앱 UI가 표시되기까지 약 10~20초가 소요됩니다 (QEMU 소프트웨어 렌더링).
-> 처음에는 Weston 배경 화면만 보이다가 잠시 후 AD SW Monitor 앱 창이 나타납니다.
+> 처음에는 Weston 배경 화면만 보이다가 잠시 후 ADSW Monitor 앱 창이 나타납니다.
 
 또는 docker compose (헤드리스):
 

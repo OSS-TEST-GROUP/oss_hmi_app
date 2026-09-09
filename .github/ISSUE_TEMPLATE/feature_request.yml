@@ -16,6 +16,7 @@ body:
       description: 제안이 관련된 앱이나 영역 / App or area this proposal relates to
       options:
         - adsw_monitor
+        - diag_monitor
         - hmi_launcher
         - lfc_monitor
         - ota_monitor
